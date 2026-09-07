@@ -1,9 +1,13 @@
 # Project: Employee Shift Management
 
 ## Stack
-- Backend: Spring Boot 3.x, Java 21, PostgreSQL, Maven
+- Backend: Spring Boot 4.x, Java 21, MySQL 8, Maven
 - Frontend: Flutter 3.x, Dart, Riverpod
-- Testing: JUnit 5, Mockito, Testcontainers
+- Testing: JUnit 5, Mockito
+
+Planned, not yet present — do not assume these are available:
+- Testcontainers, to give integration tests a real MySQL instead of
+  depending on a local server.
 
 ## Working agreement — IMPORTANT
 The owner of this repo is a junior developer using this project to learn.
