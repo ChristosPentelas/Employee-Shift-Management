@@ -1,0 +1,11 @@
+# Template for local database credentials.
+#
+# Copy this file to "application-local.properties" in this same folder and
+# replace the placeholders with your real local MySQL credentials.
+#
+# application-local.properties is listed in .gitignore and must never be
+# committed. This .example file is committed on purpose: it documents which
+# properties are required, without containing any real secret.
+
+spring.datasource.username=your_mysql_user
+spring.datasource.password=your_mysql_password

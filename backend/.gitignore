@@ -1,3 +1,7 @@
+### Local secrets — never commit ###
+application-local.properties
+!application-local.properties.example
+
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
