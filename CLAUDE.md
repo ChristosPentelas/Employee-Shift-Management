@@ -3,11 +3,11 @@
 ## Stack
 - Backend: Spring Boot 4.x, Java 21, MySQL 8, Maven
 - Frontend: Flutter 3.x, Dart, Riverpod
-- Testing: JUnit 5, Mockito
+- Testing: JUnit 5, Mockito, Testcontainers (MySQL)
 
-Planned, not yet present — do not assume these are available:
-- Testcontainers, to give integration tests a real MySQL instead of
-  depending on a local server.
+Backend integration tests start a throwaway MySQL 8.0.44 container, so
+**Docker must be running** before `mvnw test`. They do not touch the local
+MySQL server and need no credentials.
 
 ## Working agreement — IMPORTANT
 The owner of this repo is a junior developer using this project to learn.
