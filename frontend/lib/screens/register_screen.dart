@@ -13,8 +13,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _apiService = ApiService();
   bool _isLoading = false;
-  String _selectedRole = "EMPLOYEE";
-  final List<String> _roles = ["EMPLOYEE", "SUPERVISOR"];
 
   void _register() async {
 
@@ -44,7 +42,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController.text,
       _phoneController.text,
       _passwordController.text,
-      _selectedRole,
     );
 
     setState(() {
@@ -82,22 +79,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             TextField(controller: _emailController, decoration: InputDecoration(labelText: "Email")),
             TextField(controller: _phoneController, decoration: InputDecoration(labelText: "Αριθμός Τηλεφώνου(Προαιρετικό)"),keyboardType: TextInputType.phone,),
             TextField(controller: _passwordController, decoration: InputDecoration(labelText: "Κωδικός")),
-
-            SizedBox(height: 20),
-
-            DropdownButtonFormField<String>(
-              value: _selectedRole,
-              decoration: InputDecoration(labelText: "Ρόλος Χρήστη"),
-              items: _roles.map((role) => DropdownMenuItem(
-                value: role,
-                child: Text(role),
-              )).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedRole = value!;
-                });
-              },
-            ),
 
             SizedBox(height: 30),
             _isLoading

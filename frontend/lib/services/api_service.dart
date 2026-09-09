@@ -332,7 +332,7 @@ class ApiService {
     return [];
   }
 
-  Future<bool> registerUser(String name,String email,String phone,String password,String role) async{
+  Future<bool> registerUser(String name,String email,String phone,String password) async{
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/users"),
@@ -342,7 +342,6 @@ class ApiService {
           "email" : email,
           "phoneNumber" : phone,
           "password" : password,
-          "role" : role
         }),
       );
 

@@ -66,7 +66,6 @@ class _MessagesListScreenState extends State<MessagesListScreen> {
                   id: msg.senderId == Session.currentUser!.id ? msg.receiverId : msg.senderId,
                   name: msg.senderName,
                   email: "",
-                  password: "",
                   role: "EMPLOYEE"
                 );
 

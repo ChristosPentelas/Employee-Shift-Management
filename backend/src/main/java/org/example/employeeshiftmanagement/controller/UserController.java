@@ -1,6 +1,10 @@
 package org.example.employeeshiftmanagement.controller;
 
+import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.dto.LoginRequest;
+import org.example.employeeshiftmanagement.dto.RegisterRequest;
+import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
+import org.example.employeeshiftmanagement.dto.UserResponse;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.springframework.http.HttpStatus;
@@ -19,46 +23,50 @@ public class UserController {
     }
 
     @PostMapping
-    public ResponseEntity<?> registerUser(@RequestBody User user) {
+    public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest request) {
         try {
-            User savedUser = userService.registerNewEmployee(user);
-            return new ResponseEntity<>(savedUser, HttpStatus.CREATED);
+            User savedUser = userService.registerNewEmployee(toNewUser(request));
+            return new ResponseEntity<>(UserResponse.from(savedUser), HttpStatus.CREATED);
         }catch (IllegalStateException e){
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 
     @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        List<User> users = userService.findAllUsers();
+    public ResponseEntity<List<UserResponse>> getAllUsers() {
+        List<UserResponse> users = userService.findAllUsers()
+                .stream()
+                .map(UserResponse::from)
+                .toList();
         return ResponseEntity.ok(users);
     }
 
     @GetMapping("/{userId}")
-    public ResponseEntity<User> getUserById(@PathVariable("userId") Integer id) {
+    public ResponseEntity<UserResponse> getUserById(@PathVariable("userId") Integer id) {
         try {
             User user = userService.findUserById(id);
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(UserResponse.from(user));
         }catch (RuntimeException e){
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
 
     @GetMapping("/search")
-    public ResponseEntity<User> getUserByEmail(@RequestParam String email) {
+    public ResponseEntity<UserResponse> getUserByEmail(@RequestParam String email) {
         try {
             User user = userService.findUserByEmail(email);
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(UserResponse.from(user));
         }catch (RuntimeException e){
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
 
     @PutMapping("/{userId}")
-    public ResponseEntity<?> updateUser(@PathVariable("userId") Integer id, @RequestBody User userDetails) {
+    public ResponseEntity<?> updateUser(@PathVariable("userId") Integer id,
+                                        @Valid @RequestBody UpdateUserRequest request) {
         try{
-            User updatedUser = userService.updateUser(id, userDetails);
-            return ResponseEntity.ok(updatedUser);
+            User updatedUser = userService.updateUser(id, toUserDetails(request));
+            return ResponseEntity.ok(UserResponse.from(updatedUser));
         }catch (Exception e){
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
@@ -70,7 +78,6 @@ public class UserController {
             userService.deleteUser(id);
             return new ResponseEntity<>(HttpStatus.NO_CONTENT);
         }catch (RuntimeException e){
-            e.printStackTrace(); // Θα δεις το πραγματικό λάθος στο IntelliJ
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -80,9 +87,30 @@ public class UserController {
         User user = userService.findUserByEmail(loginRequest.getEmail());
 
         if (user !=null && user.getPassword().equals(loginRequest.getPassword())) {
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(UserResponse.from(user));
         }else
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Λάθος email ή password");
     }
 
+    /**
+     * The role is left unset on purpose: UserService.registerNewEmployee assigns
+     * EMPLOYEE when none is present, so the client cannot promote itself.
+     */
+    private User toNewUser(RegisterRequest request) {
+        User user = new User();
+        user.setName(request.name());
+        user.setEmail(request.email());
+        user.setPhoneNumber(request.phoneNumber());
+        user.setPassword(request.password());
+        return user;
+    }
+
+    /** Carries the three editable fields into UserService.updateUser; never persisted itself. */
+    private User toUserDetails(UpdateUserRequest request) {
+        User user = new User();
+        user.setName(request.name());
+        user.setEmail(request.email());
+        user.setPhoneNumber(request.phoneNumber());
+        return user;
+    }
 }
