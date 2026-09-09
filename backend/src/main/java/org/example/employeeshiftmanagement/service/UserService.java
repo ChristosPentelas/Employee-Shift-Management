@@ -41,9 +41,13 @@ public class UserService {
                 orElseThrow(() -> new RuntimeException("User not found"));
     }
 
-    public User findUserByEmail(String email) {
-        return userRepository.findByEmail(email).
-                orElseThrow(() -> new RuntimeException("User not found"));
+    /**
+     * Returns empty when no user has that email. A missing email is an expected
+     * outcome here (a login attempt with an unknown address), not an error, so
+     * the caller decides what it means rather than catching an exception.
+     */
+    public Optional<User> findUserByEmail(String email) {
+        return userRepository.findByEmail(email);
     }
 
     public User registerNewEmployee(User user) {

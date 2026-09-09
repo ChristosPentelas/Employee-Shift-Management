@@ -14,6 +14,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -103,7 +104,7 @@ class UserControllerTest {
 
     @Test
     void loginReturnsTheRoleButNotThePassword() throws Exception {
-        when(userService.findUserByEmail(anyString())).thenReturn(existingUser());
+        when(userService.findUserByEmail(anyString())).thenReturn(Optional.of(existingUser()));
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,6 +114,30 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.role").value("EMPLOYEE"));
+    }
+
+    @Test
+    void loginWithAnUnknownEmailIsUnauthorizedNotAServerError() throws Exception {
+        when(userService.findUserByEmail(anyString())).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"nobody@example.com","password":"secret123"}
+                                """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void loginWithAWrongPasswordIsUnauthorized() throws Exception {
+        when(userService.findUserByEmail(anyString())).thenReturn(Optional.of(existingUser()));
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"test@example.com","password":"wrong"}
+                                """))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

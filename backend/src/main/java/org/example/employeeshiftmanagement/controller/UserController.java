@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("api/v1/users")
@@ -53,12 +54,9 @@ public class UserController {
 
     @GetMapping("/search")
     public ResponseEntity<UserResponse> getUserByEmail(@RequestParam String email) {
-        try {
-            User user = userService.findUserByEmail(email);
-            return ResponseEntity.ok(UserResponse.from(user));
-        }catch (RuntimeException e){
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
+        return userService.findUserByEmail(email)
+                .map(user -> ResponseEntity.ok(UserResponse.from(user)))
+                .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 
     @PutMapping("/{userId}")
@@ -84,10 +82,12 @@ public class UserController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        User user = userService.findUserByEmail(loginRequest.getEmail());
+        Optional<User> user = userService.findUserByEmail(loginRequest.getEmail());
 
-        if (user !=null && user.getPassword().equals(loginRequest.getPassword())) {
-            return ResponseEntity.ok(UserResponse.from(user));
+        // An unknown email and a wrong password deliberately give the same 401:
+        // answering differently would tell a caller which emails are registered.
+        if (user.isPresent() && user.get().getPassword().equals(loginRequest.getPassword())) {
+            return ResponseEntity.ok(UserResponse.from(user.get()));
         }else
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Λάθος email ή password");
     }

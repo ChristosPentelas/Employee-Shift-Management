@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -105,13 +106,14 @@ public class UserServiceTest {
         user1.setPassword("123456");
         userService.registerNewEmployee(user1);
 
-        User found = userService.findUserByEmail(user1.getEmail());
+        Optional<User> found = userService.findUserByEmail(user1.getEmail());
 
-        assertNotNull(found);
-        assertEquals("Test User1", found.getName());
+        assertTrue(found.isPresent());
+        assertEquals("Test User1", found.get().getName());
 
-        assertThrows(RuntimeException.class, () ->
-                userService.findUserByEmail("false@example.com"));
+        // An unknown email is an expected outcome, so it comes back empty
+        // rather than throwing.
+        assertTrue(userService.findUserByEmail("false@example.com").isEmpty());
     }
 
     @Test
