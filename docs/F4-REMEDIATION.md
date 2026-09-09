@@ -60,29 +60,50 @@ Exposure window: repo created 2026-09-07 13:24Z, last push 14:22Z, discovered
 3. **Audit report redacted.** `AUDIT.md` quoted the password in plaintext.
    Replaced with a placeholder so the report can be committed safely.
 
-## Still outstanding — these are yours to do
+4. **GitHub repository deleted and recreated.** Confirmed 2026-09-08: the old
+   commit SHAs no longer resolve and the old raw file returns 404. A force-push
+   was rejected as insufficient — it leaves unreachable commits addressable by
+   SHA (e.g. `/commit/d9297e2`) until GitHub Support garbage-collects them.
 
-1. **Rotate the MySQL password.** This is the only step that actually fixes the
-   exposure. Everything above limits *future* leakage; none of it un-publishes a
-   password that was public for a day. Treat the old value as compromised.
+## Decision: the password was not rotated
 
-   ```sql
-   ALTER USER '<db-user>'@'localhost' IDENTIFIED BY '<new-strong-password>';
-   FLUSH PRIVILEGES;
-   ```
+Decided by the repo owner, 2026-09-09. `backend/application-local.properties`
+still holds the value that was briefly public.
 
-   `<db-user>` is the `spring.datasource.username` in your local
-   `backend/application-local.properties`. Put the new password in that same
-   file — and nowhere else.
+**What supports the decision.** The account is scoped to `@'localhost'`. A
+MySQL grant scoped to `localhost` is refused for any connection that does not
+originate on that machine, and the server is not reachable from outside it.
+Whoever holds the password can do nothing with it without already having access
+to the laptop — at which point the password is not the weak link. The practical
+risk is genuinely low.
 
-2. **Delete and recreate the GitHub repository**, then re-push. A force-push
-   would leave the old commits addressable by SHA (e.g. `/commit/d9297e2`)
-   until GitHub Support garbage-collects them on request; deleting the repo
-   removes the object store outright.
+**What does not support it.** "Nobody saw it" cannot be established, and the
+decision should not rest on it. GitHub publishes a real-time firehose of public
+repository events, and automated scrapers clone new public repos within seconds
+to grep them for credentials. The 0 stars / 0 forks / 0 watchers observed at
+discovery measure *human* interest; bots do not star anything. The sound basis
+for this decision is that the credential is unusable remotely — not that the
+exposure went unnoticed.
 
-3. **Consider what else that account can reach.** If this password was reused
-   anywhere — another database, another project, a personal account — rotate it
-   there too.
+**What would reverse it:**
+- Discovering the password was reused anywhere else (below) — the real risk.
+- Binding MySQL beyond `localhost`, or widening the grant past `@'localhost'`.
+- Reusing these credentials on any deployed instance.
+
+Rotating remains a one-command change and is still worth doing whenever
+convenient — if only to prove the gitignored-config setup works end to end:
+
+```sql
+ALTER USER '<db-user>'@'localhost' IDENTIFIED BY '<new-strong-password>';
+FLUSH PRIVILEGES;
+```
+
+## Still outstanding
+
+1. **Check for password reuse.** If this value was used anywhere else — another
+   database, a server, an email or personal account — rotate it there. Reuse is
+   what turns a harmless local-only credential into a real one, and it is the
+   one part of this exposure that none of the work above mitigates.
 
 ## Why the config is shaped this way
 

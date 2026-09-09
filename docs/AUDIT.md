@@ -293,8 +293,12 @@ with `d9297e2` ("import thesis codebase as starting baseline").
 > the commit that introduced the file) were both pushed. The credentials were
 > confirmed readable over unauthenticated HTTP. Repo created 2026-09-07 13:24Z,
 > last pushed 14:22Z — roughly one day of public exposure, with 0 forks and
-> 0 stars at the time of checking. The password must be treated as compromised
-> and rotated; see `docs/F4-REMEDIATION.md` for what was done and what remains.
+> 0 stars at the time of checking. The credentials were removed from the tracked
+> config and purged from history, and the GitHub repository was deleted and
+> recreated. Rotation of the password was considered and declined on
+> 2026-09-09, on the grounds that the account is `@'localhost'`-scoped and so
+> unusable remotely; see `docs/F4-REMEDIATION.md` for that decision, what would
+> reverse it, and what remains outstanding.
 
 **Why it matters:** the password is in the object database, not just the working
 tree. Deleting the line in a new commit does not remove it — anyone who clones
