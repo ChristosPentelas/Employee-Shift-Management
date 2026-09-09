@@ -1,9 +1,9 @@
-// This is a basic Flutter widget test.
+// Widget tests for the app's entry point.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// These pump the real root widget from main.dart, so they also cover the
+// MaterialApp wiring and `home: LoginScreen()`. No backend is involved:
+// LoginScreen only builds a form, and _handleLogin returns early when
+// validation fails, so nothing here reaches ApiService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,20 +11,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:employee_shift_management_ui/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('app starts on the login screen with email and password fields',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, 'ΣΥΝΔΕΣΗ'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('submitting an empty form shows validation errors, not a request',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MyApp());
+
+    await tester.tap(find.widgetWithText(ElevatedButton, 'ΣΥΝΔΕΣΗ'));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Παρακαλώ βάλτε email'), findsOneWidget);
+    expect(find.text('Ο κωδικός πρέπει να έχει τουλάχιστον 4 χαρακτήρες'),
+        findsOneWidget);
   });
 }
