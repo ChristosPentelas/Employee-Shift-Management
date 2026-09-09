@@ -1,5 +1,8 @@
 package org.example.employeeshiftmanagement.controller;
 
+import jakarta.validation.Valid;
+import org.example.employeeshiftmanagement.dto.CreateLeaveRequest;
+import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
@@ -22,10 +25,11 @@ public class LeaveRequestController {
     //endpoints for EMPLOYEES
 
     @PostMapping
-    public ResponseEntity<?> createLeave(@RequestBody LeaveRequest request) {
+    public ResponseEntity<?> createLeave(@Valid @RequestBody CreateLeaveRequest request) {
         try{
-            LeaveRequest newRequest = leaveRequestService.createLeaveRequest(request);
-            return new ResponseEntity<>(newRequest, HttpStatus.CREATED);
+            LeaveRequest newRequest =
+                    leaveRequestService.createLeaveRequest(request.userId(), toLeaveDetails(request));
+            return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -35,8 +39,7 @@ public class LeaveRequestController {
     @GetMapping("/users/{userId}/leaves")
     public ResponseEntity<?> getLeavesByUser(@PathVariable Integer userId) {
         try{
-            List<LeaveRequest> leavesByUser = leaveRequestService.getLeavesByUser(userId);
-            return new ResponseEntity<>(leavesByUser, HttpStatus.OK);
+            return new ResponseEntity<>(toResponses(leaveRequestService.getLeavesByUser(userId)), HttpStatus.OK);
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -46,8 +49,8 @@ public class LeaveRequestController {
     //endpoints for SUPERVISOR
 
     @GetMapping
-    public ResponseEntity<List<LeaveRequest>> getAllLeaves() {
-        return ResponseEntity.ok(leaveRequestService.getAllLeaveRequests());
+    public ResponseEntity<List<LeaveRequestResponse>> getAllLeaves() {
+        return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests()));
     }
 
     @GetMapping("/filter")
@@ -55,9 +58,9 @@ public class LeaveRequestController {
                                                @RequestParam(required = false) Integer userId) {
         try{
             if (userId != null) {
-                return ResponseEntity.ok(leaveRequestService.getLeavesByUserAndStatus(userId, status));
+                return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status)));
             }else{
-                return ResponseEntity.ok(leaveRequestService.getLeavesByStatus(status));
+                return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status)));
             }
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
@@ -69,11 +72,22 @@ public class LeaveRequestController {
     public ResponseEntity<?> updateLeaveStatus(@PathVariable Integer requestId, @RequestParam LeaveStatus status) {
         try{
             LeaveRequest updated = leaveRequestService.updateLeaveRequest(requestId, status);
-            return ResponseEntity.ok(updated);
+            return ResponseEntity.ok(LeaveRequestResponse.from(updated));
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
+    private static List<LeaveRequestResponse> toResponses(List<LeaveRequest> requests) {
+        return requests.stream().map(LeaveRequestResponse::from).toList();
+    }
 
+    /** The employee and the PENDING status are both set by the service, not by the caller. */
+    private LeaveRequest toLeaveDetails(CreateLeaveRequest request) {
+        LeaveRequest leave = new LeaveRequest();
+        leave.setStartDate(request.startDate());
+        leave.setEndDate(request.endDate());
+        leave.setReason(request.reason());
+        return leave;
+    }
 }

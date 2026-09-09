@@ -109,10 +109,9 @@ class ApiService {
           "title": item.title,
           "description": item.description,
           "type": item.type,
-          "author": {"id": Session.currentUser!.id},
+          "authorId": Session.currentUser!.id,
           "deadline": item.deadline?.toIso8601String(),
           "targetValue": item.targetValue,
-          "createdAt": DateTime.now().toIso8601String(),
         }
         ),
       );
@@ -153,10 +152,9 @@ class ApiService {
       Uri.parse("$baseUrl/leaves"),
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({
-        "user": {"id": Session.currentUser!.id},
+        "userId": Session.currentUser!.id,
         "startDate": leave.startDate.toIso8601String(),
         "endDate": leave.endDate.toIso8601String(),
-        "status": "PENDING",
         "reason": leave.reason
       }),
     );

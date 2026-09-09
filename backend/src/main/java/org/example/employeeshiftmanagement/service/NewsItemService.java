@@ -19,8 +19,11 @@ public class NewsItemService {
         this.userService = userService;
     }
 
-    public NewsItem createNewsItem(NewsItem newsItem) {
-        User author = userService.findUserById(newsItem.getAuthor().getId());
+    public NewsItem createNewsItem(NewsItem newsItem, Integer authorId) {
+        // The id arrives as a plain Integer instead of wrapped in a half-built
+        // NewsItem.author, so a missing author is a clear argument rather than
+        // a NullPointerException on getAuthor().getId().
+        User author = userService.findUserById(authorId);
         newsItem.setAuthor(author);
         return newsItemRepository.save(newsItem);
     }

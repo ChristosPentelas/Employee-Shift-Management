@@ -1,5 +1,9 @@
 package org.example.employeeshiftmanagement.controller;
 
+import jakarta.validation.Valid;
+import org.example.employeeshiftmanagement.dto.CreateNewsRequest;
+import org.example.employeeshiftmanagement.dto.NewsItemResponse;
+import org.example.employeeshiftmanagement.dto.UpdateNewsRequest;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
@@ -20,32 +24,30 @@ public class NewsItemController {
     }
 
     @PostMapping
-    public ResponseEntity<?> createNews(@RequestBody NewsItem newsItem) {
+    public ResponseEntity<?> createNews(@Valid @RequestBody CreateNewsRequest request) {
         try{
-            NewsItem item = newsItemService.createNewsItem(newsItem);
-            return new ResponseEntity<>(item, HttpStatus.CREATED);
+            NewsItem item = newsItemService.createNewsItem(toNewsItem(request), request.authorId());
+            return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.CREATED);
         }catch(Exception e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
     @GetMapping
-    public ResponseEntity<List<NewsItem>> getAllNews() {
-        List<NewsItem> newsItems = newsItemService.getAllNews();
-        return new ResponseEntity<>(newsItems, HttpStatus.OK);
+    public ResponseEntity<List<NewsItemResponse>> getAllNews() {
+        return new ResponseEntity<>(toResponses(newsItemService.getAllNews()), HttpStatus.OK);
     }
 
     @GetMapping("/type/{type}")
-    public ResponseEntity<List<NewsItem>> getAllNewsByType(@PathVariable NewsType type) {
-        List<NewsItem> newsItems = newsItemService.getNewsByType(type);
-        return new ResponseEntity<>(newsItems, HttpStatus.OK);
+    public ResponseEntity<List<NewsItemResponse>> getAllNewsByType(@PathVariable NewsType type) {
+        return new ResponseEntity<>(toResponses(newsItemService.getNewsByType(type)), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getNewsById(@PathVariable Integer id) {
         try{
             NewsItem item = newsItemService.getNewsItemById(id);
-            return new ResponseEntity<>(item, HttpStatus.OK);
+            return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.OK);
         }catch(Exception e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -53,14 +55,14 @@ public class NewsItemController {
 
     @GetMapping("/author/{authorId}")
     public ResponseEntity<?> getNewsAuthorById(@PathVariable Integer authorId) {
-        List<NewsItem> newsItems = newsItemService.getNewsItemsByAuthor(authorId);
-        return new ResponseEntity<>(newsItems, HttpStatus.OK);
+        return new ResponseEntity<>(toResponses(newsItemService.getNewsItemsByAuthor(authorId)), HttpStatus.OK);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable Integer id, @RequestBody NewsItem newsItem) {
+    public ResponseEntity<?> update(@PathVariable Integer id, @Valid @RequestBody UpdateNewsRequest request) {
         try{
-            return ResponseEntity.ok(newsItemService.updateNewsItem(newsItem,id));
+            NewsItem updated = newsItemService.updateNewsItem(toNewsDetails(request), id);
+            return ResponseEntity.ok(NewsItemResponse.from(updated));
         }catch(Exception e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -76,4 +78,26 @@ public class NewsItemController {
         }
     }
 
+    private static List<NewsItemResponse> toResponses(List<NewsItem> items) {
+        return items.stream().map(NewsItemResponse::from).toList();
+    }
+
+    private NewsItem toNewsItem(CreateNewsRequest request) {
+        NewsItem item = new NewsItem();
+        item.setTitle(request.title());
+        item.setDescription(request.description());
+        item.setType(request.type());
+        item.setDeadline(request.deadline());
+        item.setTargetValue(request.targetValue());
+        return item;
+    }
+
+    private NewsItem toNewsDetails(UpdateNewsRequest request) {
+        NewsItem item = new NewsItem();
+        item.setTitle(request.title());
+        item.setDescription(request.description());
+        item.setDeadline(request.deadline());
+        item.setTargetValue(request.targetValue());
+        return item;
+    }
 }

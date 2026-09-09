@@ -1,5 +1,8 @@
 package org.example.employeeshiftmanagement.controller;
 
+import jakarta.validation.Valid;
+import org.example.employeeshiftmanagement.dto.ShiftRequest;
+import org.example.employeeshiftmanagement.dto.ShiftResponse;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.service.ShiftService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -21,35 +24,36 @@ public class ShiftController {
     }
 
     @PostMapping("/users/{userId}/shifts")
-    public ResponseEntity<?> createShift(@PathVariable Integer userId, @RequestBody Shift shift) {
+    public ResponseEntity<?> createShift(@PathVariable Integer userId,
+                                         @Valid @RequestBody ShiftRequest request) {
         try {
-            Shift newShift = shiftService.createShift(userId, shift);
-            return new ResponseEntity<>(newShift, HttpStatus.CREATED);
+            Shift newShift = shiftService.createShift(userId, toShift(request));
+            return new ResponseEntity<>(ShiftResponse.from(newShift), HttpStatus.CREATED);
         } catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
     @GetMapping("/shifts")
-    public ResponseEntity<List<Shift>> getAllShifts(){
-        return ResponseEntity.ok(shiftService.getAllShifts());
+    public ResponseEntity<List<ShiftResponse>> getAllShifts(){
+        return ResponseEntity.ok(toResponses(shiftService.getAllShifts()));
     }
 
     @GetMapping("/shifts/users/{userId}")
     public ResponseEntity<?> getShiftsByUser(@PathVariable Integer userId) {
         try {
-            List<Shift> shifts = shiftService.getShiftsByEmployee(userId);
-            return ResponseEntity.ok(shifts);
+            return ResponseEntity.ok(toResponses(shiftService.getShiftsByEmployee(userId)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
     @PutMapping("/shifts/{shiftId}")
-    public ResponseEntity<?> updateShift(@PathVariable Integer shiftId, @RequestBody Shift shiftDetails) {
+    public ResponseEntity<?> updateShift(@PathVariable Integer shiftId,
+                                         @Valid @RequestBody ShiftRequest request) {
         try {
-            Shift updatedShift = shiftService.updateShift(shiftId, shiftDetails);
-            return ResponseEntity.ok(updatedShift);
+            Shift updatedShift = shiftService.updateShift(shiftId, toShift(request));
+            return ResponseEntity.ok(ShiftResponse.from(updatedShift));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -71,11 +75,23 @@ public class ShiftController {
                                          @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate start,
                                          @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate end) {
         try{
-            List<Shift> schedule = shiftService.getSchedule(userId, start, end);
-            return ResponseEntity.ok(schedule);
+            return ResponseEntity.ok(toResponses(shiftService.getSchedule(userId, start, end)));
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
 
+    }
+
+    private static List<ShiftResponse> toResponses(List<Shift> shifts) {
+        return shifts.stream().map(ShiftResponse::from).toList();
+    }
+
+    private Shift toShift(ShiftRequest request) {
+        Shift shift = new Shift();
+        shift.setDate(request.date());
+        shift.setStartTime(request.startTime());
+        shift.setEndTime(request.endTime());
+        shift.setPosition(request.position());
+        return shift;
     }
 }

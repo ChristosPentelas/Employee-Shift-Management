@@ -19,8 +19,12 @@ public class LeaveRequestService {
         this.userService = userService;
     }
 
-    public LeaveRequest createLeaveRequest(LeaveRequest request) {
-
+    public LeaveRequest createLeaveRequest(Integer userId, LeaveRequest request) {
+        // Resolve the employee here rather than trusting one supplied by the
+        // caller, the same way ShiftService and MessageService already do.
+        // An unknown id now fails instead of being saved as a foreign key.
+        User user = userService.findUserById(userId);
+        request.setUser(user);
 
         request.setStatus(LeaveStatus.PENDING);
         return leaveRequestRepository.save(request);
