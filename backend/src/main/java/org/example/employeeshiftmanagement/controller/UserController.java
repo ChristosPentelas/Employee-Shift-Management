@@ -81,12 +81,12 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        Optional<User> user = userService.findUserByEmail(loginRequest.getEmail());
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
+        Optional<User> user = userService.findUserByEmail(loginRequest.email());
 
         // An unknown email and a wrong password deliberately give the same 401:
         // answering differently would tell a caller which emails are registered.
-        if (user.isPresent() && user.get().getPassword().equals(loginRequest.getPassword())) {
+        if (user.isPresent() && user.get().getPassword().equals(loginRequest.password())) {
             return ResponseEntity.ok(UserResponse.from(user.get()));
         }else
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Λάθος email ή password");
