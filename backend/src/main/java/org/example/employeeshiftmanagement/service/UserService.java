@@ -1,7 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
@@ -15,20 +14,25 @@ import java.util.Optional;
 @Service
 public class UserService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final MessageRepository messageRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final ShiftRepository shiftRepository;
 
-    @Autowired
-    private MessageRepository messageRepository;
-
-    @Autowired
-    private LeaveRequestRepository leaveRequestRepository;
-
-    @Autowired
-    private ShiftRepository shiftRepository;
-
-    public UserService(UserRepository userRepository) {
+    /**
+     * Every dependency comes in through this one constructor (constructor
+     * injection), so the list of what UserService needs is visible in one place
+     * and the fields can be final. With a single constructor Spring uses it
+     * automatically; no @Autowired needed.
+     */
+    public UserService(UserRepository userRepository,
+                       MessageRepository messageRepository,
+                       LeaveRequestRepository leaveRequestRepository,
+                       ShiftRepository shiftRepository) {
         this.userRepository = userRepository;
+        this.messageRepository = messageRepository;
+        this.leaveRequestRepository = leaveRequestRepository;
+        this.shiftRepository = shiftRepository;
     }
 
 

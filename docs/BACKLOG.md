@@ -51,7 +51,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e` | Required fields done. Missing: end after start (leave dates, shift times); max length on message content |
 | F16 | MEDIUM | Inconsistent API shapes | Open | | |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
-| F18 | MEDIUM | `UserService` mixes constructor and field injection | Open | | 4 `@Autowired` fields plus a constructor |
+| F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | "refactor(backend): use constructor injection in UserService" | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8` | `profile_screen.dart:143` (`_buildStatColumn`), `employee_list_screen.dart:2` (unused `session.dart` import) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 8 done · 4 partial · 18 open.
+Totals: 9 done · 4 partial · 17 open.
 
 ---
 
@@ -113,6 +113,18 @@ endings (`/bin/sh^M: bad interpreter`).
 Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
 `*.cmd`/`*.bat text eol=crlf` for the Windows wrappers (`mvnw.cmd`). Then run
 `git add --renormalize .` and check the diff comes out empty.
+
+**B6 · LOW · Two different `@Transactional` annotations in use** — found 2026-09-11
+Where: `UserService.java` imports `jakarta.transaction.Transactional` (the Java
+EE / JTA one); `UserServiceTest` uses Spring's
+`org.springframework.transaction.annotation.Transactional`.
+Why it matters: Spring honours both, but only its own has `readOnly`,
+`rollbackFor` and `propagation`, and two annotations with the same name make
+readers wonder whether they behave differently. Beginners often pick whichever
+the IDE auto-imports first.
+Relates to: F11 (writes without a transaction boundary) — settle this when
+adding `@Transactional` to the other services.
+Fix idea: use Spring's everywhere.
 
 ---
 
