@@ -54,6 +54,20 @@ Why it matters: to know whether F6 is fixed you have to read git history.
 Fix idea: add a status table here (ID · status · commit), filled in from the
 commit messages.
 
+**B5 · LOW · No `.gitattributes`, so line endings depend on each machine's git settings** — found 2026-09-10
+Where: the repo root has no `.gitattributes`. On this machine git converts
+line endings only because the Git for Windows installer set
+`core.autocrlf=true` system-wide, which prints `LF will be replaced by CRLF` on
+every commit of a new file.
+Why it matters: the repo is clean today (all 170 text files are stored as LF),
+but only thanks to that one machine setting. A contributor with a different
+setting can commit CRLF files, and then every line shows up as changed in the
+diff. Shell scripts like `backend/mvnw` also break on Linux/CI if they get CRLF
+endings (`/bin/sh^M: bad interpreter`).
+Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
+`*.cmd`/`*.bat text eol=crlf` for the Windows wrappers (`mvnw.cmd`). Then run
+`git add --renormalize .` and check the diff comes out empty.
+
 ---
 
 ## Done
