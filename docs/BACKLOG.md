@@ -9,10 +9,63 @@ Rules:
 
 - One entry per problem. Give it the next `B` number; numbers are never reused.
 - If it overlaps an audit finding, say which (`F14`) instead of repeating it.
-- When fixed, move it to **Done** with the commit hash. Don't delete it — the
-  history of what went wrong is part of the learning.
+- When fixed, move it to **Done** with the commit hash — or the commit subject
+  when the fix and the Done entry are in the same commit (a commit cannot
+  contain its own hash: the hash is computed from the content). Don't delete
+  it — the history of what went wrong is part of the learning.
+- When an audit fix lands, update its row in **Audit status**.
 
 Severity uses the audit's scale: CRITICAL · HIGH · MEDIUM · LOW.
+
+Order of work (agreed 2026-09-10): audit findings first, most severe first;
+backlog items at the end — unless one touches the same code as the audit fix
+in progress, in which case it goes into that fix.
+
+---
+
+## Audit status
+
+Tracks the findings in `AUDIT.md`. The audit's header names commit `7fbcd5f`;
+the F4 history rewrite renamed it to **`15f88c3`**, so use that in git
+commands (`git log 15f88c3..HEAD`).
+
+Status last checked 2026-09-10 against the code. "Open" on a finding no
+commit mentions means nothing has changed it, not that its code was re-read.
+
+| ID | Severity | Finding | Status | Fixed by | What's left |
+|---|---|---|---|---|---|
+| F1 | CRITICAL | No authentication on any endpoint | Open | | |
+| F2 | CRITICAL | Passwords stored and compared in plaintext | Open | | Next up |
+| F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
+| F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
+| F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
+| F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
+| F7 | HIGH | Leave-request filter is cosmetic | Open | | Needs F1 first |
+| F8 | HIGH | `ddl-auto=update` is the only schema management | Open | | |
+| F9 | HIGH | No pagination | Open | | |
+| F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
+| F11 | MEDIUM | Writes without a transaction boundary | Open | | |
+| F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
+| F13 | LOW | No indexes; misspelled column | Open | | |
+| F14 | HIGH | Every exception becomes a 404 | Open | | No `@ControllerAdvice` yet. Fold in B1 and B2 |
+| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e` | Required fields done. Missing: end after start (leave dates, shift times); max length on message content |
+| F16 | MEDIUM | Inconsistent API shapes | Open | | |
+| F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
+| F18 | MEDIUM | `UserService` mixes constructor and field injection | Open | | 4 `@Autowired` fields plus a constructor |
+| F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
+| F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8` | `profile_screen.dart:143` (`_buildStatColumn`), `employee_list_screen.dart:2` (unused `session.dart` import) |
+| F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
+| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e` | 11 of 32 endpoints tested (the audit counted 25) |
+| F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
+| F24 | MEDIUM | Session is a mutable global | Open | | |
+| F25 | MEDIUM | `BuildContext` across async gaps | Open | | |
+| F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
+| F27 | LOW | Hard-coded backend base URL | Open | | |
+| F28 | LOW | Chat polls every 3 s | Open | | |
+| F29 | LOW | `fromJson` assumes every field is present | Open | | |
+| F30 | LOW | No shift-overlap constraint | Open | | |
+
+Totals: 8 done · 4 partial · 18 open.
 
 ---
 
@@ -47,13 +100,6 @@ every test that mocks, all at once.
 Fix idea: configure Mockito as a `-javaagent` in the Surefire plugin, as the
 warning's linked docs describe. It's only build config, no new dependency.
 
-**B4 · LOW · No record of which audit findings are closed** — found 2026-09-10
-Where: `AUDIT.md` (by design a snapshot) and the commit messages, which say
-things like "closes F3".
-Why it matters: to know whether F6 is fixed you have to read git history.
-Fix idea: add a status table here (ID · status · commit), filled in from the
-commit messages.
-
 **B5 · LOW · No `.gitattributes`, so line endings depend on each machine's git settings** — found 2026-09-10
 Where: the repo root has no `.gitattributes`. On this machine git converts
 line endings only because the Git for Windows installer set
@@ -72,4 +118,6 @@ Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
 
 ## Done
 
-_Nothing yet._
+**B4 · LOW · No record of which audit findings are closed** — found 2026-09-10
+Fixed by: the **Audit status** table above, in commit
+`docs(backlog): add the audit status table (B4)`.
