@@ -35,7 +35,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
 | F1 | CRITICAL | No authentication on any endpoint | Open | | |
-| F2 | CRITICAL | Passwords stored and compared in plaintext | Done | "fix(backend)!: hash passwords with BCrypt" | Local test users must be re-registered |
+| F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
@@ -113,6 +113,21 @@ endings (`/bin/sh^M: bad interpreter`).
 Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
 `*.cmd`/`*.bat text eol=crlf` for the Windows wrappers (`mvnw.cmd`). Then run
 `git add --renormalize .` and check the diff comes out empty.
+
+**B7 · MEDIUM · `deleteUser` forgets news items, so deleting an author fails** — found 2026-09-13
+Where: `UserService.deleteUser` clears `messages`, `leaves_requests` and
+`shifts` before deleting the user, but not `news_items`, whose `author` column
+is a foreign key to `users`.
+Why it matters: deleting a user who ever posted news hits a foreign-key
+constraint error. `UserController.deleteUser` catches `RuntimeException` and
+answers 500, so the client is told "server error" for what is really "this user
+still has news items". Employees cannot post news today, so only supervisors
+trigger it, which is why it has gone unnoticed.
+Relates to: F12 (deleteUser cascades by hand across repositories) — this is the
+fifth repository it forgot; F14 (every exception becomes a 404/500).
+Fix idea: decide what should happen to a departed author's news (reassign,
+keep with a null author, or delete) and enforce it in one place. Database-level
+`ON DELETE` rules or JPA cascades would remove the hand-written list entirely.
 
 **B6 · LOW · Two different `@Transactional` annotations in use** — found 2026-09-11
 Where: `UserService.java` imports `jakarta.transaction.Transactional` (the Java
