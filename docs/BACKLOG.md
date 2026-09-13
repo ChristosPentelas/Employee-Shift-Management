@@ -35,7 +35,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
 | F1 | CRITICAL | No authentication on any endpoint | Open | | |
-| F2 | CRITICAL | Passwords stored and compared in plaintext | Open | | Next up |
+| F2 | CRITICAL | Passwords stored and compared in plaintext | Done | "fix(backend)!: hash passwords with BCrypt" | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 9 done · 4 partial · 17 open.
+Totals: 10 done · 4 partial · 16 open.
 
 ---
 

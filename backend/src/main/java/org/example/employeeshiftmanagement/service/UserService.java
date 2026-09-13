@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement.service;
 
 import jakarta.transaction.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
@@ -8,16 +9,28 @@ import org.example.employeeshiftmanagement.repository.MessageRepository;
 import org.example.employeeshiftmanagement.repository.ShiftRepository;
 import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class UserService {
 
+    /**
+     * BCrypt hashes at most 72 bytes and Spring Security 7 rejects anything
+     * longer instead of silently truncating it. Counted in bytes, not
+     * characters: a Greek character takes two bytes in UTF-8.
+     */
+    public static final int MAX_PASSWORD_BYTES = 72;
+
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final ShiftRepository shiftRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    /** Hash of a password nobody has; see authenticate. */
+    private final String dummyHash;
 
     /**
      * Every dependency comes in through this one constructor (constructor
@@ -28,11 +41,14 @@ public class UserService {
     public UserService(UserRepository userRepository,
                        MessageRepository messageRepository,
                        LeaveRequestRepository leaveRequestRepository,
-                       ShiftRepository shiftRepository) {
+                       ShiftRepository shiftRepository,
+                       PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.messageRepository = messageRepository;
         this.leaveRequestRepository = leaveRequestRepository;
         this.shiftRepository = shiftRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.dummyHash = passwordEncoder.encode("no-user-has-this-password");
     }
 
 
@@ -60,8 +76,19 @@ public class UserService {
      * caller: telling them apart would reveal which emails are registered.
      */
     public Optional<User> authenticate(String email, String rawPassword) {
-        return userRepository.findByEmail(email)
-                .filter(user -> user.getPassword().equals(rawPassword));
+        Optional<User> user = userRepository.findByEmail(email);
+
+        if (user.isEmpty()) {
+            // Hash against a throwaway value anyway. Without it an unknown email
+            // answers in about 0ms and a known one in about 100ms, so the
+            // response time alone would reveal which emails are registered.
+            passwordEncoder.matches(rawPassword, dummyHash);
+            return Optional.empty();
+        }
+
+        // matches() re-hashes the typed password with the salt stored inside the
+        // hash and compares in constant time, unlike String.equals.
+        return user.filter(found -> passwordEncoder.matches(rawPassword, found.getPassword()));
     }
 
     public User registerNewEmployee(User user) {
@@ -72,10 +99,18 @@ public class UserService {
             throw new IllegalStateException("User already exists");
         }
 
+        if (user.getPassword().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new IllegalStateException(
+                    "Password must be at most " + MAX_PASSWORD_BYTES + " bytes");
+        }
+
         //Default role assignment
         if(user.getRole()==null || user.getRole().isEmpty()){
             user.setRole("EMPLOYEE");
         }
+
+        // The plaintext never reaches the database: only this hash is stored.
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
 
         return userRepository.save(user);
     }

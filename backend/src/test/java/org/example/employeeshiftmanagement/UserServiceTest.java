@@ -170,4 +170,43 @@ public class UserServiceTest {
 
         assertTrue(userService.authenticate("nobody@example.com", "secret123").isEmpty());
     }
+
+    @Test
+    void registerStoresAHashNotThePlaintextPassword() {
+        User saved = registerLoginUser();
+
+        assertNotEquals("secret123", saved.getPassword(),
+                "The plaintext password must never be stored (F2)");
+        assertTrue(saved.getPassword().startsWith("$2"),
+                "Expected a BCrypt hash, got: " + saved.getPassword());
+    }
+
+    @Test
+    void theSamePasswordGetsADifferentHashEachTime() {
+        User first = registerLoginUser();
+
+        User second = new User();
+        second.setName("Second User");
+        second.setEmail("second@example.com");
+        second.setPassword("secret123");
+        User savedSecond = userService.registerNewEmployee(second);
+
+        // Different salts, so identical passwords cannot be spotted by comparing
+        // stored values.
+        assertNotEquals(first.getPassword(), savedSecond.getPassword());
+    }
+
+    @Test
+    void registerRejectsAPasswordOverTheByteLimit() {
+        // 40 Greek characters = 80 bytes in UTF-8, over BCrypt's 72-byte limit
+        // while being only 40 characters long.
+        String longPassword = "κ".repeat(40);
+
+        User user = new User();
+        user.setName("Long Password");
+        user.setEmail("long@example.com");
+        user.setPassword(longPassword);
+
+        assertThrows(IllegalStateException.class, () -> userService.registerNewEmployee(user));
+    }
 }
