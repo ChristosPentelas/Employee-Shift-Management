@@ -51,7 +51,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e` | Required fields done. Missing: end after start (leave dates, shift times); max length on message content |
 | F16 | MEDIUM | Inconsistent API shapes | Open | | |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
-| F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | "refactor(backend): use constructor injection in UserService" | |
+| F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8` | `profile_screen.dart:143` (`_buildStatColumn`), `employee_list_screen.dart:2` (unused `session.dart` import) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |

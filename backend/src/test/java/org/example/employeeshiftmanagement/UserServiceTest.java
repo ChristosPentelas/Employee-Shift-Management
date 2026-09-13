@@ -138,4 +138,36 @@ public class UserServiceTest {
             userService.updateUser(savedB.getId(), updateDetails);
         });
     }
+
+    private User registerLoginUser() {
+        User user = new User();
+        user.setName("Login User");
+        user.setEmail("login@example.com");
+        user.setPassword("secret123");
+        return userService.registerNewEmployee(user);
+    }
+
+    @Test
+    void authenticateReturnsTheUserForTheRightPassword() {
+        User saved = registerLoginUser();
+
+        Optional<User> result = userService.authenticate("login@example.com", "secret123");
+
+        assertTrue(result.isPresent());
+        assertEquals(saved.getId(), result.get().getId());
+    }
+
+    @Test
+    void authenticateIsEmptyForAWrongPassword() {
+        registerLoginUser();
+
+        assertTrue(userService.authenticate("login@example.com", "wrong").isEmpty());
+    }
+
+    @Test
+    void authenticateIsEmptyForAnUnknownEmail() {
+        registerLoginUser();
+
+        assertTrue(userService.authenticate("nobody@example.com", "secret123").isEmpty());
+    }
 }

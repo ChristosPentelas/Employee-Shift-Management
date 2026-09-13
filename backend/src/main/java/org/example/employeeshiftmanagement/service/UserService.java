@@ -54,6 +54,16 @@ public class UserService {
         return userRepository.findByEmail(email);
     }
 
+    /**
+     * Returns the user when the email exists and the password matches, empty
+     * otherwise. The two failure cases are deliberately indistinguishable to the
+     * caller: telling them apart would reveal which emails are registered.
+     */
+    public Optional<User> authenticate(String email, String rawPassword) {
+        return userRepository.findByEmail(email)
+                .filter(user -> user.getPassword().equals(rawPassword));
+    }
+
     public User registerNewEmployee(User user) {
         //Check if email already exists
         Optional<User> existingUser = userRepository.findByEmail(user.getEmail());

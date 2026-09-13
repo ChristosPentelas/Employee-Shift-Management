@@ -105,7 +105,7 @@ class UserControllerTest {
 
     @Test
     void loginReturnsTheRoleButNotThePassword() throws Exception {
-        when(userService.findUserByEmail(anyString())).thenReturn(Optional.of(existingUser()));
+        when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.of(existingUser()));
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -119,7 +119,7 @@ class UserControllerTest {
 
     @Test
     void loginWithAnUnknownEmailIsUnauthorizedNotAServerError() throws Exception {
-        when(userService.findUserByEmail(anyString())).thenReturn(Optional.empty());
+        when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -131,7 +131,7 @@ class UserControllerTest {
 
     @Test
     void loginWithAWrongPasswordIsUnauthorized() throws Exception {
-        when(userService.findUserByEmail(anyString())).thenReturn(Optional.of(existingUser()));
+        when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -150,7 +150,7 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isBadRequest());
 
-        verify(userService, never()).findUserByEmail(any());
+        verify(userService, never()).authenticate(any(), any());
     }
 
     @Test
