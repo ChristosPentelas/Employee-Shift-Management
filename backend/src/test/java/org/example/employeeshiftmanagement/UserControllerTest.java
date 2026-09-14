@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
 import org.example.employeeshiftmanagement.model.User;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,9 +39,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The password assertions are regression tests for F3: the User entity has no
  * @JsonIgnore on its password, so serialising the entity would leak it. They
  * fail the moment someone returns a User from a controller again.
+ *
+ * Login and registration requests deliberately carry no token: both must stay
+ * reachable without one (registration until F1 step 6).
  */
-@WebMvcTest(UserController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest(value = UserController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
+@Import({SecurityConfig.class, JwtConfig.class})
 class UserControllerTest {
 
     @Autowired
@@ -169,9 +174,17 @@ class UserControllerTest {
     void listingUsersDoesNotLeakPasswords() throws Exception {
         when(userService.findAllUsers()).thenReturn(List.of(existingUser()));
 
-        mockMvc.perform(get("/api/v1/users"))
+        mockMvc.perform(get("/api/v1/users").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].email").value("test@example.com"))
                 .andExpect(jsonPath("$[0].password").doesNotExist());
+    }
+
+    @Test
+    void listingUsersWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/users"))
+                .andExpect(status().isUnauthorized());
+
+        verify(userService, never()).findAllUsers();
     }
 }

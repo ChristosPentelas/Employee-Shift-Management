@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.LeaveRequestController;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
@@ -20,16 +21,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentCaptor.forClass;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(LeaveRequestController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest(value = LeaveRequestController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
+@Import({SecurityConfig.class, JwtConfig.class})
 class LeaveRequestControllerTest {
 
     @Autowired
@@ -53,7 +56,7 @@ class LeaveRequestControllerTest {
     void theLeaveListDoesNotLeakPasswords() throws Exception {
         when(leaveRequestService.getAllLeaveRequests()).thenReturn(List.of(leaveRequest()));
 
-        mockMvc.perform(get("/api/v1/leaves"))
+        mockMvc.perform(get("/api/v1/leaves").with(jwt()))
                 .andExpect(status().isOk())
                 // LeaveRequest.fromJson on the Flutter side reads json['user']
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
@@ -67,6 +70,7 @@ class LeaveRequestControllerTest {
                 .thenReturn(leaveRequest());
 
         mockMvc.perform(post("/api/v1/leaves")
+                        .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":7,"startDate":"2026-10-01","endDate":"2026-10-05",
@@ -89,10 +93,20 @@ class LeaveRequestControllerTest {
     @Test
     void creatingALeaveRejectsAMissingEmployee() throws Exception {
         mockMvc.perform(post("/api/v1/leaves")
+                        .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"startDate":"2026-10-01","endDate":"2026-10-05","reason":"Surgery"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void theLeaveListWithoutATokenIsUnauthorized() throws Exception {
+        // Leave reasons are medical and family information (see F7).
+        mockMvc.perform(get("/api/v1/leaves"))
+                .andExpect(status().isUnauthorized());
+
+        verify(leaveRequestService, never()).getAllLeaveRequests();
     }
 }

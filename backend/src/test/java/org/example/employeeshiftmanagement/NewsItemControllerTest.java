@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.NewsItemController;
 import org.example.employeeshiftmanagement.model.NewsItem;
@@ -17,15 +18,17 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(NewsItemController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest(value = NewsItemController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
+@Import({SecurityConfig.class, JwtConfig.class})
 class NewsItemControllerTest {
 
     @Autowired
@@ -48,7 +51,7 @@ class NewsItemControllerTest {
     void theNewsFeedDoesNotLeakTheAuthorsPassword() throws Exception {
         when(newsItemService.getAllNews()).thenReturn(List.of(newsItem()));
 
-        mockMvc.perform(get("/api/v1/news"))
+        mockMvc.perform(get("/api/v1/news").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Staff meeting"))
                 .andExpect(jsonPath("$[0].author.name").value("Boss"))
@@ -60,6 +63,7 @@ class NewsItemControllerTest {
         when(newsItemService.createNewsItem(any(NewsItem.class), any())).thenReturn(newsItem());
 
         mockMvc.perform(post("/api/v1/news")
+                        .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"Staff meeting","description":"Monday 09:00",
@@ -74,11 +78,20 @@ class NewsItemControllerTest {
     @Test
     void creatingNewsRejectsABlankTitle() throws Exception {
         mockMvc.perform(post("/api/v1/news")
+                        .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"","description":"Monday 09:00",
                                  "type":"ANNOUNCEMENT","authorId":7}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void theNewsFeedWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/news"))
+                .andExpect(status().isUnauthorized());
+
+        verify(newsItemService, never()).getAllNews();
     }
 }

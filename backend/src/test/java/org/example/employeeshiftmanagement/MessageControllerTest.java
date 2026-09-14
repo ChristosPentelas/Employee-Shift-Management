@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.MessageController;
 import org.example.employeeshiftmanagement.model.Message;
@@ -15,15 +16,19 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(MessageController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest(value = MessageController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
+@Import({SecurityConfig.class, JwtConfig.class})
 class MessageControllerTest {
 
     @Autowired
@@ -47,7 +52,7 @@ class MessageControllerTest {
     void theInboxLeaksNeitherSenderNorReceiverPassword() throws Exception {
         when(messageService.getInbox(7)).thenReturn(List.of(message()));
 
-        mockMvc.perform(get("/api/v1/messages/inbox/7"))
+        mockMvc.perform(get("/api/v1/messages/inbox/7").with(jwt()))
                 .andExpect(status().isOk())
                 // Message.fromJson reads sender.id, sender.name and the "read" key
                 .andExpect(jsonPath("$[0].sender.id").value(9))
@@ -62,6 +67,7 @@ class MessageControllerTest {
         when(messageService.sendMessage(eq(9), eq(7), eq("Καλημέρα"))).thenReturn(message());
 
         mockMvc.perform(post("/api/v1/messages")
+                        .with(jwt())
                         .param("senderId", "9")
                         .param("receiverId", "7")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -75,10 +81,19 @@ class MessageControllerTest {
     @Test
     void sendingAnEmptyMessageIsRejected() throws Exception {
         mockMvc.perform(post("/api/v1/messages")
+                        .with(jwt())
                         .param("senderId", "9")
                         .param("receiverId", "7")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void theInboxWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/messages/inbox/7"))
+                .andExpect(status().isUnauthorized());
+
+        verify(messageService, never()).getInbox(anyInt());
     }
 }

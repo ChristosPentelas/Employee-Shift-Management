@@ -1,0 +1,146 @@
+package org.example.employeeshiftmanagement;
+
+import org.example.employeeshiftmanagement.config.JwtConfig;
+import org.example.employeeshiftmanagement.model.User;
+import org.example.employeeshiftmanagement.service.TokenService;
+import org.example.employeeshiftmanagement.service.UserService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+/**
+ * Security checked over real HTTP, against a real server and a real database.
+ *
+ * The @WebMvcTest classes use MockMvc, which skips parts of a real request:
+ * no real token is signed or verified, and a failed request is never forwarded
+ * to /error. Both matter for security, so this class runs the whole path.
+ *
+ * It starts its own server on a random port. Its configuration differs from
+ * the other @SpringBootTest classes (a web environment), so Spring cannot reuse
+ * their context and a second MySQL container starts - that is the ~30 s cost.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {TestProperties.JWT_SECRET_PROPERTY, TestProperties.NO_SUPERVISOR_SEEDING})
+@Import(TestcontainersConfiguration.class)
+class SecurityIntegrationTest {
+
+    @Value("${local.server.port}")
+    private int port;
+
+    @Autowired
+    private UserService userService;
+
+    private RestClient client() {
+        return RestClient.builder()
+                .baseUrl("http://localhost:" + port + "/api/v1")
+                .build();
+    }
+
+    /** The status code, without RestClient turning 4xx into an exception. */
+    private HttpStatusCode getShifts(String token) {
+        RestClient.RequestHeadersSpec<?> request = client().get().uri("/shifts");
+        if (token != null) {
+            request = request.header("Authorization", "Bearer " + token);
+        }
+        return request.exchange((req, response) -> response.getStatusCode());
+    }
+
+    private User registeredUser(String email) {
+        User user = new User();
+        user.setName("Integration User");
+        user.setEmail(email);
+        user.setPassword("secret123");
+        return userService.registerNewEmployee(user);
+    }
+
+    @Test
+    void aRequestWithoutATokenIsUnauthorized() {
+        assertEquals(401, getShifts(null).value());
+    }
+
+    @Test
+    void theTokenFromLoginOpensAProtectedEndpoint() {
+        registeredUser("it-login@example.com");
+
+        Map<?, ?> login = client().post().uri("/users/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"email":"it-login@example.com","password":"secret123"}
+                        """)
+                .retrieve()
+                .body(Map.class);
+
+        assertNotNull(login);
+        String token = (String) login.get("token");
+        assertNotNull(token, "login must return a token");
+
+        assertEquals(200, getShifts(token).value());
+    }
+
+    @Test
+    void aTokenSignedWithADifferentKeyIsUnauthorized() {
+        User user = registeredUser("it-forged@example.com");
+        JwtConfig jwtConfig = new JwtConfig();
+        String otherKey = Base64.getEncoder().encodeToString(new byte[32]);
+        TokenService forger = new TokenService(
+                jwtConfig.jwtEncoder(JwtConfig.signingKey(otherKey)), Duration.ofHours(8));
+
+        assertEquals(401, getShifts(forger.issueToken(user)).value());
+    }
+
+    @Test
+    void anExpiredTokenIsUnauthorized() {
+        User user = registeredUser("it-expired@example.com");
+        JwtEncoder encoder = new JwtConfig().jwtEncoder(JwtConfig.signingKey(TestProperties.JWT_SECRET));
+
+        // The right key and the right claims, but issued 9 hours ago with the
+        // normal 8-hour lifetime: it expired an hour ago. (Spring refuses to
+        // encode a token whose expiry is before its issue time, so a negative
+        // lifetime cannot be used. Spring also allows 60 seconds of clock
+        // difference, so "just expired" would still pass.)
+        Instant issuedAt = Instant.now().minus(Duration.ofHours(9));
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(TokenService.ISSUER)
+                .issuedAt(issuedAt)
+                .expiresAt(issuedAt.plus(Duration.ofHours(8)))
+                .subject(String.valueOf(user.getId()))
+                .claim("role", user.getRole())
+                .build();
+        String expiredToken = encoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+
+        assertEquals(401, getShifts(expiredToken).value());
+    }
+
+    @Test
+    void invalidLoginInputIsBadRequestNotUnauthorized() {
+        // Validation errors are forwarded to /error. If /error required a token,
+        // this would come back as 401 and hide the real problem.
+        HttpStatusCode status = client().post().uri("/users/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"email":"","password":"secret123"}
+                        """)
+                .exchange((req, response) -> response.getStatusCode());
+
+        assertEquals(400, status.value());
+    }
+}
