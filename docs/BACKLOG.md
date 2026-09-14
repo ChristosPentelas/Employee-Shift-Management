@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | Open | | |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 1 of 7) | `feat(backend): seed the first supervisor on startup` | 2 login issues a JWT · 3 app sends it · 4 backend requires it · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 10 done · 4 partial · 16 open.
+Totals: 10 done · 4 partial · 1 in progress · 15 open.
 
 ---
 
@@ -140,6 +140,57 @@ the IDE auto-imports first.
 Relates to: F11 (writes without a transaction boundary) — settle this when
 adding `@Transactional` to the other services.
 Fix idea: use Spring's everywhere.
+
+**B8 · MEDIUM · Nobody can change their own password** — found 2026-09-14
+Where: `UserController` has no password endpoint; `UpdateUserRequest` carries
+only name, email and phone.
+Why it matters: the first supervisor keeps the password from
+`application-local.properties` forever, and once supervisors create accounts
+(F1 step 5) every employee keeps the password a supervisor typed for them.
+Someone else knowing your password defeats the point of logging in.
+Relates to: F1.
+Fix idea: `PUT /api/v1/users/me/password` taking the current and the new
+password, checked with `PasswordEncoder.matches`. Needs F1 step 7 (identity
+from the token) so a user can only change their own.
+
+**B9 · LOW · Future milestone: several companies in one app** — found 2026-09-14
+Where: the whole data model; nothing records which company a user, shift,
+leave request, message or news item belongs to.
+Why it matters: agreed on 2026-09-14 to build for one company for now. Offering
+the app to many companies means a `Company` table, a `company_id` on every
+table, and a company filter on every query. Missing that filter in one place
+leaks one company's data to another.
+Fix idea: do it after F1 and F7, when identity and ownership checks exist; the
+JWT can then carry the company id.
+
+**B10 · LOW · Future milestone: invite employees instead of setting their password** — found 2026-09-14
+Where: account creation (after F1 step 5, only supervisors create accounts and
+choose the starting password).
+Why it matters: real shift apps send the employee an invitation link and let
+them choose their own password, so the supervisor never knows it.
+Relates to: B8.
+Fix idea: a one-time, expiring invitation token stored server-side; the
+employee sets a password with it. Needs an email or SMS sender, which is a new
+dependency.
+
+**B11 · LOW · `registerNewEmployee` also creates supervisors** — found 2026-09-14
+Where: `UserService.createFirstSupervisorIfNone` reuses `registerNewEmployee`,
+which keeps any role already set.
+Why it matters: the name says "employee", so a reader assumes the role is always
+EMPLOYEE. The only thing stopping a client from choosing its role is that
+`UserController.toNewUser` leaves it unset.
+Fix idea: rename to `registerUser` and let the caller pass the role explicitly,
+when F1 step 5 changes who can register.
+
+**B12 · LOW · Controller base paths are written three different ways** — found 2026-09-14
+Where: `UserController` maps `"api/v1/users"` (no leading slash),
+`ShiftController` maps `"/api/v1/"` (trailing slash, with method paths also
+starting with `/`), the others `"/api/v1/<resource>"`.
+Why it matters: Spring normalises all three today, but URL rules in
+`SecurityConfig` (F1 steps 4–5) are matched against the real path, and a rule
+written for one spelling is easy to get wrong for another.
+Fix idea: use `"/api/v1/<resource>"` everywhere; split `ShiftController`'s
+user-scoped routes out, or map it to `/api/v1` without the trailing slash.
 
 ---
 
