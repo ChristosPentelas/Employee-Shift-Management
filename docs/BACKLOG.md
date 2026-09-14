@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 4 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `feat(backend): require a valid token on every endpoint` | 5 register screen moves to supervisors · 6 supervisor-only rules, incl. registration · 7 identity from the token (unblocks F7). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 5 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `feat(frontend): move account creation to the supervisor's employee list` | 6 supervisor-only rules, incl. registration · 7 identity from the token (unblocks F7). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -53,7 +53,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
-| F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8` | `profile_screen.dart:143` (`_buildStatColumn`), `employee_list_screen.dart:2` (unused `session.dart` import) |
+| F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e` | 11 of 32 endpoints tested (the audit counted 25) |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
