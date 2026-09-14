@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 2 of 7) | `f6e2b77`, `feat(backend): return a JWT from login` | 3 app sends the token · 4 backend requires it · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 3 of 8) | `f6e2b77`, `b251ea5`, `feat(frontend): send the login token with every request` | 3b app returns to login on 401 · 4 backend requires the token · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -207,6 +207,28 @@ Fix idea: import the local file only under a `local` Spring profile
 (`spring.config.activate.on-profile=local` document, or
 `application-local.properties` loaded by profile name), and start the app with
 that profile. Tests then never see it.
+
+**B14 · MEDIUM · The app talks to the API over plain HTTP, and now sends a token** — found 2026-09-14
+Where: `ApiService.baseUrl` is `http://10.0.2.2:8080/api/v1`.
+Why it matters: since F1 step 3 every request carries `Authorization: Bearer …`.
+Over plain HTTP anyone on the same network can read that header and use the
+token as that user until it expires (8h). The login request already sent the
+password this way. Harmless between the emulator and the developer's own PC;
+not acceptable on any real network.
+Relates to: F27 (hard-coded backend base URL) — fix both together.
+Fix idea: serve the backend over HTTPS (or behind a reverse proxy that does),
+and make the base URL configurable per build so production can only be
+`https://`.
+
+**B15 · LOW · CLAUDE.md says the app uses Riverpod; it does not** — found 2026-09-14
+Where: `CLAUDE.md` lists "Flutter 3.x, Dart, Riverpod"; `frontend/pubspec.yaml`
+has no Riverpod package. State lives in the static `Session` class (F24).
+Why it matters: the project instructions describe a different app than the
+code. A reader, or an assistant, following them will look for providers that do
+not exist, or add Riverpod code that does not fit.
+Relates to: F24 (session is a mutable global).
+Fix idea: decide whether Riverpod is the plan. If yes, adopt it when F24 is
+fixed; if not, correct `CLAUDE.md` now.
 
 ---
 
