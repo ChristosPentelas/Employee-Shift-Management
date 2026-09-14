@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
+/// A supervisor creates an employee account here (F1 step 5). It is opened
+/// from the employee list, so the request carries the supervisor's token.
 class RegisterScreen extends StatefulWidget {
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const RegisterScreen({this.apiService});
+
   @override
   _RegisterScreenState createState() => _RegisterScreenState();
 }
@@ -11,7 +18,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _apiService = ApiService();
+  late final _apiService = widget.apiService ?? ApiService();
   bool _isLoading = false;
 
   void _register() async {
@@ -44,14 +51,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _passwordController.text,
     );
 
+    // The screen may have closed while waiting (e.g. the token was rejected
+    // and the app went back to login). Its context is no longer usable (F25).
+    if (!mounted) return;
+
     setState(() {
       _isLoading = false;
     });
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Η εγγραφή ολοκληρώθηκε! Συνδεθείτε.")),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ο λογαριασμός δημιουργήθηκε")),
       );
-      Navigator.pop(context);
+      // true tells the employee list to reload.
+      Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα κατά την εγγραφή. Δοκιμάστε ξανά.")),
       );
@@ -70,7 +82,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Εγγραφή Νέου Χρήστη")),
+      appBar: AppBar(title: Text("Νέος Υπάλληλος")),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(16.0),
         child: Column(

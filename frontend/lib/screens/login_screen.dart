@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../utils/session.dart';
 import 'dart:convert';
-import '../screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget{
   @override
@@ -100,17 +99,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Text("ΣΥΝΔΕΣΗ", style: TextStyle(
                     fontSize: 18, fontWeight: FontWeight.bold)),
               ),
-              SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => RegisterScreen()),
-                  );
-                },
-                child: Text("Δεν έχετε λογαριασμό; Εγγραφείτε εδώ",
-                    style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-              ),
+              // No "register here" link: accounts are created by a supervisor
+              // from the employee list (F1 step 5).
             ],
           ),
         ),

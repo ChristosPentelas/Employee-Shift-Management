@@ -1,16 +1,22 @@
 import 'package:employee_shift_management_ui/screens/employee_details_screen.dart';
+import 'package:employee_shift_management_ui/screens/register_screen.dart';
 import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user_model.dart';
 
 class EmployeeListScreen extends StatefulWidget {
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const EmployeeListScreen({this.apiService});
+
   @override
   _EmployeeListScreenState createState() => _EmployeeListScreenState();
 }
 
 class _EmployeeListScreenState extends State<EmployeeListScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
   late Future<List<User>> _employeesFuture;
 
   @override
@@ -19,11 +25,36 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     _employeesFuture = _apiService.getAllEmployees();
   }
 
+  Future<void> _addEmployee() async {
+    final created = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RegisterScreen(apiService: _apiService),
+      ),
+    );
+
+    if (created == true && mounted) {
+      setState(() {
+        _employeesFuture = _apiService.getAllEmployees();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
           title: Text("Λίστα Υπαλλήλων"), backgroundColor: Colors.blue[800]),
+      // Only supervisors create accounts (F1 step 5). Hiding the button is a
+      // convenience, not security: the server enforces the rule (step 6).
+      floatingActionButton: Session.isSupervisor()
+          ? FloatingActionButton(
+              tooltip: "Νέος Υπάλληλος",
+              backgroundColor: Colors.blue[800],
+              onPressed: _addEmployee,
+              child: Icon(Icons.person_add),
+            )
+          : null,
       body: FutureBuilder<List<User>>(
         future: _employeesFuture,
         builder: (context, snapshot) {

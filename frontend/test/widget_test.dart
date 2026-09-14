@@ -31,4 +31,12 @@ void main() {
     expect(find.text('Ο κωδικός πρέπει να έχει τουλάχιστον 4 χαρακτήρες'),
         findsOneWidget);
   });
+
+  testWidgets('the login screen offers no self-registration',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MyApp());
+
+    // Accounts are created by a supervisor from the employee list (F1 step 5).
+    expect(find.textContaining('Εγγραφείτε'), findsNothing);
+  });
 }
