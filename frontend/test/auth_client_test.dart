@@ -10,9 +10,9 @@ import 'package:http/testing.dart';
 void main() {
   late http.BaseRequest sent;
 
-  MockClient recordingServer() => MockClient((request) async {
+  MockClient server({int status = 200}) => MockClient((request) async {
         sent = request;
-        return http.Response('', 200);
+        return http.Response('', status);
       });
 
   final uri = Uri.parse('http://example.test/api/v1/shifts');
@@ -20,7 +20,7 @@ void main() {
   tearDown(Session.clear);
 
   test('adds a Bearer header when there is a token', () async {
-    final client = AuthClient(inner: recordingServer(), token: () => 'abc');
+    final client = AuthClient(inner: server(), token: () => 'abc');
 
     await client.get(uri);
 
@@ -28,7 +28,7 @@ void main() {
   });
 
   test('sends no Authorization header when nobody is logged in', () async {
-    final client = AuthClient(inner: recordingServer(), token: () => null);
+    final client = AuthClient(inner: server(), token: () => null);
 
     await client.get(uri);
 
@@ -36,7 +36,7 @@ void main() {
   });
 
   test('keeps the headers the caller set', () async {
-    final client = AuthClient(inner: recordingServer(), token: () => 'abc');
+    final client = AuthClient(inner: server(), token: () => 'abc');
 
     await client.post(uri,
         headers: {'Content-Type': 'application/json'}, body: '{}');
@@ -47,10 +47,50 @@ void main() {
 
   test('by default sends the token stored in Session', () async {
     Session.token = 'from-session';
-    final client = AuthClient(inner: recordingServer());
+    final client = AuthClient(inner: server());
 
     await client.get(uri);
 
     expect(sent.headers['Authorization'], 'Bearer from-session');
+  });
+
+  test('a 401 on a request with a token reports that token as rejected',
+      () async {
+    String? rejected;
+    final client = AuthClient(
+        inner: server(status: 401),
+        token: () => 'abc',
+        onTokenRejected: (token) => rejected = token);
+
+    final response = await client.get(uri);
+
+    expect(rejected, 'abc');
+    expect(response.statusCode, 401,
+        reason: 'the caller must still see what the server said');
+  });
+
+  test('a 401 without a token (wrong password at login) is not a rejected token',
+      () async {
+    String? rejected;
+    final client = AuthClient(
+        inner: server(status: 401),
+        token: () => null,
+        onTokenRejected: (token) => rejected = token);
+
+    await client.post(uri, body: '{}');
+
+    expect(rejected, isNull);
+  });
+
+  test('a successful response reports nothing', () async {
+    String? rejected;
+    final client = AuthClient(
+        inner: server(status: 200),
+        token: () => 'abc',
+        onTokenRejected: (token) => rejected = token);
+
+    await client.get(uri);
+
+    expect(rejected, isNull);
   });
 }
