@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 3 of 8) | `f6e2b77`, `b251ea5`, `feat(frontend): send the login token with every request` | 3b app returns to login on 401 · 4 backend requires the token · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 3b of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `feat(frontend): return to login when the token is rejected` | 4 backend requires the token · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -58,7 +58,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e` | 11 of 32 endpoints tested (the audit counted 25) |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
-| F25 | MEDIUM | `BuildContext` across async gaps | Open | | |
+| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()" |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
 | F28 | LOW | Chat polls every 3 s | Open | | |
@@ -229,6 +229,19 @@ not exist, or add Riverpod code that does not fit.
 Relates to: F24 (session is a mutable global).
 Fix idea: decide whether Riverpod is the plan. If yes, adopt it when F24 is
 fixed; if not, correct `CLAUDE.md` now.
+
+**B16 · LOW · Screens assume `Session.currentUser` is never null** — found 2026-09-14
+Where: `Session.currentUser!` in `chat_screen.dart:42` and in several
+`ApiService` methods (`postNews`, `submitLeaveRequest`, `getMyShifts`,
+`getChatHistory`, `sendMessage`).
+Why it matters: since F1 step 3b the session can be cleared while a request is
+still running (the chat polls every 3 s). Code that resumes after its `await`
+then hits `!` on null and throws. Today a surrounding `try/catch` swallows it in
+most places, so nothing visible happens, but that is luck, not design.
+Relates to: F24 (session is a mutable global), F25 (async gaps).
+Fix idea: read the user once before the `await` and use that local value, or
+stop when it is null. Better, once F1 step 7 lands, the server takes identity
+from the token and the client stops sending its own id at all.
 
 ---
 
