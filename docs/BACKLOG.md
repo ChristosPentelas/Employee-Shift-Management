@@ -34,13 +34,13 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 3b of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `feat(frontend): return to login when the token is rejected` | 4 backend requires the token · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 4 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `feat(backend): require a valid token on every endpoint` | 5 register screen moves to supervisors · 6 supervisor-only rules, incl. registration · 7 identity from the token (unblocks F7). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
-| F7 | HIGH | Leave-request filter is cosmetic | Open | | Needs F1 first |
+| F7 | HIGH | Leave-request filter is cosmetic | Open | | Needs F1 step 7 (identity from the token). Since step 4 strangers are out, but any logged-in employee still reads every leave |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Open | | |
 | F9 | HIGH | No pagination | Open | | |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
