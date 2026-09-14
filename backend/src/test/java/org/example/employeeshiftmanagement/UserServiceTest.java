@@ -197,6 +197,27 @@ public class UserServiceTest {
     }
 
     @Test
+    void createsTheFirstSupervisorWhenNoneExists() {
+        boolean created = userService.createFirstSupervisorIfNone("Boss", "boss@example.com", "secret123");
+
+        assertTrue(created);
+        User boss = userService.findUserByEmail("boss@example.com").orElseThrow();
+        assertEquals("SUPERVISOR", boss.getRole());
+        assertTrue(boss.getPassword().startsWith("$2"),
+                "The seeded password must be hashed like any other (F2)");
+    }
+
+    @Test
+    void doesNotCreateASecondSupervisor() {
+        userService.createFirstSupervisorIfNone("Boss", "boss@example.com", "secret123");
+
+        boolean createdAgain = userService.createFirstSupervisorIfNone("Other", "other@example.com", "secret123");
+
+        assertFalse(createdAgain);
+        assertTrue(userService.findUserByEmail("other@example.com").isEmpty());
+    }
+
+    @Test
     void registerRejectsAPasswordOverTheByteLimit() {
         // 40 Greek characters = 80 bytes in UTF-8, over BCrypt's 72-byte limit
         // while being only 40 characters long.

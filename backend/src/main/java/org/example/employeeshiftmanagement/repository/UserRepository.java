@@ -11,4 +11,8 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     // Custom query to find a user by their unique email
     //We use Optional to handle the case where the User does not exist better, instead of returning null
     Optional<User> findByEmail(String email);
+
+    // Derived query: Spring Data reads the method name and generates
+    // "select count(*) > 0 from users where role = ?"
+    boolean existsByRole(String role);
 }

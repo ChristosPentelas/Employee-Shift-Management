@@ -9,3 +9,11 @@
 
 spring.datasource.username=your_mysql_user
 spring.datasource.password=your_mysql_password
+
+# The company's first supervisor, created on startup ONLY while the database
+# has no supervisor at all. Once one exists these lines are ignored, so they
+# cannot overwrite anyone. Leave them out and the app starts without seeding.
+# Pick a strong password (at most 72 bytes) and change it after first login.
+app.first-supervisor.name=First Supervisor
+app.first-supervisor.email=supervisor@example.com
+app.first-supervisor.password=change_me

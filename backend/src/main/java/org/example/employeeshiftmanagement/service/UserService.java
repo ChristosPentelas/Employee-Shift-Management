@@ -115,6 +115,31 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /**
+     * Creates a supervisor only when none exists yet, and returns whether it did.
+     *
+     * Registration is meant to be a supervisor's job, so someone has to create
+     * the first one. Calling this on every startup is safe (idempotent): once a
+     * supervisor exists it does nothing.
+     *
+     * Reuses registerNewEmployee, which keeps a role that is already set, so the
+     * duplicate-email check, the byte limit and the hashing stay in one place.
+     */
+    public boolean createFirstSupervisorIfNone(String name, String email, String rawPassword) {
+        if (userRepository.existsByRole("SUPERVISOR")) {
+            return false;
+        }
+
+        User supervisor = new User();
+        supervisor.setName(name);
+        supervisor.setEmail(email);
+        supervisor.setPassword(rawPassword);
+        supervisor.setRole("SUPERVISOR");
+
+        registerNewEmployee(supervisor);
+        return true;
+    }
+
     public User updateUser(Integer id,User userDetails) {
 
         User user = findUserById(id);
