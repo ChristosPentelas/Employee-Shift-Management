@@ -2,10 +2,12 @@ package org.example.employeeshiftmanagement.controller;
 
 import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.dto.LoginRequest;
+import org.example.employeeshiftmanagement.dto.LoginResponse;
 import org.example.employeeshiftmanagement.dto.RegisterRequest;
 import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
 import org.example.employeeshiftmanagement.dto.UserResponse;
 import org.example.employeeshiftmanagement.model.User;
+import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +20,11 @@ import java.util.Optional;
 @RequestMapping("api/v1/users")
 public class UserController {
     private final UserService userService;
+    private final TokenService tokenService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, TokenService tokenService) {
         this.userService = userService;
+        this.tokenService = tokenService;
     }
 
     @PostMapping
@@ -85,7 +89,8 @@ public class UserController {
         Optional<User> user = userService.authenticate(loginRequest.email(), loginRequest.password());
 
         if (user.isPresent()) {
-            return ResponseEntity.ok(UserResponse.from(user.get()));
+            String token = tokenService.issueToken(user.get());
+            return ResponseEntity.ok(LoginResponse.from(user.get(), token));
         }
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Λάθος email ή password");
     }

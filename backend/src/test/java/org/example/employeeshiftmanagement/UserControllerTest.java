@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
 import org.example.employeeshiftmanagement.model.User;
+import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -46,6 +47,9 @@ class UserControllerTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private TokenService tokenService;
 
     private static User existingUser() {
         User user = new User();
@@ -104,8 +108,9 @@ class UserControllerTest {
     }
 
     @Test
-    void loginReturnsTheRoleButNotThePassword() throws Exception {
+    void loginReturnsTheRoleAndATokenButNotThePassword() throws Exception {
         when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.of(existingUser()));
+        when(tokenService.issueToken(any(User.class))).thenReturn("test-token");
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +119,11 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.password").doesNotExist())
-                .andExpect(jsonPath("$.role").value("EMPLOYEE"));
+                .andExpect(jsonPath("$.role").value("EMPLOYEE"))
+                // Top-level user fields must stay where they are: the app's
+                // User.fromJson reads them from here (F1 step 2).
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.token").value("test-token"));
     }
 
     @Test
@@ -130,7 +139,7 @@ class UserControllerTest {
     }
 
     @Test
-    void loginWithAWrongPasswordIsUnauthorized() throws Exception {
+    void loginWithAWrongPasswordIsUnauthorizedAndGetsNoToken() throws Exception {
         when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/users/login")
@@ -138,7 +147,10 @@ class UserControllerTest {
                         .content("""
                                 {"email":"test@example.com","password":"wrong"}
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.token").doesNotExist());
+
+        verify(tokenService, never()).issueToken(any());
     }
 
     @Test
