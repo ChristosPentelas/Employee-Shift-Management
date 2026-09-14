@@ -89,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: () {
-              Session.currentUser = null; //
+              Session.clear(); // the user and the token together
 
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => LoginScreen()),

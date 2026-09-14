@@ -6,16 +6,27 @@ import '../models/user_model.dart';
 import '../utils/session.dart';
 import '../models/shift_model.dart';
 import '../models/message_model.dart';
+import 'auth_client.dart';
 
 class ApiService {
   //IP 10.0.2.2 is the localhost to my PC
   static const String baseUrl = "http://10.0.2.2:8080/api/v1";
 
+  // One client for the whole app. Every screen creates its own ApiService, and
+  // a new http.Client per screen would open a separate connection pool each time.
+  static final http.Client _sharedClient = AuthClient();
+
+  // Every request below goes through this client, which adds the login token.
+  final http.Client _client;
+
+  // Tests pass a fake client; the app uses the shared one.
+  ApiService({http.Client? client}) : _client = client ?? _sharedClient;
+
   // For login
   Future<http.Response> login(String email, String password) async {
     final url = Uri.parse("$baseUrl/users/login");
 
-    return await http.post(
+    return await _client.post(
       url,
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({
@@ -28,7 +39,7 @@ class ApiService {
   Future<List<User>> getAllEmployees() async {
     try{
       // endpoint for all users
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse("$baseUrl/users"),
         headers: {"Content-Type": "application/json"},
       );
@@ -51,7 +62,7 @@ class ApiService {
   Future<void> deleteUser(int userId) async {
     try{
       print("Full Delete URL: ${baseUrl}/users/$userId");
-      final response = await http.delete(
+      final response = await _client.delete(
         Uri.parse("$baseUrl/users/$userId"),
         headers: {"Content-Type" : "application/json"},
       );
@@ -66,7 +77,7 @@ class ApiService {
 
   Future<User?> findUserByEmail(String email) async {
     try{
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse("$baseUrl/users/search?email=$email"),
         headers: {"Content-Type" : "application/json"},
       );
@@ -83,7 +94,7 @@ class ApiService {
 
   Future<List<NewsItem>> getNews() async {
     try{
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse("$baseUrl/news"),
         headers: {"Content-Type" : "application/json"},
       );
@@ -102,7 +113,7 @@ class ApiService {
 
   Future<void> postNews(NewsItem item) async {
     try{
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse("$baseUrl/news"),
         headers: {"Content-Type" : "application/json"},
         body: jsonEncode({
@@ -125,7 +136,7 @@ class ApiService {
 
   Future<void> deleteNews(int id) async {
     try{
-      final response = await http.delete(
+      final response = await _client.delete(
         Uri.parse("$baseUrl/news/$id"),
         headers: {"Content-Type" : "application/json"},
       );
@@ -139,7 +150,7 @@ class ApiService {
   }
 
   Future<List<LeaveRequest>> getAllLeaveRequests() async {
-    final response = await http.get(Uri.parse("$baseUrl/leaves"));
+    final response = await _client.get(Uri.parse("$baseUrl/leaves"));
     if (response.statusCode == 200) {
       List body = jsonDecode(response.body);
       return body.map((item) => LeaveRequest.fromJson(item)).toList();
@@ -148,7 +159,7 @@ class ApiService {
   }
 
   Future<void> submitLeaveRequest(LeaveRequest leave) async {
-    await http.post(
+    await _client.post(
       Uri.parse("$baseUrl/leaves"),
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({
@@ -161,14 +172,14 @@ class ApiService {
   }
 
   Future<void> updateLeaveStatus(int leaveId, String newStatus) async {
-    await http.put(
+    await _client.put(
       Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
     );
   }
 
   Future<bool> updateUser(int userId,String name,String email,String phone) async {
     try{
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse("$baseUrl/users/$userId"),
         headers: {"Content-Type" : "application/json"},
         body: jsonEncode({
@@ -192,7 +203,7 @@ class ApiService {
 
   Future<List<Shift>> getMyShifts() async {
     final userId = Session.currentUser!.id;
-    final response = await http.get(Uri.parse("$baseUrl/shifts/user/$userId"));
+    final response = await _client.get(Uri.parse("$baseUrl/shifts/user/$userId"));
 
     if(response.statusCode == 200) {
       List body = jsonDecode(response.body);
@@ -202,7 +213,7 @@ class ApiService {
   }
 
   Future<List<Shift>> getAllShifts() async {
-    final response = await http.get(Uri.parse("$baseUrl/shifts"));
+    final response = await _client.get(Uri.parse("$baseUrl/shifts"));
 
     if (response.statusCode == 200) {
       List body = jsonDecode(response.body);
@@ -213,7 +224,7 @@ class ApiService {
 
   Future<bool> assignShift(Shift shift, int userId) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse("$baseUrl/users/$userId/shifts"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
@@ -231,7 +242,7 @@ class ApiService {
 
   Future<bool> deleteShift(int shiftId) async {
     try {
-      final response = await http.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
+      final response = await _client.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
 
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
@@ -244,7 +255,7 @@ class ApiService {
     String startDate = "${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}";
     String endDate = "${end.year}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}";
 
-    final response = await http.get(
+    final response = await _client.get(
       Uri.parse("$baseUrl/users/${Session.currentUser?.id}/schedule?start=$startDate&end=$endDate")
     );
 
@@ -259,7 +270,7 @@ class ApiService {
   Future<List<Message>> getChatHistory(int otherUserId) async {
     final currentUserId = Session.currentUser!.id;
 
-    final response = await http.get(
+    final response = await _client.get(
       Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId")
     );
 
@@ -273,7 +284,7 @@ class ApiService {
   Future<bool> sendMessage(int receiverId, String content) async {
     final senderId = Session.currentUser!.id;
 
-    final response = await http.post(
+    final response = await _client.post(
       Uri.parse("$baseUrl/messages?senderId=$senderId&receiverId=$receiverId"),
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({"content" : content}),
@@ -284,7 +295,7 @@ class ApiService {
 
   Future<void> markAsRead(int messageId) async {
     try {
-      final response = await http.put(
+      final response = await _client.put(
         Uri.parse("$baseUrl/messages/$messageId/read"),
       );
       print("Marking message $messageId as read. Status: ${response.statusCode}");
@@ -296,7 +307,7 @@ class ApiService {
   Future<List<Message>> getInbox(int userId) async {
     try {
       print("Fetching inbox for user: $userId"); // DEBUG
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse("$baseUrl/messages/inbox/$userId"),
       );
 
@@ -316,7 +327,7 @@ class ApiService {
   Future<List<Message>> getSent(int userId) async {
     try {
       // Αντιστοιχεί στο @GetMapping("/sent/{userId}") του Controller σου
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse("$baseUrl/messages/sent/$userId"),
       );
 
@@ -332,7 +343,7 @@ class ApiService {
 
   Future<bool> registerUser(String name,String email,String phone,String password) async{
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse("$baseUrl/users"),
         headers: {"Content-Type" : "application/json"},
         body: jsonEncode({
