@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 1 of 7) | `feat(backend): seed the first supervisor on startup` | 2 login issues a JWT · 3 app sends it · 4 backend requires it · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 2 of 7) | `f6e2b77`, `feat(backend): return a JWT from login` | 3 app sends the token · 4 backend requires it · 5 supervisor-only rules · 6 register screen moves to supervisors · 7 identity from the token (unblocks F7) |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -191,6 +191,22 @@ Why it matters: Spring normalises all three today, but URL rules in
 written for one spelling is easy to get wrong for another.
 Fix idea: use `"/api/v1/<resource>"` everywhere; split `ShiftController`'s
 user-scoped routes out, or map it to `/api/v1` without the trailing slash.
+
+**B13 · MEDIUM · Tests read the developer's `application-local.properties`** — found 2026-09-14
+Where: `application.properties` imports `optional:file:./application-local.properties`,
+and Maven runs the tests from `backend/`, so every `@SpringBootTest` loads the
+developer's personal settings.
+Why it matters: a test's result depends on whose machine runs it. It already
+happened: once the local file had `app.first-supervisor.*`, the seeder created a
+real supervisor at test startup, outside any transaction, and
+`UserServiceTest.createsTheFirstSupervisorWhenNoneExists` failed on that machine
+only. Stopgap in place: `TestProperties` overrides the JWT secret and blanks the
+seeder, but any setting added to the local file later leaks in the same way.
+Relates to: F23 (tests used to run against the developer's MySQL).
+Fix idea: import the local file only under a `local` Spring profile
+(`spring.config.activate.on-profile=local` document, or
+`application-local.properties` loaded by profile name), and start the app with
+that profile. Tests then never see it.
 
 ---
 
