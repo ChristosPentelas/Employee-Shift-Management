@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 5 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `feat(frontend): move account creation to the supervisor's employee list` | 6 supervisor-only rules, incl. registration · 7 identity from the token (unblocks F7). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 6 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `1831b5d`, `feat(backend): restrict supervisor actions to the SUPERVISOR role` | 7 identity from the token: users may only act as themselves (unblocks F7; then `GET /leaves` becomes supervisor-only). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits. A role change takes effect when the user's token expires (up to 8h), accepted 2026-09-15 |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -58,7 +58,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e` | 11 of 32 endpoints tested (the audit counted 25) |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
-| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()" |
+| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
 | F28 | LOW | Chat polls every 3 s | Open | | |
@@ -242,6 +242,19 @@ Relates to: F24 (session is a mutable global), F25 (async gaps).
 Fix idea: read the user once before the `await` and use that local value, or
 stop when it is null. Better, once F1 step 7 lands, the server takes identity
 from the token and the client stops sending its own id at all.
+
+**B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
+Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
+tap builds the chat partner as `User(name: msg.senderName, role: "EMPLOYEE")`.
+Why it matters: for a message you sent, the sender is you, so the row and the
+chat screen's title show your own name instead of the person you wrote to. The
+role is hard-coded, so a supervisor you chat with is labelled an employee.
+Messages also appear once per message, not once per conversation.
+Relates to: F16 (inconsistent API shapes) — the message response has sender
+and receiver, but the client only reads the sender's name.
+Fix idea: pick the other person (`senderId == me ? receiver : sender`) for both
+name and id, take the role from the response instead of hard-coding it, and
+group rows by that person.
 
 ---
 
