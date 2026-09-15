@@ -166,6 +166,25 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void aRealTokenOpensOnlyItsOwnInbox() {
+        User alice = registeredUser("it-alice@example.com", null);
+        User bob = registeredUser("it-bob@example.com", null);
+        String aliceToken = login("it-alice@example.com");
+
+        HttpStatusCode own = client().get().uri("/messages/inbox/" + alice.getId())
+                .header("Authorization", "Bearer " + aliceToken)
+                .exchange((req, response) -> response.getStatusCode());
+        HttpStatusCode someoneElses = client().get().uri("/messages/inbox/" + bob.getId())
+                .header("Authorization", "Bearer " + aliceToken)
+                .exchange((req, response) -> response.getStatusCode());
+
+        // Proves the token's subject really is the user id that
+        // "authentication.name" is compared with in @PreAuthorize.
+        assertEquals(200, own.value());
+        assertEquals(403, someoneElses.value());
+    }
+
+    @Test
     void invalidLoginInputIsBadRequestNotUnauthorized() {
         // Validation errors are forwarded to /error. If /error required a token,
         // this would come back as 401 and hide the real problem.
