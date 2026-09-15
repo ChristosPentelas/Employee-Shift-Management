@@ -6,6 +6,11 @@ import '../utils/session.dart';
 import 'dart:convert';
 
 class LoginScreen extends StatefulWidget{
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const LoginScreen({this.apiService});
+
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
@@ -20,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
 
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +138,9 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text("Επιτυχής σύνδεση!"), backgroundColor: Colors.green),
         );
 
-        Navigator.push(
+        // Replace the login screen instead of stacking on top of it: with push,
+        // the phone's back button returned to login while still logged in.
+        Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (context) => HomeScreen()),
         );
       }else if (response.statusCode == 401){

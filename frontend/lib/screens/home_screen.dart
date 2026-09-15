@@ -5,6 +5,7 @@ import '../screens/leave_requests_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/shifts_screen.dart';
 import '../screens/messages_list_screen.dart';
+import '../utils/session.dart';
 
 class HomeScreen extends StatelessWidget {
   @override
@@ -19,7 +20,11 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: (){
-              Navigator.pop(context);
+              // Logging out means forgetting the user and the token. Only
+              // leaving the screen (the old Navigator.pop) kept both in memory.
+              Session.clear();
+              // Remove every screen, so "back" cannot return to the dashboard.
+              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
             },
           ),
         ],
