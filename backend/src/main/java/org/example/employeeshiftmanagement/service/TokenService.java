@@ -24,6 +24,9 @@ public class TokenService {
 
     public static final String ISSUER = "employee-shift-management";
 
+    /** Read back by JwtConfig.jwtAuthenticationConverter; one name, so the two cannot drift apart. */
+    public static final String ROLE_CLAIM = "role";
+
     private final JwtEncoder jwtEncoder;
     private final Duration lifetime;
 
@@ -43,7 +46,7 @@ public class TokenService {
                 // The id, not the email: a user can change their email through
                 // PUT /users/{id}, but their id never changes.
                 .subject(String.valueOf(user.getId()))
-                .claim("role", user.getRole())
+                .claim(ROLE_CLAIM, user.getRole())
                 .build();
 
         // The encoder defaults to RS256 (key pair); our key is a shared secret,

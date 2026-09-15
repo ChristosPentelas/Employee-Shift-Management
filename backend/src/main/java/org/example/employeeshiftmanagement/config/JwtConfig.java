@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import org.example.employeeshiftmanagement.service.TokenService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +10,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -41,12 +44,31 @@ public class JwtConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSigningKey));
     }
 
-    /** Not used by any request yet; F1 step 4 makes Spring Security check tokens with it. */
+    /** SecurityConfig checks every request's token with this. */
     @Bean
     public JwtDecoder jwtDecoder(SecretKey jwtSigningKey) {
         return NimbusJwtDecoder.withSecretKey(jwtSigningKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
+    }
+
+    /**
+     * Turns the token's "role" claim into what Spring checks: a token with
+     * role SUPERVISOR gets the authority ROLE_SUPERVISOR, which is what
+     * hasRole('SUPERVISOR') looks for.
+     *
+     * Without this, Spring reads only a claim named "scope". Our role would
+     * be silently ignored and every hasRole rule would deny everyone.
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter roles = new JwtGrantedAuthoritiesConverter();
+        roles.setAuthoritiesClaimName(TokenService.ROLE_CLAIM);
+        roles.setAuthorityPrefix("ROLE_");
+
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(roles);
+        return converter;
     }
 
     /**

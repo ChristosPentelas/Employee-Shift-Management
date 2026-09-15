@@ -30,8 +30,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * Security checked over real HTTP, against a real server and a real database.
  *
  * The @WebMvcTest classes use MockMvc, which skips parts of a real request:
- * no real token is signed or verified, and a failed request is never forwarded
- * to /error. Both matter for security, so this class runs the whole path.
+ * no real token is signed or verified, the role claim is never converted
+ * (TestTokens sets authorities directly), and a failed request is never
+ * forwarded to /error. All three matter for security, so this class runs the
+ * whole path.
  *
  * It starts its own server on a random port. Its configuration differs from
  * the other @SpringBootTest classes (a web environment), so Spring cannot reuse
@@ -63,12 +65,40 @@ class SecurityIntegrationTest {
         return request.exchange((req, response) -> response.getStatusCode());
     }
 
-    private User registeredUser(String email) {
+    private HttpStatusCode createAccount(String token, String email) {
+        return client().post().uri("/users")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"name":"Created","email":"%s","password":"secret123"}
+                        """.formatted(email))
+                .exchange((req, response) -> response.getStatusCode());
+    }
+
+    /** registerNewEmployee keeps a role that is already set, so this can create a supervisor too. */
+    private User registeredUser(String email, String role) {
         User user = new User();
         user.setName("Integration User");
         user.setEmail(email);
         user.setPassword("secret123");
+        user.setRole(role);
         return userService.registerNewEmployee(user);
+    }
+
+    /** Logs in through the real endpoint and returns the token it hands out. */
+    private String login(String email) {
+        Map<?, ?> response = client().post().uri("/users/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"email":"%s","password":"secret123"}
+                        """.formatted(email))
+                .retrieve()
+                .body(Map.class);
+
+        assertNotNull(response);
+        String token = (String) response.get("token");
+        assertNotNull(token, "login must return a token");
+        return token;
     }
 
     @Test
@@ -77,27 +107,32 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void theTokenFromLoginOpensAProtectedEndpoint() {
-        registeredUser("it-login@example.com");
+    void aSupervisorsLoginTokenOpensASupervisorEndpoint() {
+        registeredUser("it-login@example.com", "SUPERVISOR");
 
-        Map<?, ?> login = client().post().uri("/users/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body("""
-                        {"email":"it-login@example.com","password":"secret123"}
-                        """)
-                .retrieve()
-                .body(Map.class);
+        assertEquals(200, getShifts(login("it-login@example.com")).value());
+    }
 
-        assertNotNull(login);
-        String token = (String) login.get("token");
-        assertNotNull(token, "login must return a token");
+    @Test
+    void anEmployeesLoginTokenIsForbiddenFromASupervisorEndpoint() {
+        registeredUser("it-employee-shifts@example.com", null);
 
-        assertEquals(200, getShifts(token).value());
+        // 403, not 401: the token is valid, the role is not enough.
+        assertEquals(403, getShifts(login("it-employee-shifts@example.com")).value());
+    }
+
+    @Test
+    void onlyASupervisorsRealTokenCanCreateAccounts() {
+        registeredUser("it-employee@example.com", null);
+        registeredUser("it-boss@example.com", "SUPERVISOR");
+
+        assertEquals(403, createAccount(login("it-employee@example.com"), "it-by-employee@example.com").value());
+        assertEquals(201, createAccount(login("it-boss@example.com"), "it-by-supervisor@example.com").value());
     }
 
     @Test
     void aTokenSignedWithADifferentKeyIsUnauthorized() {
-        User user = registeredUser("it-forged@example.com");
+        User user = registeredUser("it-forged@example.com", "SUPERVISOR");
         JwtConfig jwtConfig = new JwtConfig();
         String otherKey = Base64.getEncoder().encodeToString(new byte[32]);
         TokenService forger = new TokenService(
@@ -108,7 +143,7 @@ class SecurityIntegrationTest {
 
     @Test
     void anExpiredTokenIsUnauthorized() {
-        User user = registeredUser("it-expired@example.com");
+        User user = registeredUser("it-expired@example.com", "SUPERVISOR");
         JwtEncoder encoder = new JwtConfig().jwtEncoder(JwtConfig.signingKey(TestProperties.JWT_SECRET));
 
         // The right key and the right claims, but issued 9 hours ago with the
@@ -122,7 +157,7 @@ class SecurityIntegrationTest {
                 .issuedAt(issuedAt)
                 .expiresAt(issuedAt.plus(Duration.ofHours(8)))
                 .subject(String.valueOf(user.getId()))
-                .claim("role", user.getRole())
+                .claim(TokenService.ROLE_CLAIM, user.getRole())
                 .build();
         String expiredToken = encoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();

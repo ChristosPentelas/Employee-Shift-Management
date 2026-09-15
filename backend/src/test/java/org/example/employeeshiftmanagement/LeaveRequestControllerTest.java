@@ -20,14 +20,15 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentCaptor.forClass;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -56,7 +57,9 @@ class LeaveRequestControllerTest {
     void theLeaveListDoesNotLeakPasswords() throws Exception {
         when(leaveRequestService.getAllLeaveRequests()).thenReturn(List.of(leaveRequest()));
 
-        mockMvc.perform(get("/api/v1/leaves").with(jwt()))
+        // Still reachable by employees until F1 step 7 (see F7): the app's
+        // leave screen loads this list for everyone.
+        mockMvc.perform(get("/api/v1/leaves").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 // LeaveRequest.fromJson on the Flutter side reads json['user']
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
@@ -70,7 +73,7 @@ class LeaveRequestControllerTest {
                 .thenReturn(leaveRequest());
 
         mockMvc.perform(post("/api/v1/leaves")
-                        .with(jwt())
+                        .with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":7,"startDate":"2026-10-01","endDate":"2026-10-05",
@@ -93,7 +96,7 @@ class LeaveRequestControllerTest {
     @Test
     void creatingALeaveRejectsAMissingEmployee() throws Exception {
         mockMvc.perform(post("/api/v1/leaves")
-                        .with(jwt())
+                        .with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"startDate":"2026-10-01","endDate":"2026-10-05","reason":"Surgery"}
@@ -108,5 +111,28 @@ class LeaveRequestControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verify(leaveRequestService, never()).getAllLeaveRequests();
+    }
+
+    @Test
+    void aSupervisorCanApproveALeave() throws Exception {
+        LeaveRequest approved = leaveRequest();
+        approved.setStatus(LeaveStatus.APPROVED);
+        when(leaveRequestService.updateLeaveRequest(1, LeaveStatus.APPROVED)).thenReturn(approved);
+
+        mockMvc.perform(put("/api/v1/leaves/1/status")
+                        .param("status", "APPROVED")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+    }
+
+    @Test
+    void anEmployeeCannotApproveALeave() throws Exception {
+        mockMvc.perform(put("/api/v1/leaves/1/status")
+                        .param("status", "APPROVED")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(leaveRequestService, never()).updateLeaveRequest(anyInt(), any());
     }
 }

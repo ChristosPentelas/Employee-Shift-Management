@@ -8,6 +8,7 @@ import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -48,12 +49,17 @@ public class LeaveRequestController {
 
     //endpoints for SUPERVISOR
 
+    // Meant for supervisors, but NOT restricted yet: the app's leave screen
+    // loads this list for employees too and filters it on the phone (F7).
+    // F1 step 7 moves employees to their own list; then this gets
+    // hasRole('SUPERVISOR') like the two below.
     @GetMapping
     public ResponseEntity<List<LeaveRequestResponse>> getAllLeaves() {
         return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests()));
     }
 
     @GetMapping("/filter")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> filterLeaves(@RequestParam LeaveStatus status,
                                                @RequestParam(required = false) Integer userId) {
         try{
@@ -69,6 +75,7 @@ public class LeaveRequestController {
 
 
     @PutMapping("/{requestId}/status")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> updateLeaveStatus(@PathVariable Integer requestId, @RequestParam LeaveStatus status) {
         try{
             LeaveRequest updated = leaveRequestService.updateLeaveRequest(requestId, status);

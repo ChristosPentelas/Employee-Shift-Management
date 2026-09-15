@@ -17,11 +17,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,7 +52,8 @@ class NewsItemControllerTest {
     void theNewsFeedDoesNotLeakTheAuthorsPassword() throws Exception {
         when(newsItemService.getAllNews()).thenReturn(List.of(newsItem()));
 
-        mockMvc.perform(get("/api/v1/news").with(jwt()))
+        // Everyone reads the news, so an employee token on purpose.
+        mockMvc.perform(get("/api/v1/news").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Staff meeting"))
                 .andExpect(jsonPath("$[0].author.name").value("Boss"))
@@ -63,7 +65,7 @@ class NewsItemControllerTest {
         when(newsItemService.createNewsItem(any(NewsItem.class), any())).thenReturn(newsItem());
 
         mockMvc.perform(post("/api/v1/news")
-                        .with(jwt())
+                        .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"Staff meeting","description":"Monday 09:00",
@@ -78,7 +80,7 @@ class NewsItemControllerTest {
     @Test
     void creatingNewsRejectsABlankTitle() throws Exception {
         mockMvc.perform(post("/api/v1/news")
-                        .with(jwt())
+                        .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"","description":"Monday 09:00",
@@ -93,5 +95,27 @@ class NewsItemControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verify(newsItemService, never()).getAllNews();
+    }
+
+    @Test
+    void anEmployeeCannotPostNews() throws Exception {
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Staff meeting","description":"Monday 09:00",
+                                 "type":"ANNOUNCEMENT","authorId":7}
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(newsItemService, never()).createNewsItem(any(), any());
+    }
+
+    @Test
+    void anEmployeeCannotDeleteNews() throws Exception {
+        mockMvc.perform(delete("/api/v1/news/1").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(newsItemService, never()).deleteNewsItem(anyInt());
     }
 }

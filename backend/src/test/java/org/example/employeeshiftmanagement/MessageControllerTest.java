@@ -21,12 +21,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/** Messaging is open to every logged-in user, so these use an employee token. */
 @WebMvcTest(value = MessageController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
 @Import({SecurityConfig.class, JwtConfig.class})
 class MessageControllerTest {
@@ -52,7 +52,7 @@ class MessageControllerTest {
     void theInboxLeaksNeitherSenderNorReceiverPassword() throws Exception {
         when(messageService.getInbox(7)).thenReturn(List.of(message()));
 
-        mockMvc.perform(get("/api/v1/messages/inbox/7").with(jwt()))
+        mockMvc.perform(get("/api/v1/messages/inbox/7").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 // Message.fromJson reads sender.id, sender.name and the "read" key
                 .andExpect(jsonPath("$[0].sender.id").value(9))
@@ -67,7 +67,7 @@ class MessageControllerTest {
         when(messageService.sendMessage(eq(9), eq(7), eq("Καλημέρα"))).thenReturn(message());
 
         mockMvc.perform(post("/api/v1/messages")
-                        .with(jwt())
+                        .with(TestTokens.employee())
                         .param("senderId", "9")
                         .param("receiverId", "7")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -81,7 +81,7 @@ class MessageControllerTest {
     @Test
     void sendingAnEmptyMessageIsRejected() throws Exception {
         mockMvc.perform(post("/api/v1/messages")
-                        .with(jwt())
+                        .with(TestTokens.employee())
                         .param("senderId", "9")
                         .param("receiverId", "7")
                         .contentType(MediaType.APPLICATION_JSON)

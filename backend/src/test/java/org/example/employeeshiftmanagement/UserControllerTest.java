@@ -20,11 +20,12 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,8 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @JsonIgnore on its password, so serialising the entity would leak it. They
  * fail the moment someone returns a User from a controller again.
  *
- * Login and registration requests deliberately carry no token: both must stay
- * reachable without one (registration until F1 step 6).
+ * Login requests deliberately carry no token: login must stay reachable
+ * without one. Creating accounts needs a supervisor (F1 step 6).
  */
 @WebMvcTest(value = UserController.class, properties = TestProperties.JWT_SECRET_PROPERTY)
 @Import({SecurityConfig.class, JwtConfig.class})
@@ -67,11 +68,16 @@ class UserControllerTest {
         return user;
     }
 
+    private static final String NEW_ACCOUNT = """
+            {"name":"Test User","email":"test@example.com","password":"secret123"}
+            """;
+
     @Test
     void registrationIgnoresAClientSuppliedRole() throws Exception {
         when(userService.registerNewEmployee(any(User.class))).thenReturn(existingUser());
 
         mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Test User","email":"test@example.com",
@@ -93,10 +99,9 @@ class UserControllerTest {
         when(userService.registerNewEmployee(any(User.class))).thenReturn(existingUser());
 
         mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"name":"Test User","email":"test@example.com","password":"secret123"}
-                                """))
+                        .content(NEW_ACCOUNT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.role").value("EMPLOYEE"));
@@ -105,11 +110,51 @@ class UserControllerTest {
     @Test
     void registrationRejectsABlankEmail() throws Exception {
         mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Test User","email":"","password":"secret123"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void registrationWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(NEW_ACCOUNT))
+                .andExpect(status().isUnauthorized());
+
+        verify(userService, never()).registerNewEmployee(any());
+    }
+
+    @Test
+    void anEmployeeCannotCreateAccounts() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(NEW_ACCOUNT))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).registerNewEmployee(any());
+    }
+
+    @Test
+    void anEmployeeCannotDeleteUsers() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/7").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).deleteUser(anyInt());
+    }
+
+    @Test
+    void anEmployeeCannotSearchUsersByEmail() throws Exception {
+        mockMvc.perform(get("/api/v1/users/search")
+                        .param("email", "test@example.com")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).findUserByEmail(anyString());
     }
 
     @Test
@@ -174,7 +219,8 @@ class UserControllerTest {
     void listingUsersDoesNotLeakPasswords() throws Exception {
         when(userService.findAllUsers()).thenReturn(List.of(existingUser()));
 
-        mockMvc.perform(get("/api/v1/users").with(jwt()))
+        // An employee on purpose: the app opens chats from the employee list.
+        mockMvc.perform(get("/api/v1/users").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].email").value("test@example.com"))
                 .andExpect(jsonPath("$[0].password").doesNotExist());

@@ -9,6 +9,7 @@ import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,6 +25,7 @@ public class NewsItemController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> createNews(@Valid @RequestBody CreateNewsRequest request) {
         try{
             NewsItem item = newsItemService.createNewsItem(toNewsItem(request), request.authorId());
@@ -59,6 +61,7 @@ public class NewsItemController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> update(@PathVariable Integer id, @Valid @RequestBody UpdateNewsRequest request) {
         try{
             NewsItem updated = newsItemService.updateNewsItem(toNewsDetails(request), id);
@@ -69,6 +72,7 @@ public class NewsItemController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> delete(@PathVariable Integer id) {
         try{
             newsItemService.deleteNewsItem(id);

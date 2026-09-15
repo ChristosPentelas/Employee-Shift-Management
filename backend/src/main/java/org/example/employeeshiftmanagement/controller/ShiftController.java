@@ -8,6 +8,7 @@ import org.example.employeeshiftmanagement.service.ShiftService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -24,6 +25,7 @@ public class ShiftController {
     }
 
     @PostMapping("/users/{userId}/shifts")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> createShift(@PathVariable Integer userId,
                                          @Valid @RequestBody ShiftRequest request) {
         try {
@@ -34,7 +36,9 @@ public class ShiftController {
         }
     }
 
+    /** Everyone's shifts. Employees read their own through /users/{userId}/schedule. */
     @GetMapping("/shifts")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<List<ShiftResponse>> getAllShifts(){
         return ResponseEntity.ok(toResponses(shiftService.getAllShifts()));
     }
@@ -49,6 +53,7 @@ public class ShiftController {
     }
 
     @PutMapping("/shifts/{shiftId}")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> updateShift(@PathVariable Integer shiftId,
                                          @Valid @RequestBody ShiftRequest request) {
         try {
@@ -60,6 +65,7 @@ public class ShiftController {
     }
 
     @DeleteMapping("/shifts/{shiftId}")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> deleteShift(@PathVariable Integer shiftId) {
         try {
             shiftService.deleteShift(shiftId);

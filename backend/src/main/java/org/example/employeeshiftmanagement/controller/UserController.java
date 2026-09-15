@@ -11,6 +11,7 @@ import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,7 +28,9 @@ public class UserController {
         this.tokenService = tokenService;
     }
 
+    /** Only supervisors create accounts; nobody signs themselves up (F1 step 6). */
     @PostMapping
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest request) {
         try {
             User savedUser = userService.registerNewEmployee(toNewUser(request));
@@ -56,7 +59,9 @@ public class UserController {
         }
     }
 
+    /** Not used by the app; left open it lets anyone test which emails are registered. */
     @GetMapping("/search")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<UserResponse> getUserByEmail(@RequestParam String email) {
         return userService.findUserByEmail(email)
                 .map(user -> ResponseEntity.ok(UserResponse.from(user)))
@@ -75,6 +80,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{userId}")
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<Void> deleteUser(@PathVariable("userId") Integer id) {
         try{
             userService.deleteUser(id);
