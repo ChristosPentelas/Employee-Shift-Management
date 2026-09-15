@@ -250,3 +250,16 @@ from the token and the client stops sending its own id at all.
 **B4 · LOW · No record of which audit findings are closed** — found 2026-09-10
 Fixed by: the **Audit status** table above, in commit
 `docs(backlog): add the audit status table (B4)`.
+
+**B17 · MEDIUM · Logging out from the dashboard kept the user and the token** — found 2026-09-15
+Where: `HomeScreen`'s logout button only called `Navigator.pop`, and
+`LoginScreen` opened the dashboard with `Navigator.push`.
+Why it mattered: the app showed the login page while `Session` still held the
+user and a valid token, so anyone picking up the phone was still "logged in"
+to the API. The phone's back button did the same from the dashboard. Only the
+profile screen's logout cleared the session (since F1 step 3).
+Relates to: F1, F24.
+Fixed by: `fix(frontend): clear the session when logging out from the dashboard`.
+The button now calls `Session.clear()` and goes to `/login` removing every
+screen; login replaces itself with the dashboard (`pushReplacement`), so back
+cannot reach the login page while logged in.
