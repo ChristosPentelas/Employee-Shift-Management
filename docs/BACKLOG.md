@@ -34,7 +34,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 6 of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `1831b5d`, `feat(backend): restrict supervisor actions to the SUPERVISOR role` | 7 identity from the token: users may only act as themselves (unblocks F7; then `GET /leaves` becomes supervisor-only). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits. A role change takes effect when the user's token expires (up to 8h), accepted 2026-09-15 |
+| F1 | CRITICAL | No authentication on any endpoint | In progress (step 7a of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `1831b5d`, `456bb76`, `feat(backend): take the message sender and reader from the token` | 7b leave/shifts/profile/news ownership · 7c app loads only the employee's own leave · 7d `GET /leaves` supervisor-only (closes F7). Messages are private to sender and receiver, supervisors included; profiles are self-edit only (both decided 2026-09-15). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits. A role change takes effect when the user's token expires (up to 8h), accepted 2026-09-15 |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
@@ -255,6 +255,19 @@ and receiver, but the client only reads the sender's name.
 Fix idea: pick the other person (`senderId == me ? receiver : sender`) for both
 name and id, take the role from the response instead of hard-coding it, and
 group rows by that person.
+
+**B19 · MEDIUM · A leave request with no reason silently fails** — found 2026-09-15
+Where: `leave_requests_screen.dart` labels the field "Λόγος (Προαιρετικά" —
+optional, and missing its closing bracket — but `CreateLeaveRequest.reason` is
+`@NotBlank` on the server. `ApiService.submitLeaveRequest` never looks at the
+response.
+Why it matters: an employee who leaves the reason empty gets a 400 they never
+see. The dialog closes as if the request was filed, and nothing was saved — they
+may simply not show up for work believing their leave is pending.
+Relates to: B1 (validation messages never reach the client), F15.
+Fix idea: decide whether a reason is required. Then make the label and the
+server agree, and have `submitLeaveRequest` check the status and tell the user
+when it failed.
 
 ---
 
