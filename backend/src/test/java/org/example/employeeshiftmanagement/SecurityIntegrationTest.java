@@ -185,6 +185,22 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void aRealTokenOpensOnlyItsOwnSchedule() {
+        User carol = registeredUser("it-carol@example.com", null);
+        User dave = registeredUser("it-dave@example.com", null);
+        String carolToken = login("it-carol@example.com");
+
+        assertEquals(200, schedule(carolToken, carol.getId()).value());
+        assertEquals(403, schedule(carolToken, dave.getId()).value());
+    }
+
+    private HttpStatusCode schedule(String token, Integer userId) {
+        return client().get().uri("/users/" + userId + "/schedule?start=2026-09-01&end=2026-09-30")
+                .header("Authorization", "Bearer " + token)
+                .exchange((req, response) -> response.getStatusCode());
+    }
+
+    @Test
     void invalidLoginInputIsBadRequestNotUnauthorized() {
         // Validation errors are forwarded to /error. If /error required a token,
         // this would come back as 401 and hide the real problem.

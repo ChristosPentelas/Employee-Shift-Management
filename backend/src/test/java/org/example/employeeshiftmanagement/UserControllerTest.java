@@ -22,12 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -232,5 +234,44 @@ class UserControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verify(userService, never()).findAllUsers();
+    }
+
+    private static final String PROFILE_EDIT = """
+            {"name":"New Name","email":"test@example.com","phoneNumber":"1234567890"}
+            """;
+
+    @Test
+    void youCanEditYourOwnProfile() throws Exception {
+        when(userService.updateUser(eq(7), any(User.class))).thenReturn(existingUser());
+
+        mockMvc.perform(put("/api/v1/users/7")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PROFILE_EDIT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void youCannotEditSomeoneElsesProfile() throws Exception {
+        mockMvc.perform(put("/api/v1/users/9")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PROFILE_EDIT))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).updateUser(anyInt(), any());
+    }
+
+    @Test
+    void notEvenASupervisorCanEditAnEmployeesProfile() throws Exception {
+        // The email here is the name its owner logs in with (decided 2026-09-15).
+        mockMvc.perform(put("/api/v1/users/7")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PROFILE_EDIT))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).updateUser(anyInt(), any());
     }
 }

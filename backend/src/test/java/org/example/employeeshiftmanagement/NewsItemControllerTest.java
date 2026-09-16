@@ -61,7 +61,7 @@ class NewsItemControllerTest {
     }
 
     @Test
-    void creatingNewsTakesAFlatAuthorIdAndDoesNotLeakThePassword() throws Exception {
+    void theNewsAuthorIsTheCallerNotTheAuthorIdSent() throws Exception {
         when(newsItemService.createNewsItem(any(NewsItem.class), any())).thenReturn(newsItem());
 
         mockMvc.perform(post("/api/v1/news")
@@ -69,12 +69,13 @@ class NewsItemControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"Staff meeting","description":"Monday 09:00",
-                                 "type":"ANNOUNCEMENT","authorId":7}
+                                 "type":"ANNOUNCEMENT","authorId":99}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.author.password").doesNotExist());
 
-        verify(newsItemService).createNewsItem(any(NewsItem.class), eq(7));
+        // Written by the caller (supervisor 9), not by the authorId 99 in the body.
+        verify(newsItemService).createNewsItem(any(NewsItem.class), eq(9));
     }
 
     @Test

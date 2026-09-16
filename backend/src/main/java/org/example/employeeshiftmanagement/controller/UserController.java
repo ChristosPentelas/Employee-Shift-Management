@@ -69,6 +69,9 @@ public class UserController {
     }
 
     @PutMapping("/{userId}")
+    // Your own profile only - not even a supervisor: this email is the name
+    // its owner logs in with (decided 2026-09-15).
+    @PreAuthorize("#id.toString() == authentication.name")
     public ResponseEntity<?> updateUser(@PathVariable("userId") Integer id,
                                         @Valid @RequestBody UpdateUserRequest request) {
         try{

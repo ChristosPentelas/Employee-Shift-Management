@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
 /**
  * Body of POST /api/v1/news.
  *
- * The author arrives as a flat id, not a nested {"author":{"id":n}} object: the
- * client is naming an existing user, not supplying one. There is also no
+ * No authorId: the author is the supervisor making the request, taken from
+ * their token (F1 step 7b). There is also no
  * createdAt - NewsItem.onCreate() (@PrePersist) stamps that server-side, so a
  * client-sent value was only ever ignored.
  */
@@ -23,9 +23,6 @@ public record CreateNewsRequest(
 
         @NotNull(message = "Type is required")
         NewsType type,
-
-        @NotNull(message = "Author is required")
-        Integer authorId,
 
         LocalDateTime deadline,
         Integer targetValue

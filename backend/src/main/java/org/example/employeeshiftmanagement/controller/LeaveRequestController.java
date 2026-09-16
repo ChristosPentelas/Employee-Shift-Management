@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement.controller;
 
 import jakarta.validation.Valid;
+import org.example.employeeshiftmanagement.config.CurrentUser;
 import org.example.employeeshiftmanagement.dto.CreateLeaveRequest;
 import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
@@ -9,6 +10,7 @@ import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,10 +28,13 @@ public class LeaveRequestController {
     //endpoints for EMPLOYEES
 
     @PostMapping
-    public ResponseEntity<?> createLeave(@Valid @RequestBody CreateLeaveRequest request) {
+    public ResponseEntity<?> createLeave(Authentication authentication,
+                                        @Valid @RequestBody CreateLeaveRequest request) {
         try{
-            LeaveRequest newRequest =
-                    leaveRequestService.createLeaveRequest(request.userId(), toLeaveDetails(request));
+            // Always filed for the caller: an employee cannot file leave for a
+            // colleague, and a client-sent userId is no longer read (F1 step 7b).
+            LeaveRequest newRequest = leaveRequestService.createLeaveRequest(
+                    CurrentUser.id(authentication), toLeaveDetails(request));
             return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
         }catch (RuntimeException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
@@ -38,6 +43,7 @@ public class LeaveRequestController {
 
 
     @GetMapping("/users/{userId}/leaves")
+    @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<?> getLeavesByUser(@PathVariable Integer userId) {
         try{
             return new ResponseEntity<>(toResponses(leaveRequestService.getLeavesByUser(userId)), HttpStatus.OK);

@@ -44,6 +44,7 @@ public class ShiftController {
     }
 
     @GetMapping("/shifts/users/{userId}")
+    @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<?> getShiftsByUser(@PathVariable Integer userId) {
         try {
             return ResponseEntity.ok(toResponses(shiftService.getShiftsByEmployee(userId)));
@@ -76,6 +77,7 @@ public class ShiftController {
     }
 
     @GetMapping("/users/{userId}/schedule")
+    @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<?> getSchedule(@PathVariable Integer userId,
                                          //We use RequestParam to filter by date, as defined by REST standards
                                          @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate start,

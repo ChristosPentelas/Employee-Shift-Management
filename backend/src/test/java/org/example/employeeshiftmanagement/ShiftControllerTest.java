@@ -124,4 +124,56 @@ class ShiftControllerTest {
 
         verify(shiftService, never()).createShift(anyInt(), any());
     }
+
+    @Test
+    void anEmployeeCanReadTheirOwnShifts() throws Exception {
+        when(shiftService.getShiftsByEmployee(7)).thenReturn(List.of(shift()));
+
+        mockMvc.perform(get("/api/v1/shifts/users/7").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].position").value("Ταμείο"));
+    }
+
+    @Test
+    void anEmployeeCannotReadSomeoneElsesShifts() throws Exception {
+        mockMvc.perform(get("/api/v1/shifts/users/9").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).getShiftsByEmployee(anyInt());
+    }
+
+    @Test
+    void anEmployeeCanReadTheirOwnSchedule() throws Exception {
+        when(shiftService.getSchedule(eq(7), any(LocalDate.class), any(LocalDate.class)))
+                .thenReturn(List.of(shift()));
+
+        mockMvc.perform(get("/api/v1/users/7/schedule")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void anEmployeeCannotReadSomeoneElsesSchedule() throws Exception {
+        mockMvc.perform(get("/api/v1/users/9/schedule")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).getSchedule(anyInt(), any(), any());
+    }
+
+    @Test
+    void aSupervisorCanReadAnEmployeesSchedule() throws Exception {
+        when(shiftService.getSchedule(eq(7), any(LocalDate.class), any(LocalDate.class)))
+                .thenReturn(List.of(shift()));
+
+        mockMvc.perform(get("/api/v1/users/7/schedule")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk());
+    }
 }

@@ -68,7 +68,7 @@ class LeaveRequestControllerTest {
     }
 
     @Test
-    void creatingALeaveTakesAFlatUserIdAndCannotPresetItsOwnStatus() throws Exception {
+    void creatingALeaveIsFiledForTheCallerNotTheUserIdSent() throws Exception {
         when(leaveRequestService.createLeaveRequest(eq(7), any(LeaveRequest.class)))
                 .thenReturn(leaveRequest());
 
@@ -76,12 +76,13 @@ class LeaveRequestControllerTest {
                         .with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":7,"startDate":"2026-10-01","endDate":"2026-10-05",
+                                {"userId":99,"startDate":"2026-10-01","endDate":"2026-10-05",
                                  "reason":"Surgery","status":"APPROVED","id":99}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.user.password").doesNotExist());
 
+        // Filed for the caller (7), although the body named user 99 (F1 step 7b).
         var captor = forClass(LeaveRequest.class);
         verify(leaveRequestService).createLeaveRequest(eq(7), captor.capture());
 
@@ -94,12 +95,12 @@ class LeaveRequestControllerTest {
     }
 
     @Test
-    void creatingALeaveRejectsAMissingEmployee() throws Exception {
+    void creatingALeaveRejectsAMissingStartDate() throws Exception {
         mockMvc.perform(post("/api/v1/leaves")
                         .with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"startDate":"2026-10-01","endDate":"2026-10-05","reason":"Surgery"}
+                                {"endDate":"2026-10-05","reason":"Surgery"}
                                 """))
                 .andExpect(status().isBadRequest());
     }
@@ -134,5 +135,31 @@ class LeaveRequestControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(leaveRequestService, never()).updateLeaveRequest(anyInt(), any());
+    }
+
+    @Test
+    void anEmployeeCanReadTheirOwnLeaveList() throws Exception {
+        when(leaveRequestService.getLeavesByUser(7)).thenReturn(List.of(leaveRequest()));
+
+        mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("PENDING"));
+    }
+
+    @Test
+    void anEmployeeCannotReadSomeoneElsesLeaveList() throws Exception {
+        // Leave reasons are medical and family information (F7).
+        mockMvc.perform(get("/api/v1/leaves/users/9/leaves").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(leaveRequestService, never()).getLeavesByUser(anyInt());
+    }
+
+    @Test
+    void aSupervisorCanReadAnEmployeesLeaveList() throws Exception {
+        when(leaveRequestService.getLeavesByUser(7)).thenReturn(List.of(leaveRequest()));
+
+        mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.supervisor()))
+                .andExpect(status().isOk());
     }
 }

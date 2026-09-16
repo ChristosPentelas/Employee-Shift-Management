@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement.controller;
 
 import jakarta.validation.Valid;
+import org.example.employeeshiftmanagement.config.CurrentUser;
 import org.example.employeeshiftmanagement.dto.CreateNewsRequest;
 import org.example.employeeshiftmanagement.dto.NewsItemResponse;
 import org.example.employeeshiftmanagement.dto.UpdateNewsRequest;
@@ -10,6 +11,7 @@ import org.example.employeeshiftmanagement.service.NewsItemService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,9 +28,12 @@ public class NewsItemController {
 
     @PostMapping
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> createNews(@Valid @RequestBody CreateNewsRequest request) {
+    public ResponseEntity<?> createNews(Authentication authentication,
+                                       @Valid @RequestBody CreateNewsRequest request) {
         try{
-            NewsItem item = newsItemService.createNewsItem(toNewsItem(request), request.authorId());
+            // The author is the supervisor posting it, not an id they send.
+            NewsItem item = newsItemService.createNewsItem(
+                    toNewsItem(request), CurrentUser.id(authentication));
             return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.CREATED);
         }catch(Exception e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
