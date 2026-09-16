@@ -34,13 +34,13 @@ commit mentions means nothing has changed it, not that its code was re-read.
 
 | ID | Severity | Finding | Status | Fixed by | What's left |
 |---|---|---|---|---|---|
-| F1 | CRITICAL | No authentication on any endpoint | In progress (step 7c of 8) | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `1831b5d`, `456bb76`, `c2ba0a8`, `1f19a2e`, `feat(frontend): load only the employee's own leave requests` | 7d `GET /leaves` supervisor-only (closes F7). Messages are private to sender and receiver, supervisors included; profiles are self-edit only (both decided 2026-09-15). Steps 5 and 6 swapped on 2026-09-14 so registration never breaks between commits. A role change takes effect when the user's token expires (up to 8h), accepted 2026-09-15 |
+| F1 | CRITICAL | No authentication on any endpoint | Done | `f6e2b77`, `b251ea5`, `fe82165`, `26cf001`, `13942a2`, `1831b5d`, `456bb76`, `c2ba0a8`, `1f19a2e`, `95d9164`, `feat(backend): restrict the full leave list to supervisors` | Accepted limits: a role change takes effect when the user's token expires (up to 8h); tokens cannot be revoked early. The app talks HTTP, not HTTPS (B14) |
 | F2 | CRITICAL | Passwords stored and compared in plaintext | Done | `f0aa251` | Local test users must be re-registered |
 | F3 | CRITICAL | Password returned in API responses | Done | `a97a5b0`, `c39d4c8` | |
 | F4 | CRITICAL | DB credentials committed to git | Done, one step left | `1b885a6`, `fc2af8c`, `2a1a455` | Owner: check the password wasn't reused elsewhere (`F4-REMEDIATION.md`) |
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
-| F7 | HIGH | Leave-request filter is cosmetic | Partial | `feat(frontend): load only the employee's own leave requests` | The app now asks for `/leaves/users/{me}/leaves`, so other people's reasons no longer reach the phone. `GET /leaves` is still open to employees until F1 step 7d closes it |
+| F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Open | | |
 | F9 | HIGH | No pagination | Open | | |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 10 done · 5 partial · 1 in progress · 14 open.
+Totals: 12 done · 4 partial · 14 open.
 
 ---
 
