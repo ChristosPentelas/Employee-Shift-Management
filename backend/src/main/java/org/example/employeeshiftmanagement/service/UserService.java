@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement.service;
 import jakarta.transaction.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
 import org.example.employeeshiftmanagement.repository.MessageRepository;
@@ -58,7 +59,7 @@ public class UserService {
 
     public User findUserById(Integer id) {
         return userRepository.findById(id).
-                orElseThrow(() -> new RuntimeException("User not found"));
+                orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
     /**

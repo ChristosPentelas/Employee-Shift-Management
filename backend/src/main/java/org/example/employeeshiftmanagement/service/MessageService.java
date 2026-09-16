@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Message;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.MessageRepository;
@@ -80,6 +81,6 @@ public class MessageService {
 
     private Message findMessage(Integer messageId) {
         return messageRepository.findById(messageId)
-                .orElseThrow(() -> new RuntimeException("Message not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Message not found"));
     }
 }

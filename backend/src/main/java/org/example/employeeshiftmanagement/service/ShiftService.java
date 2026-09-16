@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.ShiftRepository;
@@ -35,7 +36,7 @@ public class ShiftService {
 
     public Shift updateShift(Integer shiftId,Shift shiftDetails){
         Shift existingShift = shiftRepository.findById(shiftId)
-                .orElseThrow(()-> new RuntimeException("Shift not found with id "+shiftId));
+                .orElseThrow(()-> new ResourceNotFoundException("Shift not found with id "+shiftId));
 
         existingShift.setDate(shiftDetails.getDate());
         existingShift.setStartTime(shiftDetails.getStartTime());
@@ -47,7 +48,7 @@ public class ShiftService {
 
     public void deleteShift(Integer shiftId){
         if(!shiftRepository.existsById(shiftId)){
-            throw new RuntimeException("Shift not found with id "+shiftId);
+            throw new ResourceNotFoundException("Shift not found with id "+shiftId);
         }
         shiftRepository.deleteById(shiftId);
     }

@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.model.User;
@@ -42,12 +43,12 @@ public class NewsItemService {
 
     public NewsItem getNewsItemById(Integer id) {
         return newsItemRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("News item not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
     }
 
     public NewsItem updateNewsItem(NewsItem details,Integer id) {
         NewsItem newsItem = newsItemRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("News item not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
         newsItem.setTitle(details.getTitle());
         newsItem.setDescription(details.getDescription());
         newsItem.setDeadline(details.getDeadline());
@@ -58,7 +59,7 @@ public class NewsItemService {
 
     public void deleteNewsItem(Integer id) {
         if(!newsItemRepository.existsById(id)) {
-            throw new RuntimeException("News item not found");
+            throw new ResourceNotFoundException("News item not found");
         }
         newsItemRepository.deleteById(id);
     }

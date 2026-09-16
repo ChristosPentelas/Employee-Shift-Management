@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.User;
@@ -49,7 +50,7 @@ public class LeaveRequestService {
 
     public LeaveRequest updateLeaveRequest(Integer requestId, LeaveStatus newStatus) {
         LeaveRequest request = leaveRequestRepository.findById(requestId)
-                .orElseThrow(() -> new RuntimeException("Leave Request Not Found with Id: " + requestId));
+                .orElseThrow(() -> new ResourceNotFoundException("Leave Request Not Found with Id: " + requestId));
         request.setStatus(newStatus);
         return leaveRequestRepository.save(request);
     }

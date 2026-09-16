@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.Test;
@@ -75,7 +76,8 @@ public class UserServiceTest {
         assertDoesNotThrow(() -> userService.deleteUser(savedUser.getId()));
 
         //Verify deletion
-        assertThrows(RuntimeException.class, () -> userService.findUserById(savedUser.getId()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> userService.findUserById(savedUser.getId()));
     }
 
     @Test
