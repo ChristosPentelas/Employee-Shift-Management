@@ -201,6 +201,21 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void onlyASupervisorsRealTokenReadsEveryonesLeave() {
+        registeredUser("it-leave-employee@example.com", null);
+        registeredUser("it-leave-boss@example.com", "SUPERVISOR");
+
+        assertEquals(403, leaves(login("it-leave-employee@example.com")).value());
+        assertEquals(200, leaves(login("it-leave-boss@example.com")).value());
+    }
+
+    private HttpStatusCode leaves(String token) {
+        return client().get().uri("/leaves")
+                .header("Authorization", "Bearer " + token)
+                .exchange((req, response) -> response.getStatusCode());
+    }
+
+    @Test
     void invalidLoginInputIsBadRequestNotUnauthorized() {
         // Validation errors are forwarded to /error. If /error required a token,
         // this would come back as 401 and hide the real problem.

@@ -55,11 +55,11 @@ public class LeaveRequestController {
 
     //endpoints for SUPERVISOR
 
-    // Meant for supervisors, but NOT restricted yet: the app's leave screen
-    // loads this list for employees too and filters it on the phone (F7).
-    // F1 step 7 moves employees to their own list; then this gets
-    // hasRole('SUPERVISOR') like the two below.
+    // Everyone's requests, reasons included - health and family information.
+    // Employees read their own through /leaves/users/{userId}/leaves; the app
+    // stopped calling this one in F1 step 7c, which is what let it close (F7).
     @GetMapping
+    @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<List<LeaveRequestResponse>> getAllLeaves() {
         return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests()));
     }

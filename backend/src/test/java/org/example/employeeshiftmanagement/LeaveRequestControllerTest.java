@@ -57,9 +57,7 @@ class LeaveRequestControllerTest {
     void theLeaveListDoesNotLeakPasswords() throws Exception {
         when(leaveRequestService.getAllLeaveRequests()).thenReturn(List.of(leaveRequest()));
 
-        // Still reachable by employees until F1 step 7 (see F7): the app's
-        // leave screen loads this list for everyone.
-        mockMvc.perform(get("/api/v1/leaves").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/leaves").with(TestTokens.supervisor()))
                 .andExpect(status().isOk())
                 // LeaveRequest.fromJson on the Flutter side reads json['user']
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
@@ -161,5 +159,15 @@ class LeaveRequestControllerTest {
 
         mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.supervisor()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void anEmployeeCannotReadEveryonesLeave() throws Exception {
+        // The F7 fix: leave reasons are health and family information, and an
+        // employee has no business receiving colleagues' requests at all.
+        mockMvc.perform(get("/api/v1/leaves").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(leaveRequestService, never()).getAllLeaveRequests();
     }
 }
