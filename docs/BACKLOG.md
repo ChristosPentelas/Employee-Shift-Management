@@ -47,15 +47,15 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
-| F14 | HIGH | Every exception becomes a 404 | Open | | No `@ControllerAdvice` yet. Fold in B1 and B2 |
+| F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e` | Required fields done. Missing: end after start (leave dates, shift times); max length on message content |
-| F16 | MEDIUM | Inconsistent API shapes | Open | | |
+| F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
-| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e` | 11 of 32 endpoints tested (the audit counted 25) |
+| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a` | 12 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears |
@@ -70,26 +70,6 @@ Totals: 12 done · 4 partial · 14 open.
 ---
 
 ## Open
-
-**B1 · MEDIUM · Validation messages never reach the client** — found 2026-09-10
-Where: every endpoint with `@Valid` (users, leaves, news, shifts, messages).
-The DTOs carry messages like `"Email is required"`, but the project has no
-`@ControllerAdvice` and no `server.error.include-binding-errors` setting, and
-Spring Boot's default is to leave them out. The Flutter app gets a bare 400
-and cannot tell the user which field is wrong. The messages are visible in
-the test logs, so the validation itself works.
-Relates to: F14 (no `@ControllerAdvice`) and the unfinished half of F15.
-Fix idea: one `@RestControllerAdvice` that turns
-`MethodArgumentNotValidException` into a JSON body of field → message. Doing it
-together with F14 means there is one error format for the whole API.
-
-**B2 · LOW · Error bodies mix Greek and English** — found 2026-09-10
-Where: `UserController.login` returns `"Λάθος email ή password"`; validation
-messages and other error strings are English.
-Why it matters: the app shows whichever language the server picked, so the UI
-switches language depending on which error happened.
-Fix idea: settle the language in B1's error format. If the app needs Greek,
-translate in Flutter from a stable error code, not from server text.
 
 **B3 · LOW · Mockito attaches itself at runtime, which future JDKs will block** — found 2026-09-10
 Where: every `mvnw test` run prints "Mockito is currently self-attaching to
@@ -269,6 +249,45 @@ Fix idea: decide whether a reason is required. Then make the label and the
 server agree, and have `submitLeaveRequest` check the status and tell the user
 when it failed.
 
+**B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
+Where: `UserService.registerNewEmployee` and `updateUser` throw
+`IllegalStateException`; `ApiExceptionHandler` maps that type to 400.
+Why it matters: 400 says "your request was malformed", but the request was
+perfectly well formed - it lost a race with an email that already exists. 409
+is the code a client can act on differently (offer to log in instead of
+re-typing the form). Mapping a JDK exception type to a status is also loose:
+any `IllegalStateException` from a library would be reported as the caller's
+fault.
+Relates to: F14 (decided during it, deliberately out of scope), F16.
+Fix idea: a `DuplicateEmailException` mapped to 409, and move the BCrypt
+72-byte limit to a `@Size` on the DTO so it fails as validation (F15) rather
+than as an `IllegalStateException`. Then `IllegalStateException` can be dropped
+from the advice entirely and fall into the 500 catch-all, where it belongs.
+
+**B21 · LOW · `DELETE /messages/{id}` returns a string where every other delete returns 204** — found 2026-09-16
+Where: `MessageController.deleteMessage` returns `ResponseEntity.ok("Message
+deleted successfully")`; `/users/{id}`, `/shifts/{id}` and `/news/{id}` all
+return 204 with no body.
+Why it matters: the client needs a special case for this one route, and the
+string is user-facing copy in English sitting in a controller - the same thing
+B2 fixed for login. The Flutter app has no `deleteMessage` at all (nothing in
+`ApiService` calls `DELETE /messages/{id}`), so changing it breaks nothing
+today.
+Relates to: F16 (it is one of that finding's bullets).
+Fix idea: return 204 like the others; delete the string.
+
+**B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
+Where: the `ResourceNotFoundException` messages - `"User not found"`,
+`"News item not found"`, `"Message not found"`, `"Shift not found with id 3"`,
+`"Leave Request Not Found with Id: 3"`.
+Why it matters: since F14 these are the `detail` field of the error body, so
+they are part of the API, not internal text. Three casings, two formats, and
+only some include the id.
+Relates to: F14.
+Fix idea: settle on one shape - `"<Resource> not found: <id>"` - and apply it
+at all eight throw sites. Cosmetic, so it was kept out of the F14 commits to
+leave those mechanical.
+
 ---
 
 ## Done
@@ -276,6 +295,23 @@ when it failed.
 **B4 · LOW · No record of which audit findings are closed** — found 2026-09-10
 Fixed by: the **Audit status** table above, in commit
 `docs(backlog): add the audit status table (B4)`.
+
+**B1 · MEDIUM · Validation messages never reach the client** — found 2026-09-10
+Where: every endpoint with `@Valid`. The DTOs carried messages like
+`"Email is required"`, but with no `@ControllerAdvice` and Spring Boot's
+`server.error.include-binding-errors=never`, the app got a bare 400 and could
+not tell the user which field was wrong.
+Fixed by: `071e61f`, with F14. `ApiExceptionHandler.handleMethodArgumentNotValid`
+adds an `errors` property to the ProblemDetail body - field name to message.
+
+**B2 · LOW · Error bodies mix Greek and English** — found 2026-09-10
+Where: `UserController.login` returned `"Λάθος email ή password"` while every
+other error string was English, so the UI's language depended on which error
+happened.
+Fixed by: `e5f9e0a`, with F14. The server answers `"Invalid email or password"`;
+the app was already choosing its own Greek text from the 401 status
+(`login_screen.dart`), so nothing changed for the user. The rule settled here:
+the server sends a status and English detail, the client owns the wording.
 
 **B17 · MEDIUM · Logging out from the dashboard kept the user and the token** — found 2026-09-15
 Where: `HomeScreen`'s logout button only called `Navigator.pop`, and
