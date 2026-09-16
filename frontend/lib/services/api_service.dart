@@ -120,7 +120,7 @@ class ApiService {
           "title": item.title,
           "description": item.description,
           "type": item.type,
-          "authorId": Session.currentUser!.id,
+          // No authorId: the server records the supervisor posting it (F1 step 7b).
           "deadline": item.deadline?.toIso8601String(),
           "targetValue": item.targetValue,
         }
@@ -158,12 +158,25 @@ class ApiService {
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }
 
+  /// Only the logged-in employee's own requests. Supervisors use
+  /// getAllLeaveRequests; from F1 step 7d an employee may not call that.
+  Future<List<LeaveRequest>> getMyLeaveRequests() async {
+    final userId = Session.currentUser!.id;
+    final response = await _client.get(Uri.parse("$baseUrl/leaves/users/$userId/leaves"));
+
+    if (response.statusCode == 200) {
+      List body = jsonDecode(response.body);
+      return body.map((item) => LeaveRequest.fromJson(item)).toList();
+    }
+    throw Exception("Σφάλμα φόρτωσης αδειών");
+  }
+
   Future<void> submitLeaveRequest(LeaveRequest leave) async {
     await _client.post(
       Uri.parse("$baseUrl/leaves"),
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({
-        "userId": Session.currentUser!.id,
+        // No userId: the server files it for whoever the token says we are.
         "startDate": leave.startDate.toIso8601String(),
         "endDate": leave.endDate.toIso8601String(),
         "reason": leave.reason
@@ -282,10 +295,9 @@ class ApiService {
   }
 
   Future<bool> sendMessage(int receiverId, String content) async {
-    final senderId = Session.currentUser!.id;
-
+    // No senderId: the server takes the sender from the token (F1 step 7a).
     final response = await _client.post(
-      Uri.parse("$baseUrl/messages?senderId=$senderId&receiverId=$receiverId"),
+      Uri.parse("$baseUrl/messages?receiverId=$receiverId"),
       headers: {"Content-Type" : "application/json"},
       body: jsonEncode({"content" : content}),
     );

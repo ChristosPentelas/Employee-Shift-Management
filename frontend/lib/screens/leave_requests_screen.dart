@@ -4,19 +4,33 @@ import '../models/leave_request_model.dart';
 import '../utils/session.dart';
 
 class LeaveRequestsScreen extends StatefulWidget {
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const LeaveRequestsScreen({this.apiService});
+
   @override
   _LeaveRequestsScreenState createState() => _LeaveRequestsScreenState();
 }
 
 class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
   late Future<List<LeaveRequest>> _leavesFuture;
+
+  /// A supervisor reviews everyone's requests; an employee loads only their
+  /// own from the server, instead of downloading everyone's and hiding the
+  /// rest on the phone (F7).
+  Future<List<LeaveRequest>> _loadLeaves() {
+    return Session.isSupervisor()
+        ? _apiService.getAllLeaveRequests()
+        : _apiService.getMyLeaveRequests();
+  }
 
   @override
   void initState() {
     super.initState();
     setState(() {
-      _leavesFuture = _apiService.getAllLeaveRequests();
+      _leavesFuture = _loadLeaves();
     });
   }
 
@@ -38,12 +52,9 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
             return Center(child: Text("Δεν υπάρχουν αιτήματα."));
           }
 
+          // No filtering here any more: an employee is sent only their own
+          // requests, so other people's reasons never reach the phone (F7).
           List<LeaveRequest> list = snapshot.data!;
-          if (!Session.isSupervisor()) {
-            list = list.where((l) {
-              return l.employee.id.toString() == Session.currentUser!.id.toString();
-            }).toList();
-          }
 
           return ListView.builder(
             itemCount: list.length,
@@ -123,7 +134,7 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
     try{
       await _apiService.updateLeaveStatus(id, status);
       setState(() {
-        _leavesFuture = _apiService.getAllLeaveRequests();
+        _leavesFuture = _loadLeaves();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
@@ -180,7 +191,7 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
                 await _apiService.submitLeaveRequest(newRequest);
                 Navigator.pop(context);
                 setState(() {
-                  _leavesFuture = _apiService.getAllLeaveRequests();
+                  _leavesFuture = _loadLeaves();
                 });
             },
               child: Text("Υποβολή"),
