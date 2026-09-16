@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -17,7 +18,9 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
@@ -25,6 +28,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Security checked over real HTTP, against a real server and a real database.
@@ -49,6 +53,10 @@ class SecurityIntegrationTest {
 
     @Autowired
     private UserService userService;
+
+    /** The same mapper the server writes its error bodies with. */
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private RestClient client() {
         return RestClient.builder()
@@ -99,6 +107,22 @@ class SecurityIntegrationTest {
         String token = (String) response.get("token");
         assertNotNull(token, "login must return a token");
         return token;
+    }
+
+    /** Status, headers and body of a failed request - none of which RestClient
+     * hands back once it has turned a 4xx into an exception. */
+    private record Answer(HttpStatusCode status, HttpHeaders headers, String body) {
+    }
+
+    private Answer getShiftsAnswer(String token) {
+        RestClient.RequestHeadersSpec<?> request = client().get().uri("/shifts");
+        if (token != null) {
+            request = request.header("Authorization", "Bearer " + token);
+        }
+        return request.exchange((req, response) -> new Answer(
+                response.getStatusCode(),
+                response.getHeaders(),
+                new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)));
     }
 
     @Test
@@ -227,5 +251,41 @@ class SecurityIntegrationTest {
                 .exchange((req, response) -> response.getStatusCode());
 
         assertEquals(400, status.value());
+    }
+
+    // 401 and 403 are produced by the security filter chain, which runs before
+    // the DispatcherServlet - so ApiExceptionHandler never sees them. They used
+    // to come back with an empty body, the only two answers in the API that did.
+
+    @Test
+    void anUnauthorizedAnswerCarriesTheStandardErrorBody() {
+        Answer answer = getShiftsAnswer(null);
+
+        assertEquals(401, answer.status().value());
+        assertEquals(MediaType.APPLICATION_PROBLEM_JSON, answer.headers().getContentType());
+
+        Map<?, ?> problem = objectMapper.readValue(answer.body(), Map.class);
+        assertEquals(401, problem.get("status"));
+        assertEquals("/api/v1/shifts", problem.get("instance"));
+        assertNotNull(problem.get("detail"));
+
+        // Delegating to Spring Security's default rather than replacing it is
+        // what keeps this header: it tells the client how to authenticate.
+        assertTrue(answer.headers().containsHeader(HttpHeaders.WWW_AUTHENTICATE),
+                "a 401 must still say how to authenticate");
+    }
+
+    @Test
+    void aForbiddenAnswerCarriesTheStandardErrorBody() {
+        registeredUser("it-403-body@example.com", null);
+
+        Answer answer = getShiftsAnswer(login("it-403-body@example.com"));
+
+        assertEquals(403, answer.status().value());
+        assertEquals(MediaType.APPLICATION_PROBLEM_JSON, answer.headers().getContentType());
+
+        Map<?, ?> problem = objectMapper.readValue(answer.body(), Map.class);
+        assertEquals(403, problem.get("status"));
+        assertEquals("/api/v1/shifts", problem.get("instance"));
     }
 }
