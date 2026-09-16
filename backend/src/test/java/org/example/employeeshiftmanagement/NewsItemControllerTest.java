@@ -119,4 +119,17 @@ class NewsItemControllerTest {
 
         verify(newsItemService, never()).deleteNewsItem(anyInt());
     }
+
+    @Test
+    void aBugInsideTheServerIsAServerErrorAndLeaksNothing() throws Exception {
+        when(newsItemService.getAllNews())
+                .thenThrow(new NullPointerException("author is null in news_items"));
+
+        mockMvc.perform(get("/api/v1/news").with(TestTokens.employee()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                // The exception text names a table; it belongs in the log, not
+                // in an answer sent to a phone (F14).
+                .andExpect(jsonPath("$.detail").value("Something went wrong"));
+    }
 }

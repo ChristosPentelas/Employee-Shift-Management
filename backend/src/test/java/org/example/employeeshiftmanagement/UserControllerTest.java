@@ -121,6 +121,27 @@ class UserControllerTest {
     }
 
     @Test
+    void aRejectedRequestSaysWhichFieldIsWrong() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"","email":"not-an-email","password":"x"}
+                                """))
+                .andExpect(status().isBadRequest())
+                // The DTO has carried these messages all along; before
+                // ApiExceptionHandler, Spring Boot left them out of the body and
+                // the app could only say "something was wrong" (B1).
+                .andExpect(jsonPath("$.errors.name").value("Name is required"))
+                .andExpect(jsonPath("$.errors.email").value("Email is not valid"))
+                .andExpect(jsonPath("$.errors.password")
+                        .value("Password must be at least 4 characters"))
+                .andExpect(jsonPath("$.status").value(400));
+
+        verify(userService, never()).registerNewEmployee(any());
+    }
+
+    @Test
     void registrationWithoutATokenIsUnauthorized() throws Exception {
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
