@@ -8,7 +8,6 @@ import org.example.employeeshiftmanagement.model.Message;
 import org.example.employeeshiftmanagement.service.MessageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -36,15 +35,11 @@ public class MessageController {
      * are unaffected, because Spring ignores query parameters it does not map.
      */
     @PostMapping
-    public ResponseEntity<?> sendMessage(Authentication authentication,
+    public ResponseEntity<MessageResponse> sendMessage(Authentication authentication,
                                          @RequestParam Integer receiverId,
                                          @Valid @RequestBody MessageRequest request) {
-        try{
-            Message message = messageService.sendMessage(CurrentUser.id(authentication), receiverId, request.content());
-            return new ResponseEntity<>(MessageResponse.from(message), HttpStatus.CREATED);
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+        Message message = messageService.sendMessage(CurrentUser.id(authentication), receiverId, request.content());
+        return new ResponseEntity<>(MessageResponse.from(message), HttpStatus.CREATED);
     }
 
     /** Only a chat you are part of. */
@@ -73,29 +68,18 @@ public class MessageController {
     }
 
     @PutMapping("/{messageId}/read")
-    public ResponseEntity<?> markRead(Authentication authentication, @PathVariable Integer messageId) {
-        try{
-            return ResponseEntity.ok(MessageResponse.from(
-                    messageService.markAsRead(messageId, CurrentUser.id(authentication))));
-        }catch (AccessDeniedException e){
-            // Let Spring Security answer 403. The catch-all below would turn a
-            // refusal into "404 not found" and hide it (see F14).
-            throw e;
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<MessageResponse> markRead(Authentication authentication,
+                                                    @PathVariable Integer messageId) {
+        return ResponseEntity.ok(MessageResponse.from(
+                messageService.markAsRead(messageId, CurrentUser.id(authentication))));
     }
 
     @DeleteMapping("/{messageId}")
-    public ResponseEntity<?> deleteMessage(Authentication authentication, @PathVariable Integer messageId) {
-        try{
-            messageService.deleteMessage(messageId, CurrentUser.id(authentication));
-            return ResponseEntity.ok("Message deleted successfully");
-        }catch (AccessDeniedException e){
-            throw e; // 403, not 404 - see markRead
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<String> deleteMessage(Authentication authentication,
+                                                @PathVariable Integer messageId) {
+        messageService.deleteMessage(messageId, CurrentUser.id(authentication));
+        // A plain string where every other delete answers 204 - see B21.
+        return ResponseEntity.ok("Message deleted successfully");
     }
 
     private static List<MessageResponse> toResponses(List<Message> messages) {

@@ -6,10 +6,12 @@ import org.example.employeeshiftmanagement.dto.LoginResponse;
 import org.example.employeeshiftmanagement.dto.RegisterRequest;
 import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
 import org.example.employeeshiftmanagement.dto.UserResponse;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -31,13 +33,9 @@ public class UserController {
     /** Only supervisors create accounts; nobody signs themselves up (F1 step 6). */
     @PostMapping
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest request) {
-        try {
-            User savedUser = userService.registerNewEmployee(toNewUser(request));
-            return new ResponseEntity<>(UserResponse.from(savedUser), HttpStatus.CREATED);
-        }catch (IllegalStateException e){
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<UserResponse> registerUser(@Valid @RequestBody RegisterRequest request) {
+        User savedUser = userService.registerNewEmployee(toNewUser(request));
+        return new ResponseEntity<>(UserResponse.from(savedUser), HttpStatus.CREATED);
     }
 
     @GetMapping
@@ -51,46 +49,33 @@ public class UserController {
 
     @GetMapping("/{userId}")
     public ResponseEntity<UserResponse> getUserById(@PathVariable("userId") Integer id) {
-        try {
-            User user = userService.findUserById(id);
-            return ResponseEntity.ok(UserResponse.from(user));
-        }catch (RuntimeException e){
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
+        return ResponseEntity.ok(UserResponse.from(userService.findUserById(id)));
     }
 
     /** Not used by the app; left open it lets anyone test which emails are registered. */
     @GetMapping("/search")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<UserResponse> getUserByEmail(@RequestParam String email) {
-        return userService.findUserByEmail(email)
-                .map(user -> ResponseEntity.ok(UserResponse.from(user)))
-                .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
+        User user = userService.findUserByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return ResponseEntity.ok(UserResponse.from(user));
     }
 
     @PutMapping("/{userId}")
     // Your own profile only - not even a supervisor: this email is the name
     // its owner logs in with (decided 2026-09-15).
     @PreAuthorize("#id.toString() == authentication.name")
-    public ResponseEntity<?> updateUser(@PathVariable("userId") Integer id,
-                                        @Valid @RequestBody UpdateUserRequest request) {
-        try{
-            User updatedUser = userService.updateUser(id, toUserDetails(request));
-            return ResponseEntity.ok(UserResponse.from(updatedUser));
-        }catch (Exception e){
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<UserResponse> updateUser(@PathVariable("userId") Integer id,
+                                                   @Valid @RequestBody UpdateUserRequest request) {
+        User updatedUser = userService.updateUser(id, toUserDetails(request));
+        return ResponseEntity.ok(UserResponse.from(updatedUser));
     }
 
     @DeleteMapping("/{userId}")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<Void> deleteUser(@PathVariable("userId") Integer id) {
-        try{
-            userService.deleteUser(id);
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-        }catch (RuntimeException e){
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        userService.deleteUser(id);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
     @PostMapping("/login")
@@ -101,7 +86,12 @@ public class UserController {
             String token = tokenService.issueToken(user.get());
             return ResponseEntity.ok(LoginResponse.from(user.get(), token));
         }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Λάθος email ή password");
+        // English, in the standard error shape. The app picks the Greek text it
+        // shows from the 401 itself (login_screen.dart), so user-facing wording
+        // stays in the UI and a second client is not stuck with our language (B2).
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ProblemDetail.forStatusAndDetail(
+                        HttpStatus.UNAUTHORIZED, "Invalid email or password"));
     }
 
     /**

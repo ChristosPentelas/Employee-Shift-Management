@@ -26,14 +26,10 @@ public class ShiftController {
 
     @PostMapping("/users/{userId}/shifts")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> createShift(@PathVariable Integer userId,
-                                         @Valid @RequestBody ShiftRequest request) {
-        try {
-            Shift newShift = shiftService.createShift(userId, toShift(request));
-            return new ResponseEntity<>(ShiftResponse.from(newShift), HttpStatus.CREATED);
-        } catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<ShiftResponse> createShift(@PathVariable Integer userId,
+                                                     @Valid @RequestBody ShiftRequest request) {
+        Shift newShift = shiftService.createShift(userId, toShift(request));
+        return new ResponseEntity<>(ShiftResponse.from(newShift), HttpStatus.CREATED);
     }
 
     /** Everyone's shifts. Employees read their own through /users/{userId}/schedule. */
@@ -45,49 +41,32 @@ public class ShiftController {
 
     @GetMapping("/shifts/users/{userId}")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
-    public ResponseEntity<?> getShiftsByUser(@PathVariable Integer userId) {
-        try {
-            return ResponseEntity.ok(toResponses(shiftService.getShiftsByEmployee(userId)));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<List<ShiftResponse>> getShiftsByUser(@PathVariable Integer userId) {
+        return ResponseEntity.ok(toResponses(shiftService.getShiftsByEmployee(userId)));
     }
 
     @PutMapping("/shifts/{shiftId}")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> updateShift(@PathVariable Integer shiftId,
-                                         @Valid @RequestBody ShiftRequest request) {
-        try {
-            Shift updatedShift = shiftService.updateShift(shiftId, toShift(request));
-            return ResponseEntity.ok(ShiftResponse.from(updatedShift));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<ShiftResponse> updateShift(@PathVariable Integer shiftId,
+                                                     @Valid @RequestBody ShiftRequest request) {
+        Shift updatedShift = shiftService.updateShift(shiftId, toShift(request));
+        return ResponseEntity.ok(ShiftResponse.from(updatedShift));
     }
 
     @DeleteMapping("/shifts/{shiftId}")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> deleteShift(@PathVariable Integer shiftId) {
-        try {
-            shiftService.deleteShift(shiftId);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<Void> deleteShift(@PathVariable Integer shiftId) {
+        shiftService.deleteShift(shiftId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/users/{userId}/schedule")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
-    public ResponseEntity<?> getSchedule(@PathVariable Integer userId,
+    public ResponseEntity<List<ShiftResponse>> getSchedule(@PathVariable Integer userId,
                                          //We use RequestParam to filter by date, as defined by REST standards
                                          @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate start,
                                          @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate end) {
-        try{
-            return ResponseEntity.ok(toResponses(shiftService.getSchedule(userId, start, end)));
-        }catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
-
+        return ResponseEntity.ok(toResponses(shiftService.getSchedule(userId, start, end)));
     }
 
     private static List<ShiftResponse> toResponses(List<Shift> shifts) {

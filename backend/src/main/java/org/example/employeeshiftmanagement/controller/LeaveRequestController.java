@@ -28,28 +28,20 @@ public class LeaveRequestController {
     //endpoints for EMPLOYEES
 
     @PostMapping
-    public ResponseEntity<?> createLeave(Authentication authentication,
+    public ResponseEntity<LeaveRequestResponse> createLeave(Authentication authentication,
                                         @Valid @RequestBody CreateLeaveRequest request) {
-        try{
-            // Always filed for the caller: an employee cannot file leave for a
-            // colleague, and a client-sent userId is no longer read (F1 step 7b).
-            LeaveRequest newRequest = leaveRequestService.createLeaveRequest(
-                    CurrentUser.id(authentication), toLeaveDetails(request));
-            return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
-        }catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+        // Always filed for the caller: an employee cannot file leave for a
+        // colleague, and a client-sent userId is no longer read (F1 step 7b).
+        LeaveRequest newRequest = leaveRequestService.createLeaveRequest(
+                CurrentUser.id(authentication), toLeaveDetails(request));
+        return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
     }
 
 
     @GetMapping("/users/{userId}/leaves")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
-    public ResponseEntity<?> getLeavesByUser(@PathVariable Integer userId) {
-        try{
-            return new ResponseEntity<>(toResponses(leaveRequestService.getLeavesByUser(userId)), HttpStatus.OK);
-        }catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<List<LeaveRequestResponse>> getLeavesByUser(@PathVariable Integer userId) {
+        return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUser(userId)));
     }
 
 
@@ -66,29 +58,22 @@ public class LeaveRequestController {
 
     @GetMapping("/filter")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> filterLeaves(@RequestParam LeaveStatus status,
+    public ResponseEntity<List<LeaveRequestResponse>> filterLeaves(@RequestParam LeaveStatus status,
                                                @RequestParam(required = false) Integer userId) {
-        try{
-            if (userId != null) {
-                return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status)));
-            }else{
-                return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status)));
-            }
-        }catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        if (userId != null) {
+            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status)));
+        }else{
+            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status)));
         }
     }
 
 
     @PutMapping("/{requestId}/status")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> updateLeaveStatus(@PathVariable Integer requestId, @RequestParam LeaveStatus status) {
-        try{
-            LeaveRequest updated = leaveRequestService.updateLeaveRequest(requestId, status);
-            return ResponseEntity.ok(LeaveRequestResponse.from(updated));
-        }catch (RuntimeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<LeaveRequestResponse> updateLeaveStatus(@PathVariable Integer requestId,
+                                                                  @RequestParam LeaveStatus status) {
+        LeaveRequest updated = leaveRequestService.updateLeaveRequest(requestId, status);
+        return ResponseEntity.ok(LeaveRequestResponse.from(updated));
     }
 
     private static List<LeaveRequestResponse> toResponses(List<LeaveRequest> requests) {

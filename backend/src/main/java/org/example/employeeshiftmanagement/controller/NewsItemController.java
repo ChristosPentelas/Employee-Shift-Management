@@ -28,16 +28,12 @@ public class NewsItemController {
 
     @PostMapping
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> createNews(Authentication authentication,
+    public ResponseEntity<NewsItemResponse> createNews(Authentication authentication,
                                        @Valid @RequestBody CreateNewsRequest request) {
-        try{
-            // The author is the supervisor posting it, not an id they send.
-            NewsItem item = newsItemService.createNewsItem(
-                    toNewsItem(request), CurrentUser.id(authentication));
-            return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.CREATED);
-        }catch(Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+        // The author is the supervisor posting it, not an id they send.
+        NewsItem item = newsItemService.createNewsItem(
+                toNewsItem(request), CurrentUser.id(authentication));
+        return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.CREATED);
     }
 
     @GetMapping
@@ -51,40 +47,28 @@ public class NewsItemController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getNewsById(@PathVariable Integer id) {
-        try{
-            NewsItem item = newsItemService.getNewsItemById(id);
-            return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.OK);
-        }catch(Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<NewsItemResponse> getNewsById(@PathVariable Integer id) {
+        return ResponseEntity.ok(NewsItemResponse.from(newsItemService.getNewsItemById(id)));
     }
 
     @GetMapping("/author/{authorId}")
-    public ResponseEntity<?> getNewsAuthorById(@PathVariable Integer authorId) {
-        return new ResponseEntity<>(toResponses(newsItemService.getNewsItemsByAuthor(authorId)), HttpStatus.OK);
+    public ResponseEntity<List<NewsItemResponse>> getNewsAuthorById(@PathVariable Integer authorId) {
+        return ResponseEntity.ok(toResponses(newsItemService.getNewsItemsByAuthor(authorId)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> update(@PathVariable Integer id, @Valid @RequestBody UpdateNewsRequest request) {
-        try{
-            NewsItem updated = newsItemService.updateNewsItem(toNewsDetails(request), id);
-            return ResponseEntity.ok(NewsItemResponse.from(updated));
-        }catch(Exception e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<NewsItemResponse> update(@PathVariable Integer id,
+                                                   @Valid @RequestBody UpdateNewsRequest request) {
+        NewsItem updated = newsItemService.updateNewsItem(toNewsDetails(request), id);
+        return ResponseEntity.ok(NewsItemResponse.from(updated));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<?> delete(@PathVariable Integer id) {
-        try{
-            newsItemService.deleteNewsItem(id);
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
+        newsItemService.deleteNewsItem(id);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
     private static List<NewsItemResponse> toResponses(List<NewsItem> items) {

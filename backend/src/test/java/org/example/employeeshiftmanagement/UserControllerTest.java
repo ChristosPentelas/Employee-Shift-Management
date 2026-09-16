@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -294,5 +296,56 @@ class UserControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(userService, never()).updateUser(anyInt(), any());
+    }
+
+    // The three tests below are one finding: before F14 a user who does not
+    // exist answered 404 on GET, 400 on PUT and 500 on DELETE, because each
+    // method caught the exception and guessed its own status. Nothing asserted
+    // 404 or 500 anywhere in the suite, which is how the three drifted apart.
+
+    @Test
+    void aMissingUserIsNotFoundOnGet() throws Exception {
+        when(userService.findUserById(99)).thenThrow(new ResourceNotFoundException("User not found"));
+
+        mockMvc.perform(get("/api/v1/users/99").with(TestTokens.employee()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("User not found"));
+    }
+
+    @Test
+    void aMissingUserIsNotFoundOnUpdateNotABadRequest() throws Exception {
+        when(userService.updateUser(eq(7), any(User.class)))
+                .thenThrow(new ResourceNotFoundException("User not found"));
+
+        mockMvc.perform(put("/api/v1/users/7")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PROFILE_EDIT))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aMissingUserIsNotFoundOnDeleteNotAServerError() throws Exception {
+        doThrow(new ResourceNotFoundException("User not found")).when(userService).deleteUser(99);
+
+        mockMvc.perform(delete("/api/v1/users/99").with(TestTokens.supervisor()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aWrongPasswordAnswersInTheStandardErrorShape() throws Exception {
+        when(userService.authenticate(anyString(), anyString())).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"test@example.com","password":"wrong"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                // Was the Greek string "Λάθος email ή password". The app shows
+                // its own Greek text for a 401, so the server stays English (B2).
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.detail").value("Invalid email or password"));
     }
 }

@@ -121,6 +121,24 @@ class NewsItemControllerTest {
     }
 
     @Test
+    void postingNewsThatBlowsUpIsAServerErrorNotANotFound() throws Exception {
+        // The audit's own example: NewsItemService.createNewsItem dereferences
+        // the author without a null check. createNews used to catch Exception
+        // and report that NPE as "404 not found" (F14).
+        when(newsItemService.createNewsItem(any(NewsItem.class), any()))
+                .thenThrow(new NullPointerException());
+
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Staff meeting","description":"Monday 09:00",
+                                 "type":"ANNOUNCEMENT"}
+                                """))
+                .andExpect(status().isInternalServerError());
+    }
+
+    @Test
     void aBugInsideTheServerIsAServerErrorAndLeaksNothing() throws Exception {
         when(newsItemService.getAllNews())
                 .thenThrow(new NullPointerException("author is null in news_items"));
