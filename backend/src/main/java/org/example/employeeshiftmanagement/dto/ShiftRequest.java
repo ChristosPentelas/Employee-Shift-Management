@@ -2,6 +2,8 @@ package org.example.employeeshiftmanagement.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import org.example.employeeshiftmanagement.validation.FieldLimits;
 import org.example.employeeshiftmanagement.validation.ValidShiftTimes;
 
 import java.time.LocalDate;
@@ -31,6 +33,7 @@ public record ShiftRequest(
         LocalTime endTime,
 
         @NotBlank(message = "Position is required")
+        @Size(max = FieldLimits.TEXT, message = "Position must be at most {max} characters")
         String position
 ) {
 }

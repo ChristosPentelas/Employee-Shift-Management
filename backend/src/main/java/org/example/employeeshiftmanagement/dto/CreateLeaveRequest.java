@@ -2,6 +2,8 @@ package org.example.employeeshiftmanagement.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import org.example.employeeshiftmanagement.validation.FieldLimits;
 import org.example.employeeshiftmanagement.validation.ValidLeaveDates;
 
 import java.time.LocalDate;
@@ -26,6 +28,7 @@ public record CreateLeaveRequest(
         LocalDate endDate,
 
         @NotBlank(message = "Reason is required")
+        @Size(max = FieldLimits.TEXT, message = "Reason must be at most {max} characters")
         String reason
 ) {
 }

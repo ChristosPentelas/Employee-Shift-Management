@@ -123,6 +123,37 @@ class UserControllerTest {
     }
 
     @Test
+    void registrationRejectsANameLongerThanTheColumn() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"%s","email":"test@example.com","password":"secret123"}
+                                """.formatted("a".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.name")
+                        .value("Name must be at most 255 characters"));
+
+        verify(userService, never()).registerNewEmployee(any());
+    }
+
+    @Test
+    void aProfileEditRejectsAPhoneNumberLongerThanTheColumn() throws Exception {
+        // phoneNumber is optional - no @NotBlank - but still has to fit.
+        mockMvc.perform(put("/api/v1/users/7")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"New Name","email":"test@example.com","phoneNumber":"%s"}
+                                """.formatted("1".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.phoneNumber")
+                        .value("Phone number must be at most 255 characters"));
+
+        verify(userService, never()).updateUser(anyInt(), any());
+    }
+
+    @Test
     void aRejectedRequestSaysWhichFieldIsWrong() throws Exception {
         mockMvc.perform(post("/api/v1/users")
                         .with(TestTokens.supervisor())

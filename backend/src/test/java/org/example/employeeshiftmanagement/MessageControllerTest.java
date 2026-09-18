@@ -101,6 +101,35 @@ class MessageControllerTest {
     }
 
     @Test
+    void sendingAMessageLongerThanTheColumnIsRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/messages")
+                        .with(TestTokens.employee())
+                        .param("receiverId", "9")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"%s\"}".formatted("α".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.content")
+                        .value("Content must be at most 255 characters"));
+
+        verify(messageService, never()).sendMessage(anyInt(), anyInt(), anyString());
+    }
+
+    @Test
+    void sendingAMessageOfExactlyTheColumnLengthIsAccepted() throws Exception {
+        // 255 Greek letters are 510 bytes in UTF-8 but still 255 characters.
+        // @Size and MySQL's VARCHAR(255) both count characters, so this fits.
+        String longest = "α".repeat(255);
+        when(messageService.sendMessage(eq(7), eq(9), eq(longest))).thenReturn(message());
+
+        mockMvc.perform(post("/api/v1/messages")
+                        .with(TestTokens.employee())
+                        .param("receiverId", "9")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"%s\"}".formatted(longest)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void theInboxWithoutATokenIsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/messages/inbox/7"))
                 .andExpect(status().isUnauthorized());

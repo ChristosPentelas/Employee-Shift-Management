@@ -129,6 +129,22 @@ class ShiftControllerTest {
     }
 
     @Test
+    void creatingAShiftRejectsAPositionLongerThanTheColumn() throws Exception {
+        mockMvc.perform(post("/api/v1/users/7/shifts")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-14","startTime":"08:00","endTime":"16:00",
+                                 "position":"%s"}
+                                """.formatted("a".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.position")
+                        .value("Position must be at most 255 characters"));
+
+        verify(shiftService, never()).createShift(anyInt(), any());
+    }
+
+    @Test
     void updatingAShiftRejectsEqualStartAndEndTimes() throws Exception {
         // Create and update share ShiftRequest, so both get the rule.
         mockMvc.perform(put("/api/v1/shifts/1")

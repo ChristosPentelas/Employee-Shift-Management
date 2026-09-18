@@ -134,6 +134,22 @@ class LeaveRequestControllerTest {
     }
 
     @Test
+    void creatingALeaveRejectsAReasonLongerThanTheColumn() throws Exception {
+        // 256 characters do not fit VARCHAR(255): a 400, not a 500 from MySQL.
+        mockMvc.perform(post("/api/v1/leaves")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"startDate":"2026-10-01","endDate":"2026-10-05","reason":"%s"}
+                                """.formatted("a".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.reason")
+                        .value("Reason must be at most 255 characters"));
+
+        verify(leaveRequestService, never()).createLeaveRequest(anyInt(), any());
+    }
+
+    @Test
     void theLeaveListWithoutATokenIsUnauthorized() throws Exception {
         // Leave reasons are medical and family information (see F7).
         mockMvc.perform(get("/api/v1/leaves"))

@@ -1,6 +1,8 @@
 package org.example.employeeshiftmanagement.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.example.employeeshiftmanagement.validation.FieldLimits;
 
 /**
  * Body of POST /api/v1/messages. Sender and receiver are query parameters.
@@ -11,6 +13,7 @@ import jakarta.validation.constraints.NotBlank;
  */
 public record MessageRequest(
         @NotBlank(message = "Content is required")
+        @Size(max = FieldLimits.TEXT, message = "Content must be at most {max} characters")
         String content
 ) {
 }

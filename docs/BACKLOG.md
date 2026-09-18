@@ -48,14 +48,14 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
-| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `feat(backend): reject a shift that starts and ends at the same time` | Required fields, leave dates and shift times done. Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Missing: `@Size(max = 255)` on every free-text DTO field, not only message content - every `String` column is `VARCHAR(255)`, so a longer value is a 500 today |
+| F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
-| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `feat(backend): reject a shift that starts and ends at the same time` | 13 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
+| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 12 done · 4 partial · 14 open.
+Totals: 13 done · 3 partial · 14 open.
 
 ---
 
@@ -260,9 +260,13 @@ any `IllegalStateException` from a library would be reported as the caller's
 fault.
 Relates to: F14 (decided during it, deliberately out of scope), F16.
 Fix idea: a `DuplicateEmailException` mapped to 409, and move the BCrypt
-72-byte limit to a `@Size` on the DTO so it fails as validation (F15) rather
-than as an `IllegalStateException`. Then `IllegalStateException` can be dropped
-from the advice entirely and fall into the 500 catch-all, where it belongs.
+72-byte limit into validation (F15) rather than an `IllegalStateException`.
+Then `IllegalStateException` can be dropped from the advice entirely and fall
+into the 500 catch-all, where it belongs.
+Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
+BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
+password passes `@Size` at 100 bytes. It needs a small custom constraint that
+counts bytes, like `@ValidLeaveDates` does for its rule.
 
 **B21 · LOW · `DELETE /messages/{id}` returns a string where every other delete returns 204** — found 2026-09-16
 Where: `MessageController.deleteMessage` returns `ResponseEntity.ok("Message

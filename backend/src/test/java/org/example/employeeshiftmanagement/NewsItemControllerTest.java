@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -88,6 +89,36 @@ class NewsItemControllerTest {
                                  "type":"ANNOUNCEMENT","authorId":7}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void creatingNewsRejectsATitleLongerThanTheColumn() throws Exception {
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"%s","description":"Monday 09:00","type":"ANNOUNCEMENT"}
+                                """.formatted("a".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.title")
+                        .value("Title must be at most 255 characters"));
+
+        verify(newsItemService, never()).createNewsItem(any(), anyInt());
+    }
+
+    @Test
+    void updatingNewsRejectsADescriptionLongerThanTheColumn() throws Exception {
+        mockMvc.perform(put("/api/v1/news/1")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Meeting","description":"%s"}
+                                """.formatted("a".repeat(256))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.description")
+                        .value("Description must be at most 255 characters"));
+
+        verify(newsItemService, never()).updateNewsItem(any(), anyInt());
     }
 
     @Test

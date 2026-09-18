@@ -2,7 +2,9 @@ package org.example.employeeshiftmanagement.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.example.employeeshiftmanagement.model.NewsType;
+import org.example.employeeshiftmanagement.validation.FieldLimits;
 
 import java.time.LocalDateTime;
 
@@ -16,9 +18,11 @@ import java.time.LocalDateTime;
  */
 public record CreateNewsRequest(
         @NotBlank(message = "Title is required")
+        @Size(max = FieldLimits.TEXT, message = "Title must be at most {max} characters")
         String title,
 
         @NotBlank(message = "Description is required")
+        @Size(max = FieldLimits.TEXT, message = "Description must be at most {max} characters")
         String description,
 
         @NotNull(message = "Type is required")
