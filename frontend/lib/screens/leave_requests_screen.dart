@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/leave_request_model.dart';
+import '../utils/date_limits.dart';
 import '../utils/session.dart';
 
 class LeaveRequestsScreen extends StatefulWidget {
@@ -163,7 +164,7 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
                   final DateTimeRange? picked = await showDateRangePicker(
                     context: context,
                     firstDate: DateTime.now(),
-                    lastDate: DateTime(2027),
+                    lastDate: latestPickableDate(DateTime.now()),
                   );
                   if (picked != null) setDialogState(() => selectedRange = picked);
                 },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/news_model.dart';
+import '../utils/date_limits.dart';
 import '../utils/session.dart';
 
 class NewsScreen extends StatefulWidget {
@@ -166,7 +167,7 @@ class _NewsScreenState extends State<NewsScreen> {
                         context: context,
                         initialDate: DateTime.now(),
                         firstDate: DateTime.now(),
-                        lastDate: DateTime(2030),);
+                        lastDate: latestPickableDate(DateTime.now()),);
                       if (picked != null) setDialogState(() => selectedDeadline = picked);
                     },
                   ),

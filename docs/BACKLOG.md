@@ -292,15 +292,6 @@ Fix idea: settle on one shape - `"<Resource> not found: <id>"` - and apply it
 at all eight throw sites. Cosmetic, so it was kept out of the F14 commits to
 leave those mechanical.
 
-**B23 · MEDIUM · The leave date picker stops at 1 January 2027** — found 2026-09-18
-Where: `leave_requests_screen.dart:166`, `showDateRangePicker(lastDate: DateTime(2027))`.
-Why it matters: a hard-coded year that expires on its own. From now on no one can
-request leave past New Year's Eve, and from 1 January 2027 `firstDate` (today) is
-after `lastDate`, which is an assertion error - the leave dialog stops working
-altogether. `news_screen.dart:169` has the same pattern with 2030.
-Relates to: F27 (hard-coded values in the client).
-Fix idea: make it relative, e.g. `DateTime.now().add(const Duration(days: 365))`.
-
 **B24 · MEDIUM · Assigning a shift with a mistyped time fails without a word** — found 2026-09-18
 Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
 "HH:mm"; `ApiService.assignShift` returns `false` on any non-2xx and the dialog
@@ -350,3 +341,16 @@ Fixed by: `fix(frontend): clear the session when logging out from the dashboard`
 The button now calls `Session.clear()` and goes to `/login` removing every
 screen; login replaces itself with the dashboard (`pushReplacement`), so back
 cannot reach the login page while logged in.
+
+**B23 · MEDIUM · The leave date picker stops at 1 January 2027** — found 2026-09-18
+Where: `leave_requests_screen.dart:166`, `showDateRangePicker(lastDate: DateTime(2027))`.
+Why it matters: a hard-coded year that expires on its own. From now on no one can
+request leave past New Year's Eve, and from 1 January 2027 `firstDate` (today) is
+after `lastDate`, which is an assertion error - the leave dialog stops working
+altogether. `news_screen.dart:169` has the same pattern with 2030.
+Relates to: F27 (hard-coded values in the client).
+Fix idea: make it relative, e.g. `DateTime.now().add(const Duration(days: 365))`.
+Fixed by: `fix(frontend): let date pickers reach a year ahead, not a fixed year`.
+Both pickers now end at `latestPickableDate(DateTime.now())` (`lib/utils/date_limits.dart`),
+one year from today. Today is a parameter so `date_limits_test.dart` can
+check 1 January 2027 directly.
