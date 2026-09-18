@@ -48,7 +48,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
-| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e` | Required fields done. Missing: end after start (leave dates, shift times); max length on message content |
+| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e`, `feat(backend): reject a leave that ends before it starts` | Required fields and leave dates done. Missing: shift times (overnight shifts are allowed - decided 2026-09-18 - so the rule is not simply end > start); `@Size(max = 255)` on every free-text DTO field, not only message content - every `String` column is `VARCHAR(255)`, so a longer value is a 500 today |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |

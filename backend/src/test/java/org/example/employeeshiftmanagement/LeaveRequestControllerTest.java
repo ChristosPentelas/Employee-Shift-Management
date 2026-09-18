@@ -104,6 +104,36 @@ class LeaveRequestControllerTest {
     }
 
     @Test
+    void creatingALeaveRejectsAnEndDateBeforeTheStartDate() throws Exception {
+        mockMvc.perform(post("/api/v1/leaves")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"startDate":"2026-10-10","endDate":"2026-10-01","reason":"Surgery"}
+                                """))
+                .andExpect(status().isBadRequest())
+                // Reported on the field, not as a nameless "Validation failed"
+                .andExpect(jsonPath("$.errors.endDate")
+                        .value("End date must not be before start date"));
+
+        verify(leaveRequestService, never()).createLeaveRequest(anyInt(), any());
+    }
+
+    @Test
+    void creatingALeaveAcceptsASingleDay() throws Exception {
+        when(leaveRequestService.createLeaveRequest(eq(7), any(LeaveRequest.class)))
+                .thenReturn(leaveRequest());
+
+        mockMvc.perform(post("/api/v1/leaves")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"startDate":"2026-10-01","endDate":"2026-10-01","reason":"Surgery"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void theLeaveListWithoutATokenIsUnauthorized() throws Exception {
         // Leave reasons are medical and family information (see F7).
         mockMvc.perform(get("/api/v1/leaves"))
