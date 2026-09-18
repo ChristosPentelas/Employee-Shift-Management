@@ -48,14 +48,14 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
-| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e`, `feat(backend): reject a leave that ends before it starts` | Required fields and leave dates done. Missing: shift times (overnight shifts are allowed - decided 2026-09-18 - so the rule is not simply end > start); `@Size(max = 255)` on every free-text DTO field, not only message content - every `String` column is `VARCHAR(255)`, so a longer value is a 500 today |
+| F15 | MEDIUM | No input validation | Partial | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `feat(backend): reject a shift that starts and ends at the same time` | Required fields, leave dates and shift times done. Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Missing: `@Size(max = 255)` on every free-text DTO field, not only message content - every `String` column is `VARCHAR(255)`, so a longer value is a 500 today |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
 | F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
-| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a` | 12 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
+| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `feat(backend): reject a shift that starts and ends at the same time` | 13 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears |
@@ -287,6 +287,27 @@ Relates to: F14.
 Fix idea: settle on one shape - `"<Resource> not found: <id>"` - and apply it
 at all eight throw sites. Cosmetic, so it was kept out of the F14 commits to
 leave those mechanical.
+
+**B23 · MEDIUM · The leave date picker stops at 1 January 2027** — found 2026-09-18
+Where: `leave_requests_screen.dart:166`, `showDateRangePicker(lastDate: DateTime(2027))`.
+Why it matters: a hard-coded year that expires on its own. From now on no one can
+request leave past New Year's Eve, and from 1 January 2027 `firstDate` (today) is
+after `lastDate`, which is an assertion error - the leave dialog stops working
+altogether. `news_screen.dart:169` has the same pattern with 2030.
+Relates to: F27 (hard-coded values in the client).
+Fix idea: make it relative, e.g. `DateTime.now().add(const Duration(days: 365))`.
+
+**B24 · MEDIUM · Assigning a shift with a mistyped time fails without a word** — found 2026-09-18
+Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
+"HH:mm"; `ApiService.assignShift` returns `false` on any non-2xx and the dialog
+does nothing with it.
+Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
+answers 400 and the supervisor sees the dialog just sit there, with no hint
+which field is wrong. The same will apply to the shift-time rule F15 adds.
+Relates to: B1 (the server now sends field errors), B19 (same silent-failure
+pattern for leave), F15.
+Fix idea: use `showTimePicker` so a malformed time cannot be typed, and show a
+message when `assignShift` fails.
 
 ---
 

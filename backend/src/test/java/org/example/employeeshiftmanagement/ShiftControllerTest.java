@@ -25,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -94,6 +95,53 @@ class ShiftControllerTest {
                                 {"startTime":"08:00","endTime":"16:00","position":"Ταμείο"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void creatingAShiftRejectsEqualStartAndEndTimes() throws Exception {
+        mockMvc.perform(post("/api/v1/users/7/shifts")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-14","startTime":"08:00","endTime":"08:00",
+                                 "position":"Ταμείο"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.endTime")
+                        .value("End time must differ from start time"));
+
+        verify(shiftService, never()).createShift(anyInt(), any());
+    }
+
+    @Test
+    void creatingAShiftAcceptsAnOvernightShift() throws Exception {
+        // End before start means the next day - decided 2026-09-18 (F15).
+        when(shiftService.createShift(eq(7), any(Shift.class))).thenReturn(shift());
+
+        mockMvc.perform(post("/api/v1/users/7/shifts")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-14","startTime":"22:00","endTime":"06:00",
+                                 "position":"Ταμείο"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void updatingAShiftRejectsEqualStartAndEndTimes() throws Exception {
+        // Create and update share ShiftRequest, so both get the rule.
+        mockMvc.perform(put("/api/v1/shifts/1")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-14","startTime":"08:00","endTime":"08:00",
+                                 "position":"Ταμείο"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.endTime").exists());
+
+        verify(shiftService, never()).updateShift(anyInt(), any());
     }
 
     @Test
