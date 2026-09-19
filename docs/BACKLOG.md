@@ -41,7 +41,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
-| F8 | HIGH | `ddl-auto=update` is the only schema management | Open | | |
+| F8 | HIGH | `ddl-auto=update` is the only schema management | Partial | `feat(backend): manage the schema with Flyway migrations` | Flyway and `V1__baseline.sql` are in; left: switch `ddl-auto` to `validate`. The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`) |
 | F9 | HIGH | No pagination | Open | | |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | |
@@ -303,6 +303,18 @@ Relates to: B1 (the server now sends field errors), B19 (same silent-failure
 pattern for leave), F15.
 Fix idea: use `showTimePicker` so a malformed time cannot be typed, and show a
 message when `assignShift` fails.
+
+**B25 · LOW · `NewsItem.createdAt` is set twice and its column is nullable** — found 2026-09-19
+Where: `NewsItem.java` initialises `createdAt` in the field *and* again in
+`@PrePersist onCreate()`; V1 has `created_at datetime(6) DEFAULT NULL`, while
+every other timestamp column is `NOT NULL`.
+Why it matters: the field initialiser is dead weight (`@PrePersist` always
+overwrites it), and a nullable column lets a row with no creation time in
+through any path that skips JPA, e.g. a hand-written SQL insert. The news list
+sorts on this column.
+Relates to: F8 (the fix is now a migration, not an entity edit alone).
+Fix idea: drop the field initialiser, add `@Column(nullable = false)`, and a
+`V__` migration that backfills any nulls then sets the column `NOT NULL`.
 
 ---
 
