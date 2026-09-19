@@ -41,7 +41,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F5 | CRITICAL | Anyone can register as SUPERVISOR | Done | `a97a5b0` | |
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
-| F8 | HIGH | `ddl-auto=update` is the only schema management | Partial | `feat(backend): manage the schema with Flyway migrations` | Flyway and `V1__baseline.sql` are in; left: switch `ddl-auto` to `validate`. The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`) |
+| F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
 | F9 | HIGH | No pagination | Open | | |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | |
