@@ -31,7 +31,10 @@ public class NewsItem {
     @Column(nullable = false)
     private NewsType type;
 
-    private LocalDateTime createdAt = LocalDateTime.now();
+    // Set once, by onCreate() just before the INSERT. updatable = false leaves
+    // the column out of every UPDATE, so no later save can rewrite it (B25).
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {

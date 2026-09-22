@@ -308,18 +308,6 @@ pattern for leave), F15.
 Fix idea: use `showTimePicker` so a malformed time cannot be typed, and show a
 message when `assignShift` fails.
 
-**B25 · LOW · `NewsItem.createdAt` is set twice and its column is nullable** — found 2026-09-19
-Where: `NewsItem.java` initialises `createdAt` in the field *and* again in
-`@PrePersist onCreate()`; V1 has `created_at datetime(6) DEFAULT NULL`, while
-every other timestamp column is `NOT NULL`.
-Why it matters: the field initialiser is dead weight (`@PrePersist` always
-overwrites it), and a nullable column lets a row with no creation time in
-through any path that skips JPA, e.g. a hand-written SQL insert. The news list
-sorts on this column.
-Relates to: F8 (the fix is now a migration, not an entity edit alone).
-Fix idea: drop the field initialiser, add `@Column(nullable = false)`, and a
-`V__` migration that backfills any nulls then sets the column `NOT NULL`.
-
 **B26 · LOW · Paged lists show only their first page** — found 2026-09-19
 Where: every paged list in `ApiService` asks for page 0 only - news 20,
 leaves 50, chat / inbox / sent 50, staff 100 - and nothing asks for page 1.
@@ -355,6 +343,16 @@ Relates to: F10.
 Fix idea: `spring.jpa.open-in-view=false`, then fix whatever throws
 `LazyInitializationException` - an `@EntityGraph` on `findById` where a
 response needs the user, or building the DTO inside the service.
+
+**B29 · LOW · `Message.timestamp` is set when the object is built, not when it is saved** — found 2026-09-22
+Where: `Message.java` initialises `timestamp = LocalDateTime.now()` in the
+field and has no `@PrePersist`, unlike `NewsItem.createdAt` (fixed in B25).
+Why it matters: harmless today because `sendMessage` saves right away, but the
+time is taken when `new Message()` runs, and nothing stops a later save from
+changing it. Two entities, two patterns for the same job.
+Relates to: B25.
+Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
+`updatable = false`. The column is already `NOT NULL`, so no migration.
 
 ---
 
@@ -406,3 +404,22 @@ Fixed by: `fix(frontend): let date pickers reach a year ahead, not a fixed year`
 Both pickers now end at `latestPickableDate(DateTime.now())` (`lib/utils/date_limits.dart`),
 one year from today. Today is a parameter so `date_limits_test.dart` can
 check 1 January 2027 directly.
+
+**B25 · LOW · `NewsItem.createdAt` is set twice and its column is nullable** — found 2026-09-19
+Where: `NewsItem.java` initialises `createdAt` in the field *and* again in
+`@PrePersist onCreate()`; V1 has `created_at datetime(6) DEFAULT NULL`, while
+every other timestamp column is `NOT NULL`.
+Why it matters: the field initialiser is dead weight (`@PrePersist` always
+overwrites it), and a nullable column lets a row with no creation time in
+through any path that skips JPA, e.g. a hand-written SQL insert. The news list
+sorts on this column.
+Relates to: F8 (the fix is now a migration, not an entity edit alone).
+Fix idea: drop the field initialiser, add `@Column(nullable = false)`, and a
+`V__` migration that backfills any nulls then sets the column `NOT NULL`.
+Fixed by: `fix(backend): require a creation time on every news item`.
+Migration V4 backfills NULLs with 1970-01-01 (the feed is newest first, so
+`NOW()` would have floated old posts to the top) and makes the column
+`NOT NULL`. `createdAt` also became `updatable = false`, so no save can
+rewrite it. `NewsItemSchemaIntegrationTest` inserts a NULL with plain SQL and
+expects MySQL to refuse it - Hibernate's `validate` does not check nullability,
+so the entity annotation alone would have proven nothing.
