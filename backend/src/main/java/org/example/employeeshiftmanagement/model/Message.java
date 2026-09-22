@@ -28,7 +28,7 @@ public class Message {
     private LocalDateTime timestamp = LocalDateTime.now(); //Automatic time recording
 
     @Column(nullable = false)
-    private boolean isRead = false; //To know if the reciever saw it
+    private boolean isRead = false; //To know if the receiver saw it
 
     // LAZY: each query decides whether it needs the users. The list queries in
     // MessageRepository ask for them with @EntityGraph, so they come in the
@@ -38,6 +38,6 @@ public class Message {
     private User sender;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reciever_id",nullable = false)
+    @JoinColumn(name = "receiver_id",nullable = false)
     private User receiver;
 }
