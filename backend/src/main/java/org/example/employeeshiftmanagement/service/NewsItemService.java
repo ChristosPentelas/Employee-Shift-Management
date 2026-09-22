@@ -5,12 +5,22 @@ import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.NewsItemRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class NewsItemService {
+
+    /**
+     * Newest first. The id breaks ties between posts with the same createdAt;
+     * without a unique last key, the database may order those rows differently
+     * on each query, and a post can then appear on two pages or on none.
+     */
+    private static final Sort NEWEST_FIRST =
+            Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
 
     private final NewsItemRepository newsItemRepository;
     private final UserService userService;
@@ -29,16 +39,25 @@ public class NewsItemService {
         return newsItemRepository.save(newsItem);
     }
 
-    public List<NewsItem> getAllNews() {
-        return newsItemRepository.findAllByOrderByCreatedAtDesc();
+    public Page<NewsItem> getAllNews(Pageable pageable) {
+        return newsItemRepository.findAll(newestFirst(pageable));
     }
 
-    public List<NewsItem> getNewsItemsByAuthor(Integer authorId) {
-        return newsItemRepository.findByAuthorIdOrderByCreatedAtDesc(authorId);
+    public Page<NewsItem> getNewsItemsByAuthor(Integer authorId, Pageable pageable) {
+        return newsItemRepository.findByAuthorId(authorId, newestFirst(pageable));
     }
 
-    public List<NewsItem> getNewsByType(NewsType type) {
-        return newsItemRepository.findByTypeOrderByCreatedAtDesc(type);
+    public Page<NewsItem> getNewsByType(NewsType type, Pageable pageable) {
+        return newsItemRepository.findByType(type, newestFirst(pageable));
+    }
+
+    /**
+     * Keeps the page number and size the client asked for, but not its sort:
+     * the order is the server's decision. A client-chosen sort could name any
+     * entity field, including ones the response never shows.
+     */
+    private static Pageable newestFirst(Pageable pageable) {
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), NEWEST_FIRST);
     }
 
     public NewsItem getNewsItemById(Integer id) {

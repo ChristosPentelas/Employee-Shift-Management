@@ -2,17 +2,19 @@ package org.example.employeeshiftmanagement.repository;
 
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-
-import java.util.List;
 
 @Repository
 public interface NewsItemRepository extends JpaRepository<NewsItem, Integer> {
 
-    List<NewsItem> findAllByOrderByCreatedAtDesc(); //It brings all the news sorted by the most recent
+    // All news, one page at a time: findAll(Pageable) is inherited from JpaRepository.
+    // The order is no longer in the method names - it travels inside the
+    // Pageable, which NewsItemService builds (F9).
 
-    List<NewsItem> findByTypeOrderByCreatedAtDesc(NewsType type); //It brings news of a specific type
+    Page<NewsItem> findByType(NewsType type, Pageable pageable); //It brings news of a specific type
 
-    List<NewsItem> findByAuthorIdOrderByCreatedAtDesc(Integer authorId); //It brings news from a creator
+    Page<NewsItem> findByAuthorId(Integer authorId, Pageable pageable); //It brings news from a creator
 }

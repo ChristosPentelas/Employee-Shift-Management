@@ -92,16 +92,19 @@ class ApiService {
     }
   }
 
-  Future<List<NewsItem>> getNews() async {
+  // The newest page of news. The server answers one page at a time (F9):
+  // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
+  // Only the first page is shown for now; older posts need a "load more".
+  Future<List<NewsItem>> getNews({int page = 0, int size = 20}) async {
     try{
       final response = await _client.get(
-        Uri.parse("$baseUrl/news"),
+        Uri.parse("$baseUrl/news?page=$page&size=$size"),
         headers: {"Content-Type" : "application/json"},
       );
 
       if (response.statusCode == 200) {
-        List<dynamic> body = jsonDecode(response.body);
-        return body.map((item) => NewsItem.fromJson(item)).toList();
+        List<dynamic> content = jsonDecode(response.body)['content'];
+        return content.map((item) => NewsItem.fromJson(item)).toList();
       }else{
         throw Exception("Αποτυχία φόρτωσης ειδήσεων");
     }

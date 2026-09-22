@@ -42,9 +42,9 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
-| F9 | HIGH | No pagination | Open | | |
+| F9 | HIGH | No pagination | Partial | `feat: page the news endpoints` | News is paged (`PageResponse`, fixed server-side sort, size capped at 100). Left: messages, leaves, shifts, users; `schedule` needs a maximum date range rather than pages. The app shows only page 0 (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
-| F11 | MEDIUM | Writes without a transaction boundary | Open | | |
+| F11 | MEDIUM | Writes without a transaction boundary | Open | | Also: the `deleteBy...` repository methods use `jakarta.transaction.Transactional`, not Spring's, and put it on the repository instead of the service |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 13 done · 3 partial · 14 open.
+Totals: 14 done · 4 partial · 12 open.
 
 ---
 
@@ -315,6 +315,27 @@ sorts on this column.
 Relates to: F8 (the fix is now a migration, not an entity edit alone).
 Fix idea: drop the field initialiser, add `@Column(nullable = false)`, and a
 `V__` migration that backfills any nulls then sets the column `NOT NULL`.
+
+**B26 · LOW · Paged lists show only their first page** — found 2026-09-19
+Where: `ApiService.getNews` asks for page 0 (20 posts) and nothing asks for
+page 1; the same will apply to each list F9 pages next.
+Why it matters: older posts are still on the server but unreachable from the
+app. Intended for now - F9 is about the server not sending everything - but a
+user will notice once there are more than 20.
+Relates to: F9.
+Fix idea: a "load more" at the end of the list (or infinite scroll with a
+`ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and
+appends.
+
+**B27 · MEDIUM · The chat marks messages read one HTTP request at a time, every 3 s** — found 2026-09-19
+Where: `chat_screen.dart` `_loadMessages()` loops over the history and calls
+`markAsRead` once per unread message it received, awaiting each.
+Why it matters: opening a chat with 50 unread messages sends 50 sequential
+PUTs before the screen updates; with the 3 s poll (F28) a slow round can
+overlap the next one and send the same PUTs again.
+Relates to: F28, F9 (once paged, only the loaded page gets marked).
+Fix idea: one endpoint, e.g. `PUT /messages/chat/{otherUserId}/read`, that
+marks the whole conversation read in a single UPDATE.
 
 ---
 

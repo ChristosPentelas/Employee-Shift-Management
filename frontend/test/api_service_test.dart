@@ -63,4 +63,23 @@ void main() {
 
     expect(sent!.url.query, 'receiverId=9');
   });
+
+  test('news is read from one page, and the first page is asked for', () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      // The server's page shape (F9): the items sit under "content".
+      return http.Response(
+          '{"content":[{"id":1,"title":"Staff meeting","description":"Monday",'
+          '"type":"ANNOUNCEMENT","createdAt":"2026-09-19T09:00:00",'
+          '"author":{"id":9,"name":"Boss","email":"boss@example.com","role":"SUPERVISOR"}}],'
+          '"page":0,"size":20,"totalElements":1,"totalPages":1}',
+          200);
+    }));
+
+    final news = await api.getNews();
+
+    expect(news.single.title, 'Staff meeting');
+    expect(sent!.url.queryParameters, {'page': '0', 'size': '20'});
+  });
 }

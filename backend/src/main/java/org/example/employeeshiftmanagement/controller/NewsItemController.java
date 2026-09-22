@@ -4,17 +4,17 @@ import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.config.CurrentUser;
 import org.example.employeeshiftmanagement.dto.CreateNewsRequest;
 import org.example.employeeshiftmanagement.dto.NewsItemResponse;
+import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.dto.UpdateNewsRequest;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/news")
@@ -36,14 +36,23 @@ public class NewsItemController {
         return new ResponseEntity<>(NewsItemResponse.from(item), HttpStatus.CREATED);
     }
 
+    /**
+     * One page, newest first: {@code ?page=0&size=20}. Both are optional
+     * (defaults 0 and 20), and a size above 100 is lowered to 100 - see
+     * spring.data.web.pageable.* in application.properties. A {@code sort}
+     * parameter is accepted but ignored; the service fixes the order (F9).
+     */
     @GetMapping
-    public ResponseEntity<List<NewsItemResponse>> getAllNews() {
-        return new ResponseEntity<>(toResponses(newsItemService.getAllNews()), HttpStatus.OK);
+    public ResponseEntity<PageResponse<NewsItemResponse>> getAllNews(Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(
+                newsItemService.getAllNews(pageable), NewsItemResponse::from));
     }
 
     @GetMapping("/type/{type}")
-    public ResponseEntity<List<NewsItemResponse>> getAllNewsByType(@PathVariable NewsType type) {
-        return new ResponseEntity<>(toResponses(newsItemService.getNewsByType(type)), HttpStatus.OK);
+    public ResponseEntity<PageResponse<NewsItemResponse>> getAllNewsByType(@PathVariable NewsType type,
+                                                                           Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(
+                newsItemService.getNewsByType(type, pageable), NewsItemResponse::from));
     }
 
     @GetMapping("/{id}")
@@ -52,8 +61,10 @@ public class NewsItemController {
     }
 
     @GetMapping("/author/{authorId}")
-    public ResponseEntity<List<NewsItemResponse>> getNewsAuthorById(@PathVariable Integer authorId) {
-        return ResponseEntity.ok(toResponses(newsItemService.getNewsItemsByAuthor(authorId)));
+    public ResponseEntity<PageResponse<NewsItemResponse>> getNewsAuthorById(@PathVariable Integer authorId,
+                                                                            Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(
+                newsItemService.getNewsItemsByAuthor(authorId, pageable), NewsItemResponse::from));
     }
 
     @PutMapping("/{id}")
@@ -69,10 +80,6 @@ public class NewsItemController {
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         newsItemService.deleteNewsItem(id);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-    }
-
-    private static List<NewsItemResponse> toResponses(List<NewsItem> items) {
-        return items.stream().map(NewsItemResponse::from).toList();
     }
 
     private NewsItem toNewsItem(CreateNewsRequest request) {

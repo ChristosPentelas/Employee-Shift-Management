@@ -7,15 +7,21 @@ import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -49,16 +55,65 @@ class NewsItemControllerTest {
         return item;
     }
 
+    /** What the service hands back: one item, as page 0 of a 20-row page. */
+    private static Page<NewsItem> onePage() {
+        return new PageImpl<>(List.of(newsItem()), PageRequest.of(0, 20), 1);
+    }
+
+    /** The Pageable the controller passed on to the service for GET /news. */
+    private Pageable pageableSentToService() {
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(newsItemService).getAllNews(captor.capture());
+        return captor.getValue();
+    }
+
     @Test
     void theNewsFeedDoesNotLeakTheAuthorsPassword() throws Exception {
-        when(newsItemService.getAllNews()).thenReturn(List.of(newsItem()));
+        when(newsItemService.getAllNews(any(Pageable.class))).thenReturn(onePage());
 
         // Everyone reads the news, so an employee token on purpose.
         mockMvc.perform(get("/api/v1/news").with(TestTokens.employee()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].title").value("Staff meeting"))
-                .andExpect(jsonPath("$[0].author.name").value("Boss"))
-                .andExpect(jsonPath("$[0].author.password").doesNotExist());
+                .andExpect(jsonPath("$.content[0].title").value("Staff meeting"))
+                .andExpect(jsonPath("$.content[0].author.name").value("Boss"))
+                .andExpect(jsonPath("$.content[0].author.password").doesNotExist());
+    }
+
+    @Test
+    void theNewsFeedIsOnePageWithItsPosition() throws Exception {
+        when(newsItemService.getAllNews(any(Pageable.class))).thenReturn(
+                new PageImpl<>(List.of(newsItem()), PageRequest.of(2, 1), 5));
+
+        mockMvc.perform(get("/api/v1/news?page=2&size=1").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(5))
+                .andExpect(jsonPath("$.totalPages").value(5));
+    }
+
+    @Test
+    void withoutPageParametersTheFirstTwentyAreAskedFor() throws Exception {
+        when(newsItemService.getAllNews(any(Pageable.class))).thenReturn(onePage());
+
+        mockMvc.perform(get("/api/v1/news").with(TestTokens.employee()))
+                .andExpect(status().isOk());
+
+        Pageable asked = pageableSentToService();
+        assertEquals(0, asked.getPageNumber());
+        assertEquals(20, asked.getPageSize());
+    }
+
+    @Test
+    void aHugePageSizeIsLoweredToTheCap() throws Exception {
+        when(newsItemService.getAllNews(any(Pageable.class))).thenReturn(onePage());
+
+        // Without the cap, ?size= is the "no pagination" switch F9 is about.
+        mockMvc.perform(get("/api/v1/news?size=100000").with(TestTokens.employee()))
+                .andExpect(status().isOk());
+
+        assertEquals(100, pageableSentToService().getPageSize());
     }
 
     @Test
@@ -126,7 +181,7 @@ class NewsItemControllerTest {
         mockMvc.perform(get("/api/v1/news"))
                 .andExpect(status().isUnauthorized());
 
-        verify(newsItemService, never()).getAllNews();
+        verify(newsItemService, never()).getAllNews(any());
     }
 
     @Test
@@ -171,7 +226,7 @@ class NewsItemControllerTest {
 
     @Test
     void aBugInsideTheServerIsAServerErrorAndLeaksNothing() throws Exception {
-        when(newsItemService.getAllNews())
+        when(newsItemService.getAllNews(any(Pageable.class)))
                 .thenThrow(new NullPointerException("author is null in news_items"));
 
         mockMvc.perform(get("/api/v1/news").with(TestTokens.employee()))
