@@ -46,7 +46,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | Also: the `deleteBy...` repository methods use `jakarta.transaction.Transactional`, not Spring's, and put it on the repository instead of the service |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
-| F13 | LOW | No indexes; misspelled column | Partial | `fix(backend): rename messages.reciever_id to receiver_id` | Column renamed by migration V2. Left: indexes that cover each list query's filter and sort (V3) |
+| F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 16 done · 4 partial · 10 open.
+Totals: 17 done · 3 partial · 10 open.
 
 ---
 
