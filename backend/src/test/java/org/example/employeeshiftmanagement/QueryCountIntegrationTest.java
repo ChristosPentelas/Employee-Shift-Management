@@ -2,10 +2,21 @@ package org.example.employeeshiftmanagement;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
 import org.example.employeeshiftmanagement.dto.MessageResponse;
+import org.example.employeeshiftmanagement.dto.NewsItemResponse;
+import org.example.employeeshiftmanagement.dto.ShiftResponse;
+import org.example.employeeshiftmanagement.model.LeaveRequest;
+import org.example.employeeshiftmanagement.model.LeaveStatus;
+import org.example.employeeshiftmanagement.model.NewsItem;
+import org.example.employeeshiftmanagement.model.NewsType;
+import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
+import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.example.employeeshiftmanagement.service.MessageService;
+import org.example.employeeshiftmanagement.service.NewsItemService;
+import org.example.employeeshiftmanagement.service.ShiftService;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +27,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -32,6 +46,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code count(*)} query - it already knows the total. That is why the
  * expected count is 1, not 2.
  *
+ * <p>Not tested here: ShiftService.getSchedule and
+ * LeaveRequestService.getLeavesByUserAndStatus. Both first check that the user
+ * exists, which puts that user in the first-level cache - so the rows find
+ * their user in memory, and the count is the same with or without the entity
+ * graph. A test there could never fail, so it would prove nothing.
+ *
+ * <p>The "everyone's" lists (all leave, all news, the calendar) see every row
+ * in the database. Their counts stay exact because every test sharing this
+ * container rolls its inserts back, so the only rows present are this test's.
+ *
  * <p>Same configuration as the other integration tests, so Spring reuses their
  * context and container. Statistics are switched on for this test only and
  * off again afterwards, because the SessionFactory is shared.
@@ -43,6 +67,15 @@ class QueryCountIntegrationTest {
 
     @Autowired
     private MessageService messageService;
+
+    @Autowired
+    private ShiftService shiftService;
+
+    @Autowired
+    private LeaveRequestService leaveRequestService;
+
+    @Autowired
+    private NewsItemService newsItemService;
 
     @Autowired
     private UserRepository userRepository;
@@ -117,6 +150,104 @@ class QueryCountIntegrationTest {
         assertEquals(1, statements);
     }
 
+    @Test
+    void calendarLoadsTheEmployeesWithTheShiftsInOneStatement() {
+        LocalDate day = LocalDate.of(2030, 1, 7);
+        shift(user("employee-a"), day);
+        shift(user("employee-b"), day);
+        shift(user("employee-c"), day);
+
+        long statements = countStatements(() ->
+                shiftService.getAllShifts(day, day).forEach(ShiftResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void shiftHistoryLoadsTheEmployeeWithTheShiftsInOneStatement() {
+        User employee = user("employee");
+        LocalDate day = LocalDate.of(2030, 1, 7);
+        shift(employee, day);
+        shift(employee, day.plusDays(1));
+
+        long statements = countStatements(() ->
+                shiftService.getShiftsByEmployee(employee.getId(), PageRequest.of(0, 20)).map(ShiftResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void allLeaveRequestsLoadTheEmployeesInOneStatement() {
+        leave(user("employee-a"));
+        leave(user("employee-b"));
+        leave(user("employee-c"));
+
+        long statements = countStatements(() ->
+                leaveRequestService.getAllLeaveRequests(PageRequest.of(0, 20)).map(LeaveRequestResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void leaveRequestsByStatusLoadTheEmployeesInOneStatement() {
+        leave(user("employee-a"));
+        leave(user("employee-b"));
+
+        long statements = countStatements(() ->
+                leaveRequestService.getLeavesByStatus(LeaveStatus.PENDING, PageRequest.of(0, 20))
+                        .map(LeaveRequestResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void oneEmployeesLeaveRequestsLoadTheEmployeeInOneStatement() {
+        User employee = user("employee");
+        leave(employee);
+        leave(employee);
+
+        long statements = countStatements(() ->
+                leaveRequestService.getLeavesByUser(employee.getId(), PageRequest.of(0, 20))
+                        .map(LeaveRequestResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void allNewsLoadsTheAuthorsInOneStatement() {
+        post(user("author-a"), NewsType.ANNOUNCEMENT);
+        post(user("author-b"), NewsType.TASK);
+        post(user("author-c"), NewsType.GOAL);
+
+        long statements = countStatements(() ->
+                newsItemService.getAllNews(PageRequest.of(0, 20)).map(NewsItemResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void newsByTypeLoadsTheAuthorsInOneStatement() {
+        post(user("author-a"), NewsType.TASK);
+        post(user("author-b"), NewsType.TASK);
+
+        long statements = countStatements(() ->
+                newsItemService.getNewsByType(NewsType.TASK, PageRequest.of(0, 20)).map(NewsItemResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
+    void newsByAuthorLoadsTheAuthorInOneStatement() {
+        User author = user("author");
+        post(author, NewsType.ANNOUNCEMENT);
+        post(author, NewsType.GOAL);
+
+        long statements = countStatements(() ->
+                newsItemService.getNewsItemsByAuthor(author.getId(), PageRequest.of(0, 20)).map(NewsItemResponse::from));
+
+        assertEquals(1, statements);
+    }
+
     /**
      * Writes everything to the database and empties Hibernate's first-level
      * cache before measuring. Without the clear(), the users saved above are
@@ -144,5 +275,30 @@ class QueryCountIntegrationTest {
 
     private void send(User sender, User receiver) {
         messageService.sendMessage(sender.getId(), receiver.getId(), "hello from " + sender.getName());
+    }
+
+    private void shift(User employee, LocalDate date) {
+        Shift shift = new Shift();
+        shift.setDate(date);
+        shift.setStartTime(LocalTime.of(9, 0));
+        shift.setEndTime(LocalTime.of(17, 0));
+        shift.setPosition("Cashier");
+        shiftService.createShift(employee.getId(), shift);
+    }
+
+    private void leave(User employee) {
+        LeaveRequest request = new LeaveRequest();
+        request.setStartDate(LocalDate.of(2030, 2, 1));
+        request.setEndDate(LocalDate.of(2030, 2, 3));
+        request.setReason("Holiday");
+        leaveRequestService.createLeaveRequest(employee.getId(), request);
+    }
+
+    private void post(User author, NewsType type) {
+        NewsItem item = new NewsItem();
+        item.setTitle(type + " by " + author.getName());
+        item.setDescription("Query count test");
+        item.setType(type);
+        newsItemService.createNewsItem(item, author.getId());
     }
 }

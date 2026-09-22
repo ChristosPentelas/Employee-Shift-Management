@@ -43,7 +43,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
-| F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
+| F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | Also: the `deleteBy...` repository methods use `jakarta.transaction.Transactional`, not Spring's, and put it on the repository instead of the service |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
 | F13 | LOW | No indexes; misspelled column | Open | | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 15 done · 3 partial · 12 open.
+Totals: 16 done · 3 partial · 11 open.
 
 ---
 
@@ -341,6 +341,20 @@ overlap the next one and send the same PUTs again.
 Relates to: F28, F9 (once paged, only the loaded page gets marked).
 Fix idea: one endpoint, e.g. `PUT /messages/chat/{otherUserId}/read`, that
 marks the whole conversation read in a single UPDATE.
+
+**B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
+Where: `application.properties` does not set `spring.jpa.open-in-view`, so
+Spring Boot's default `true` applies (it logs a warning about it at startup).
+Why it matters: since F10 the user associations are `LAZY`. With the session
+held open until the JSON is written, a list query that forgets its
+`@EntityGraph` still works - it just goes back to one query per user, and no
+test or error says so. The single-item endpoints already rely on it: after
+`PUT /messages/{id}/read`, building the response loads sender and receiver in
+two extra queries (a fixed cost, not N+1).
+Relates to: F10.
+Fix idea: `spring.jpa.open-in-view=false`, then fix whatever throws
+`LazyInitializationException` - an `@EntityGraph` on `findById` where a
+response needs the user, or building the DTO inside the service.
 
 ---
 

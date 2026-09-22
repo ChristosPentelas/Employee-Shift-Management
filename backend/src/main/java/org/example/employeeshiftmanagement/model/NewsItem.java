@@ -41,7 +41,10 @@ public class NewsItem {
     private LocalDateTime deadline; //For Tasks
     private Integer targetValue; //For Goals
 
-    @ManyToOne
+    // LAZY: each query decides whether it needs the author. The list queries in
+    // NewsItemRepository ask for it with @EntityGraph, so it comes in the
+    // same SQL statement instead of one extra query per user (F10).
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id")
     private User author;
 

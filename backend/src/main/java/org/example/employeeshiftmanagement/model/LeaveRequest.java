@@ -35,7 +35,10 @@ public class LeaveRequest {
     @Column(nullable = false)
     private LeaveStatus status = LeaveStatus.PENDING;
 
-    @ManyToOne
+    // LAZY: each query decides whether it needs the user. The list queries in
+    // LeaveRequestRepository ask for it with @EntityGraph, so it comes in the
+    // same SQL statement instead of one extra query per user (F10).
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 

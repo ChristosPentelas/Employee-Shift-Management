@@ -34,7 +34,10 @@ public class Shift {
     @Column(nullable = false)
     private String position;
 
-    @ManyToOne//Many shifts belong to one user
+    // LAZY: each query decides whether it needs the user. The list queries in
+    // ShiftRepository ask for it with @EntityGraph, so it comes in the
+    // same SQL statement instead of one extra query per user (F10).
+    @ManyToOne(fetch = FetchType.LAZY)//Many shifts belong to one user
     @JoinColumn(name="user_id",nullable = false)//We create the foreign key for the users in shifts table
     private User user;
 
