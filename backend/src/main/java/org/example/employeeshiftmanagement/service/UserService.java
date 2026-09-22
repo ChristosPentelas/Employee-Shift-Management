@@ -1,6 +1,9 @@
 package org.example.employeeshiftmanagement.service;
 
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
@@ -11,7 +14,6 @@ import org.example.employeeshiftmanagement.repository.ShiftRepository;
 import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -23,6 +25,9 @@ public class UserService {
      * characters: a Greek character takes two bytes in UTF-8.
      */
     public static final int MAX_PASSWORD_BYTES = 72;
+
+    /** The staff list, alphabetical. */
+    private static final Sort BY_NAME = Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"));
 
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
@@ -53,8 +58,8 @@ public class UserService {
     }
 
 
-    public List<User> findAllUsers() {
-        return userRepository.findAll();
+    public Page<User> findAllUsers(Pageable pageable) {
+        return userRepository.findAll(Paging.withSort(pageable, BY_NAME));
     }
 
     public User findUserById(Integer id) {

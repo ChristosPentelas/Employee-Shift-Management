@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -55,14 +55,15 @@ class LeaveRequestControllerTest {
 
     @Test
     void theLeaveListDoesNotLeakPasswords() throws Exception {
-        when(leaveRequestService.getAllLeaveRequests()).thenReturn(List.of(leaveRequest()));
+        when(leaveRequestService.getAllLeaveRequests(any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
 
         mockMvc.perform(get("/api/v1/leaves").with(TestTokens.supervisor()))
                 .andExpect(status().isOk())
                 // LeaveRequest.fromJson on the Flutter side reads json['user']
-                .andExpect(jsonPath("$[0].status").value("PENDING"))
-                .andExpect(jsonPath("$[0].user.name").value("Worker"))
-                .andExpect(jsonPath("$[0].user.password").doesNotExist());
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.content[0].user.name").value("Worker"))
+                .andExpect(jsonPath("$.content[0].user.password").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -155,7 +156,7 @@ class LeaveRequestControllerTest {
         mockMvc.perform(get("/api/v1/leaves"))
                 .andExpect(status().isUnauthorized());
 
-        verify(leaveRequestService, never()).getAllLeaveRequests();
+        verify(leaveRequestService, never()).getAllLeaveRequests(any());
     }
 
     @Test
@@ -183,11 +184,11 @@ class LeaveRequestControllerTest {
 
     @Test
     void anEmployeeCanReadTheirOwnLeaveList() throws Exception {
-        when(leaveRequestService.getLeavesByUser(7)).thenReturn(List.of(leaveRequest()));
+        when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
 
         mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.employee()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].status").value("PENDING"));
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
     }
 
     @Test
@@ -196,12 +197,12 @@ class LeaveRequestControllerTest {
         mockMvc.perform(get("/api/v1/leaves/users/9/leaves").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(leaveRequestService, never()).getLeavesByUser(anyInt());
+        verify(leaveRequestService, never()).getLeavesByUser(anyInt(), any());
     }
 
     @Test
     void aSupervisorCanReadAnEmployeesLeaveList() throws Exception {
-        when(leaveRequestService.getLeavesByUser(7)).thenReturn(List.of(leaveRequest()));
+        when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
 
         mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.supervisor()))
                 .andExpect(status().isOk());
@@ -214,6 +215,19 @@ class LeaveRequestControllerTest {
         mockMvc.perform(get("/api/v1/leaves").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(leaveRequestService, never()).getAllLeaveRequests();
+        verify(leaveRequestService, never()).getAllLeaveRequests(any());
+    }
+
+    @Test
+    void theStatusFilterIsPagedToo() throws Exception {
+        when(leaveRequestService.getLeavesByStatus(eq(LeaveStatus.PENDING), any(Pageable.class)))
+                .thenReturn(TestPages.of(leaveRequest()));
+
+        mockMvc.perform(get("/api/v1/leaves/filter")
+                        .param("status", "PENDING")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.page").value(0));
     }
 }

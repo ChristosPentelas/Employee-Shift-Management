@@ -12,11 +12,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -273,13 +273,13 @@ class UserControllerTest {
 
     @Test
     void listingUsersDoesNotLeakPasswords() throws Exception {
-        when(userService.findAllUsers()).thenReturn(List.of(existingUser()));
+        when(userService.findAllUsers(any(Pageable.class))).thenReturn(TestPages.of(existingUser()));
 
         // An employee on purpose: the app opens chats from the employee list.
         mockMvc.perform(get("/api/v1/users").with(TestTokens.employee()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].email").value("test@example.com"))
-                .andExpect(jsonPath("$[0].password").doesNotExist());
+                .andExpect(jsonPath("$.content[0].email").value("test@example.com"))
+                .andExpect(jsonPath("$.content[0].password").doesNotExist());
     }
 
     @Test
@@ -287,7 +287,7 @@ class UserControllerTest {
         mockMvc.perform(get("/api/v1/users"))
                 .andExpect(status().isUnauthorized());
 
-        verify(userService, never()).findAllUsers();
+        verify(userService, never()).findAllUsers(any());
     }
 
     private static final String PROFILE_EDIT = """

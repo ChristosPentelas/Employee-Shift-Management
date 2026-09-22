@@ -42,7 +42,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
-| F9 | HIGH | No pagination | Partial | `feat: page the news endpoints` | News is paged (`PageResponse`, fixed server-side sort, size capped at 100). Left: messages, leaves, shifts, users; `schedule` needs a maximum date range rather than pages. The app shows only page 0 (B26) |
+| F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Open | | |
 | F11 | MEDIUM | Writes without a transaction boundary | Open | | Also: the `deleteBy...` repository methods use `jakarta.transaction.Transactional`, not Spring's, and put it on the repository instead of the service |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
@@ -50,7 +50,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
-| F17 | LOW | Broken URL in a dead client method | Open | | Still at `api_service.dart:195` |
+| F17 | LOW | Broken URL in a dead client method | Open | | Now `api_service.dart:226` (`getMyShifts`). Since F9 it would also parse a list where the server sends a page - delete it rather than fix it |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Open | | |
 
-Totals: 14 done · 4 partial · 12 open.
+Totals: 15 done · 3 partial · 12 open.
 
 ---
 
@@ -235,6 +235,10 @@ and receiver, but the client only reads the sender's name.
 Fix idea: pick the other person (`senderId == me ? receiver : sender`) for both
 name and id, take the role from the response instead of hard-coding it, and
 group rows by that person.
+Since F9: the list merges page 0 of the inbox with page 0 of sent (50 each),
+so a conversation older than both pages is missing. Grouping on the phone
+cannot fix that; a server endpoint that returns the latest message per
+conversation can.
 
 **B19 · MEDIUM · A leave request with no reason silently fails** — found 2026-09-15
 Where: `leave_requests_screen.dart` labels the field "Λόγος (Προαιρετικά" —
@@ -317,11 +321,12 @@ Fix idea: drop the field initialiser, add `@Column(nullable = false)`, and a
 `V__` migration that backfills any nulls then sets the column `NOT NULL`.
 
 **B26 · LOW · Paged lists show only their first page** — found 2026-09-19
-Where: `ApiService.getNews` asks for page 0 (20 posts) and nothing asks for
-page 1; the same will apply to each list F9 pages next.
-Why it matters: older posts are still on the server but unreachable from the
+Where: every paged list in `ApiService` asks for page 0 only - news 20,
+leaves 50, chat / inbox / sent 50, staff 100 - and nothing asks for page 1.
+Why it matters: older items are still on the server but unreachable from the
 app. Intended for now - F9 is about the server not sending everything - but a
-user will notice once there are more than 20.
+user will notice once a list outgrows its page. The staff list matters most:
+it feeds the assign-shift and chat pickers, so employee 101 cannot be picked.
 Relates to: F9.
 Fix idea: a "load more" at the end of the list (or infinite scroll with a
 `ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and

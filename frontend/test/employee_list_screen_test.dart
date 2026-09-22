@@ -17,8 +17,9 @@ User supervisor() =>
 User employee() =>
     User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
 
-ApiService emptyListServer() =>
-    ApiService(client: MockClient((_) async => http.Response('[]', 200)));
+// An empty page, the server's list shape since F9.
+ApiService emptyListServer() => ApiService(
+    client: MockClient((_) async => http.Response('{"content":[]}', 200)));
 
 Widget appWith(ApiService api) =>
     MaterialApp(home: EmployeeListScreen(apiService: api));
@@ -64,8 +65,8 @@ void main() {
       // Empty before the account exists, then the new employee.
       return http.Response(
           listCalls == 1
-              ? '[]'
-              : '[{"id":8,"name":"New Hire","email":"new@example.com","role":"EMPLOYEE"}]',
+              ? '{"content":[]}'
+              : '{"content":[{"id":8,"name":"New Hire","email":"new@example.com","role":"EMPLOYEE"}]}',
           200);
     });
     final api = ApiService(

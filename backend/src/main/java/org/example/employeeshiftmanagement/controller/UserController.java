@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement.controller;
 import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.dto.LoginRequest;
 import org.example.employeeshiftmanagement.dto.LoginResponse;
+import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.dto.RegisterRequest;
 import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
 import org.example.employeeshiftmanagement.dto.UserResponse;
@@ -10,13 +11,13 @@ import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -38,13 +39,10 @@ public class UserController {
         return new ResponseEntity<>(UserResponse.from(savedUser), HttpStatus.CREATED);
     }
 
+    /** One page of the staff list, by name (F9). See NewsItemController.getAllNews for the defaults and the cap. */
     @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        List<UserResponse> users = userService.findAllUsers()
-                .stream()
-                .map(UserResponse::from)
-                .toList();
-        return ResponseEntity.ok(users);
+    public ResponseEntity<PageResponse<UserResponse>> getAllUsers(Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(userService.findAllUsers(pageable), UserResponse::from));
     }
 
     @GetMapping("/{userId}")

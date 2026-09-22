@@ -18,7 +18,7 @@ void main() {
     final paths = <String>[];
     final api = ApiService(client: MockClient((request) async {
       paths.add(request.url.path);
-      return http.Response('[]', 200);
+      return http.Response('{"content":[]}', 200);
     }));
 
     await tester.pumpWidget(MaterialApp(home: LeaveRequestsScreen(apiService: api)));

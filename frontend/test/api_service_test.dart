@@ -21,7 +21,8 @@ void main() {
     final api = ApiService(
         client: AuthClient(inner: fakeServer, token: () => 'abc'));
 
-    final shifts = await api.getAllShifts();
+    final shifts =
+        await api.getAllShifts(DateTime(2026, 9, 1), DateTime(2026, 9, 30));
 
     expect(shifts, isEmpty);
     expect(sent!.url.path, '/api/v1/shifts');
@@ -81,5 +82,56 @@ void main() {
 
     expect(news.single.title, 'Staff meeting');
     expect(sent!.url.queryParameters, {'page': '0', 'size': '20'});
+  });
+
+  test("the supervisor's calendar asks for the month it shows", () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response('[]', 200);
+    }));
+
+    await api.getAllShifts(DateTime(2026, 2, 1), DateTime(2026, 2, 28));
+
+    // Zero-padded YYYY-MM-DD: the server rejects anything else (F9).
+    expect(sent!.url.queryParameters, {'start': '2026-02-01', 'end': '2026-02-28'});
+  });
+
+  test('a chat page arrives newest first and is shown oldest first', () async {
+    Session.currentUser =
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    http.BaseRequest? sent;
+    String message(int id, String time) =>
+        '{"id":$id,"content":"m$id","timestamp":"2026-09-19T$time",'
+        '"read":true,"sender":{"id":9,"name":"Boss"},"receiver":{"id":7,"name":"Worker"}}';
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response(
+          '{"content":[${message(2, "10:00:00")},${message(1, "09:00:00")}],'
+          '"page":0,"size":50,"totalElements":2,"totalPages":1}',
+          200);
+    }));
+
+    final chat = await api.getChatHistory(9);
+
+    expect(chat.map((m) => m.id), [1, 2]);
+    expect(sent!.url.queryParameters['page'], '0');
+    expect(sent!.url.queryParameters['size'], '50');
+  });
+
+  test('the staff list asks for the largest page the server allows', () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response(
+          '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+          '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+          200);
+    }));
+
+    final staff = await api.getAllEmployees();
+
+    expect(staff.single.name, 'Worker');
+    expect(sent!.url.queryParameters, {'page': '0', 'size': '100'});
   });
 }

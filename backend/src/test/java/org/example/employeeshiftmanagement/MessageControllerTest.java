@@ -9,14 +9,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,16 +59,16 @@ class MessageControllerTest {
 
     @Test
     void theInboxLeaksNeitherSenderNorReceiverPassword() throws Exception {
-        when(messageService.getInbox(7)).thenReturn(List.of(message()));
+        when(messageService.getInbox(eq(7), any(Pageable.class))).thenReturn(TestPages.of(message()));
 
         mockMvc.perform(get("/api/v1/messages/inbox/7").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 // Message.fromJson reads sender.id, sender.name and the "read" key
-                .andExpect(jsonPath("$[0].sender.id").value(9))
-                .andExpect(jsonPath("$[0].sender.name").value("Boss"))
-                .andExpect(jsonPath("$[0].read").value(false))
-                .andExpect(jsonPath("$[0].sender.password").doesNotExist())
-                .andExpect(jsonPath("$[0].receiver.password").doesNotExist());
+                .andExpect(jsonPath("$.content[0].sender.id").value(9))
+                .andExpect(jsonPath("$.content[0].sender.name").value("Boss"))
+                .andExpect(jsonPath("$.content[0].read").value(false))
+                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
+                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist());
     }
 
     @Test
@@ -134,7 +135,7 @@ class MessageControllerTest {
         mockMvc.perform(get("/api/v1/messages/inbox/7"))
                 .andExpect(status().isUnauthorized());
 
-        verify(messageService, never()).getInbox(anyInt());
+        verify(messageService, never()).getInbox(anyInt(), any());
     }
 
     @Test
@@ -142,7 +143,7 @@ class MessageControllerTest {
         mockMvc.perform(get("/api/v1/messages/inbox/9").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(messageService, never()).getInbox(anyInt());
+        verify(messageService, never()).getInbox(anyInt(), any());
     }
 
     @Test
@@ -150,7 +151,7 @@ class MessageControllerTest {
         mockMvc.perform(get("/api/v1/messages/inbox/7").with(TestTokens.supervisor()))
                 .andExpect(status().isForbidden());
 
-        verify(messageService, never()).getInbox(anyInt());
+        verify(messageService, never()).getInbox(anyInt(), any());
     }
 
     @Test
@@ -158,19 +159,19 @@ class MessageControllerTest {
         mockMvc.perform(get("/api/v1/messages/sent/9").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(messageService, never()).getSendMessages(anyInt());
+        verify(messageService, never()).getSendMessages(anyInt(), any());
     }
 
     @Test
     void aChatYouArePartOfCanBeRead() throws Exception {
-        when(messageService.getChatHistory(7, 9)).thenReturn(List.of(message()));
+        when(messageService.getChatHistory(eq(7), eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
 
         mockMvc.perform(get("/api/v1/messages/chat")
                         .param("user1Id", "7")
                         .param("user2Id", "9")
                         .with(TestTokens.employee()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].content").value("Καλημέρα"));
+                .andExpect(jsonPath("$.content[0].content").value("Καλημέρα"));
     }
 
     @Test
@@ -181,7 +182,7 @@ class MessageControllerTest {
                         .with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(messageService, never()).getChatHistory(anyInt(), anyInt());
+        verify(messageService, never()).getChatHistory(anyInt(), anyInt(), any());
     }
 
     @Test

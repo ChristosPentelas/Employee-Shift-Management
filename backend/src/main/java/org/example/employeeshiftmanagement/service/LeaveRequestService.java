@@ -5,12 +5,17 @@ import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 public class LeaveRequestService {
+
+    /** Latest leave first, by the day it starts. There is no "submitted at" column to sort on. */
+    private static final Sort LATEST_FIRST =
+            Sort.by(Sort.Order.desc("startDate"), Sort.Order.desc("id"));
 
     private final LeaveRequestRepository leaveRequestRepository;
     private final UserService userService;
@@ -31,21 +36,21 @@ public class LeaveRequestService {
         return leaveRequestRepository.save(request);
     }
 
-    public List<LeaveRequest> getAllLeaveRequests() {
-        return leaveRequestRepository.findAll();
+    public Page<LeaveRequest> getAllLeaveRequests(Pageable pageable) {
+        return leaveRequestRepository.findAll(Paging.withSort(pageable, LATEST_FIRST));
     }
 
-    public List<LeaveRequest> getLeavesByUser(Integer userId) {
-        return leaveRequestRepository.findByUserId(userId);
+    public Page<LeaveRequest> getLeavesByUser(Integer userId, Pageable pageable) {
+        return leaveRequestRepository.findByUserId(userId, Paging.withSort(pageable, LATEST_FIRST));
     }
 
-    public List<LeaveRequest> getLeavesByStatus(LeaveStatus status) {
-        return leaveRequestRepository.findByStatus(status);
+    public Page<LeaveRequest> getLeavesByStatus(LeaveStatus status, Pageable pageable) {
+        return leaveRequestRepository.findByStatus(status, Paging.withSort(pageable, LATEST_FIRST));
     }
 
-    public List<LeaveRequest> getLeavesByUserAndStatus(Integer userId, LeaveStatus status) {
+    public Page<LeaveRequest> getLeavesByUserAndStatus(Integer userId, LeaveStatus status, Pageable pageable) {
         userService.findUserById(userId);
-        return leaveRequestRepository.findByUserIdAndStatus(userId, status);
+        return leaveRequestRepository.findByUserIdAndStatus(userId, status, Paging.withSort(pageable, LATEST_FIRST));
     }
 
     public LeaveRequest updateLeaveRequest(Integer requestId, LeaveStatus newStatus) {

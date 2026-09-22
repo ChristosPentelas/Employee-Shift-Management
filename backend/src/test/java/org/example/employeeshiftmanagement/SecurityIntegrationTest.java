@@ -65,8 +65,11 @@ class SecurityIntegrationTest {
     }
 
     /** The status code, without RestClient turning 4xx into an exception. */
+    /** A September 2026 calendar: GET /shifts requires a date range (F9). */
+    private static final String SHIFTS = "/shifts?start=2026-09-01&end=2026-09-30";
+
     private HttpStatusCode getShifts(String token) {
-        RestClient.RequestHeadersSpec<?> request = client().get().uri("/shifts");
+        RestClient.RequestHeadersSpec<?> request = client().get().uri(SHIFTS);
         if (token != null) {
             request = request.header("Authorization", "Bearer " + token);
         }
@@ -115,7 +118,7 @@ class SecurityIntegrationTest {
     }
 
     private Answer getShiftsAnswer(String token) {
-        RestClient.RequestHeadersSpec<?> request = client().get().uri("/shifts");
+        RestClient.RequestHeadersSpec<?> request = client().get().uri(SHIFTS);
         if (token != null) {
             request = request.header("Authorization", "Bearer " + token);
         }

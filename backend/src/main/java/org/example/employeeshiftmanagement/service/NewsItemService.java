@@ -6,7 +6,6 @@ import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.NewsItemRepository;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -40,24 +39,15 @@ public class NewsItemService {
     }
 
     public Page<NewsItem> getAllNews(Pageable pageable) {
-        return newsItemRepository.findAll(newestFirst(pageable));
+        return newsItemRepository.findAll(Paging.withSort(pageable, NEWEST_FIRST));
     }
 
     public Page<NewsItem> getNewsItemsByAuthor(Integer authorId, Pageable pageable) {
-        return newsItemRepository.findByAuthorId(authorId, newestFirst(pageable));
+        return newsItemRepository.findByAuthorId(authorId, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
     public Page<NewsItem> getNewsByType(NewsType type, Pageable pageable) {
-        return newsItemRepository.findByType(type, newestFirst(pageable));
-    }
-
-    /**
-     * Keeps the page number and size the client asked for, but not its sort:
-     * the order is the server's decision. A client-chosen sort could name any
-     * entity field, including ones the response never shows.
-     */
-    private static Pageable newestFirst(Pageable pageable) {
-        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), NEWEST_FIRST);
+        return newsItemRepository.findByType(type, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
     public NewsItem getNewsItemById(Integer id) {

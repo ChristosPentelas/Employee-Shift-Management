@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -58,9 +59,12 @@ class ShiftControllerTest {
 
     @Test
     void theShiftListDoesNotLeakPasswordsAndKeepsItsWireFormat() throws Exception {
-        when(shiftService.getAllShifts()).thenReturn(List.of(shift()));
+        when(shiftService.getAllShifts(any(LocalDate.class), any(LocalDate.class))).thenReturn(List.of(shift()));
 
-        mockMvc.perform(get("/api/v1/shifts").with(TestTokens.supervisor()))
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.supervisor()))
                 .andExpect(status().isOk())
                 // Shift.fromJson on the Flutter side reads these exact keys
                 .andExpect(jsonPath("$[0].date").value("2026-09-14"))
@@ -165,15 +169,20 @@ class ShiftControllerTest {
         mockMvc.perform(get("/api/v1/shifts"))
                 .andExpect(status().isUnauthorized());
 
-        verify(shiftService, never()).getAllShifts();
+        verify(shiftService, never()).getAllShifts(any(), any());
     }
 
     @Test
     void anEmployeeCannotSeeEveryonesShifts() throws Exception {
-        mockMvc.perform(get("/api/v1/shifts").with(TestTokens.employee()))
+        // A valid range on purpose: the parameters are checked before
+        // @PreAuthorize runs, so without them this would be a 400, not a 403.
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(shiftService, never()).getAllShifts();
+        verify(shiftService, never()).getAllShifts(any(), any());
     }
 
     @Test
@@ -191,11 +200,12 @@ class ShiftControllerTest {
 
     @Test
     void anEmployeeCanReadTheirOwnShifts() throws Exception {
-        when(shiftService.getShiftsByEmployee(7)).thenReturn(List.of(shift()));
+        when(shiftService.getShiftsByEmployee(eq(7), any(Pageable.class))).thenReturn(TestPages.of(shift()));
 
         mockMvc.perform(get("/api/v1/shifts/users/7").with(TestTokens.employee()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].position").value("Ταμείο"));
+                .andExpect(jsonPath("$.content[0].position").value("Ταμείο"))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -203,7 +213,7 @@ class ShiftControllerTest {
         mockMvc.perform(get("/api/v1/shifts/users/9").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
-        verify(shiftService, never()).getShiftsByEmployee(anyInt());
+        verify(shiftService, never()).getShiftsByEmployee(anyInt(), any());
     }
 
     @Test
@@ -239,5 +249,88 @@ class ShiftControllerTest {
                         .param("end", "2026-09-30")
                         .with(TestTokens.supervisor()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void theCalendarAsksForExactlyTheDaysItShows() throws Exception {
+        when(shiftService.getAllShifts(any(LocalDate.class), any(LocalDate.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2026-09-01")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk());
+
+        verify(shiftService).getAllShifts(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+    }
+
+    @Test
+    void everyonesShiftsNeedADateRange() throws Exception {
+        // Without one, this was "every shift ever" - the unbounded list of F9.
+        mockMvc.perform(get("/api/v1/shifts").with(TestTokens.supervisor()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.start").value("Start date is required"))
+                .andExpect(jsonPath("$.errors.end").value("End date is required"));
+
+        verify(shiftService, never()).getAllShifts(any(), any());
+    }
+
+    @Test
+    void aRangeThatEndsBeforeItStartsIsRejected() throws Exception {
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2026-09-30")
+                        .param("end", "2026-09-01")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.end").value("End date must not be before start date"));
+
+        verify(shiftService, never()).getAllShifts(any(), any());
+    }
+
+    @Test
+    void aRangeOfOneYearAndADayIsAllowed() throws Exception {
+        when(shiftService.getAllShifts(any(LocalDate.class), any(LocalDate.class))).thenReturn(List.of());
+
+        // 2028 is a leap year: 2028-01-01 to 2028-12-31 is 366 days, both included.
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2028-01-01")
+                        .param("end", "2028-12-31")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aLongerRangeIsRejected() throws Exception {
+        mockMvc.perform(get("/api/v1/shifts")
+                        .param("start", "2028-01-01")
+                        .param("end", "2029-01-01")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.end").value("The range may cover at most 366 days"));
+
+        verify(shiftService, never()).getAllShifts(any(), any());
+    }
+
+    @Test
+    void theScheduleHasTheSameRangeCap() throws Exception {
+        mockMvc.perform(get("/api/v1/users/7/schedule")
+                        .param("start", "1900-01-01")
+                        .param("end", "2999-12-31")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.end").value("The range may cover at most 366 days"));
+
+        verify(shiftService, never()).getSchedule(anyInt(), any(), any());
+    }
+
+    @Test
+    void aMistypedDateIsABadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/users/7/schedule")
+                        .param("start", "01/09/2026")
+                        .param("end", "2026-09-30")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isBadRequest());
+
+        verify(shiftService, never()).getSchedule(anyInt(), any(), any());
     }
 }

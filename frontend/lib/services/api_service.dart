@@ -22,6 +22,16 @@ class ApiService {
   // Tests pass a fake client; the app uses the shared one.
   ApiService({http.Client? client}) : _client = client ?? _sharedClient;
 
+  // Every list endpoint answers one page at a time (F9):
+  // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
+  // Only the first page is read for now; older items need a "load more" (B26).
+  static List<dynamic> _pageContent(http.Response response) =>
+      jsonDecode(response.body)['content'] as List<dynamic>;
+
+  // YYYY-MM-DD, the date format of ?start= and &end=.
+  static String _isoDate(DateTime day) =>
+      "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
+
   // For login
   Future<http.Response> login(String email, String password) async {
     final url = Uri.parse("$baseUrl/users/login");
@@ -36,19 +46,19 @@ class ApiService {
     );
   }
 
+  // The staff list feeds pickers (assign a shift, start a chat), so it asks
+  // for the largest page the server allows: 100 people, sorted by name.
   Future<List<User>> getAllEmployees() async {
     try{
       // endpoint for all users
       final response = await _client.get(
-        Uri.parse("$baseUrl/users"),
+        Uri.parse("$baseUrl/users?page=0&size=100"),
         headers: {"Content-Type": "application/json"},
       );
 
       if (response.statusCode == 200){
-        // From JSON string to List
-        List<dynamic> body = jsonDecode(response.body);
-        // We convert each element of the list into a User object
-        List<User> employees = body.map((dynamic item) => User.fromJson(item)).toList();
+        // We convert each element of the page into a User object
+        List<User> employees = _pageContent(response).map((dynamic item) => User.fromJson(item)).toList();
 
         return employees;
       }else{
@@ -92,9 +102,7 @@ class ApiService {
     }
   }
 
-  // The newest page of news. The server answers one page at a time (F9):
-  // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // Only the first page is shown for now; older posts need a "load more".
+  // The newest page of news.
   Future<List<NewsItem>> getNews({int page = 0, int size = 20}) async {
     try{
       final response = await _client.get(
@@ -103,8 +111,7 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        List<dynamic> content = jsonDecode(response.body)['content'];
-        return content.map((item) => NewsItem.fromJson(item)).toList();
+        return _pageContent(response).map((item) => NewsItem.fromJson(item)).toList();
       }else{
         throw Exception("Αποτυχία φόρτωσης ειδήσεων");
     }
@@ -153,10 +160,10 @@ class ApiService {
   }
 
   Future<List<LeaveRequest>> getAllLeaveRequests() async {
-    final response = await _client.get(Uri.parse("$baseUrl/leaves"));
+    // The latest 50, by start date.
+    final response = await _client.get(Uri.parse("$baseUrl/leaves?page=0&size=50"));
     if (response.statusCode == 200) {
-      List body = jsonDecode(response.body);
-      return body.map((item) => LeaveRequest.fromJson(item)).toList();
+      return _pageContent(response).map((item) => LeaveRequest.fromJson(item)).toList();
     }
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }
@@ -165,11 +172,10 @@ class ApiService {
   /// getAllLeaveRequests; from F1 step 7d an employee may not call that.
   Future<List<LeaveRequest>> getMyLeaveRequests() async {
     final userId = Session.currentUser!.id;
-    final response = await _client.get(Uri.parse("$baseUrl/leaves/users/$userId/leaves"));
+    final response = await _client.get(Uri.parse("$baseUrl/leaves/users/$userId/leaves?page=0&size=50"));
 
     if (response.statusCode == 200) {
-      List body = jsonDecode(response.body);
-      return body.map((item) => LeaveRequest.fromJson(item)).toList();
+      return _pageContent(response).map((item) => LeaveRequest.fromJson(item)).toList();
     }
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }
@@ -228,8 +234,11 @@ class ApiService {
     throw Exception("Αποτυχία φόρτωσης βαρδιών");
   }
 
-  Future<List<Shift>> getAllShifts() async {
-    final response = await _client.get(Uri.parse("$baseUrl/shifts"));
+  // Everyone's shifts from start to end, both days included (at most 366
+  // days - the server refuses more). Not paged: a calendar needs them all.
+  Future<List<Shift>> getAllShifts(DateTime start, DateTime end) async {
+    final response = await _client.get(
+        Uri.parse("$baseUrl/shifts?start=${_isoDate(start)}&end=${_isoDate(end)}"));
 
     if (response.statusCode == 200) {
       List body = jsonDecode(response.body);
@@ -267,12 +276,8 @@ class ApiService {
   }
 
   Future<List<Shift>> getFilteredShifts(DateTime start, DateTime end) async {
-    // YYYY-MM-DD
-    String startDate = "${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}";
-    String endDate = "${end.year}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}";
-
     final response = await _client.get(
-      Uri.parse("$baseUrl/users/${Session.currentUser?.id}/schedule?start=$startDate&end=$endDate")
+      Uri.parse("$baseUrl/users/${Session.currentUser?.id}/schedule?start=${_isoDate(start)}&end=${_isoDate(end)}")
     );
 
     if (response.statusCode == 200) {
@@ -283,16 +288,18 @@ class ApiService {
     }
   }
 
+  // The latest 50 messages of a chat, oldest first. The server sends a page
+  // newest-first (page 0 = the latest), so it is turned around here and the
+  // chat screen keeps receiving the order it always had.
   Future<List<Message>> getChatHistory(int otherUserId) async {
     final currentUserId = Session.currentUser!.id;
 
     final response = await _client.get(
-      Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId")
+      Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId&page=0&size=50")
     );
 
     if (response.statusCode == 200) {
-      List body = jsonDecode(response.body);
-      return body.map((item) => Message.fromJson(item)).toList();
+      return _pageContent(response).map((item) => Message.fromJson(item)).toList().reversed.toList();
     }
     return [];
   }
@@ -323,15 +330,14 @@ class ApiService {
     try {
       print("Fetching inbox for user: $userId"); // DEBUG
       final response = await _client.get(
-        Uri.parse("$baseUrl/messages/inbox/$userId"),
+        Uri.parse("$baseUrl/messages/inbox/$userId?page=0&size=50"),
       );
 
       print("Response Status: ${response.statusCode}"); // DEBUG
       print("Response Body: ${response.body}"); // DEBUG
 
       if (response.statusCode == 200) {
-        List body = jsonDecode(response.body);
-        return body.map((item) => Message.fromJson(item)).toList();
+        return _pageContent(response).map((item) => Message.fromJson(item)).toList();
       }
     } catch (e) {
       print("Error in getInbox: $e");
@@ -343,12 +349,11 @@ class ApiService {
     try {
       // Αντιστοιχεί στο @GetMapping("/sent/{userId}") του Controller σου
       final response = await _client.get(
-        Uri.parse("$baseUrl/messages/sent/$userId"),
+        Uri.parse("$baseUrl/messages/sent/$userId?page=0&size=50"),
       );
 
       if (response.statusCode == 200) {
-        List body = jsonDecode(response.body);
-        return body.map((item) => Message.fromJson(item)).toList();
+        return _pageContent(response).map((item) => Message.fromJson(item)).toList();
       }
     } catch (e) {
       print("Error in getSent: $e");

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -36,7 +38,7 @@ public class UserServiceTest {
         User found = userService.findUserById(savedUser.getId());
         assertEquals("Test User", found.getName());
 
-        List<User> users = userService.findAllUsers();
+        List<User> users = userService.findAllUsers(PageRequest.of(0, 20)).getContent();
         assertTrue(users.size() > 0);
 
         assertEquals("EMPLOYEE", savedUser.getRole(), "Θα έπρεπε να έχει μπεί το default role EMPLOYEE");
@@ -231,5 +233,27 @@ public class UserServiceTest {
         user.setPassword(longPassword);
 
         assertThrows(IllegalStateException.class, () -> userService.registerNewEmployee(user));
+    }
+
+    @Test
+    void theStaffListIsByNameWhateverSortTheClientSends() {
+        User zoe = new User();
+        zoe.setName("Zoe Paging");
+        zoe.setEmail("zoe-paging@example.com");
+        zoe.setPassword("aaaaaa");
+        User adam = new User();
+        adam.setName("Adam Paging");
+        adam.setEmail("adam-paging@example.com");
+        adam.setPassword("zzzzzz");
+        userService.registerNewEmployee(zoe);
+        userService.registerNewEmployee(adam);
+
+        // ?sort=password would let a caller learn about the password hashes
+        // from the order alone; the service must replace it with its own.
+        List<String> names = userService.findAllUsers(PageRequest.of(0, 100, Sort.by("password")))
+                .getContent().stream().map(User::getName)
+                .filter(name -> name.endsWith("Paging")).toList();
+
+        assertEquals(List.of("Adam Paging", "Zoe Paging"), names);
     }
 }

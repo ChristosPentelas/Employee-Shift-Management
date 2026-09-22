@@ -35,7 +35,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
 
       List<Shift> shifts;
       if (Session.isSupervisor()) {
-        shifts = await _apiService.getAllShifts();
+        shifts = await _apiService.getAllShifts(firstDayOfMonth, lastDayOfMonth);
       } else {
         shifts = await _apiService.getFilteredShifts(firstDayOfMonth, lastDayOfMonth);
       }

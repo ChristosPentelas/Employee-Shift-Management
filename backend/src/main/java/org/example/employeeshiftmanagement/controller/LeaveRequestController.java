@@ -4,17 +4,22 @@ import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.config.CurrentUser;
 import org.example.employeeshiftmanagement.dto.CreateLeaveRequest;
 import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
+import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
+/**
+ * Every list here is one page, latest leave first: {@code ?page=0&size=20}
+ * (F9). See NewsItemController.getAllNews for the defaults and the cap.
+ */
 @RestController
 @RequestMapping("/api/v1/leaves")
 public class LeaveRequestController {
@@ -40,8 +45,9 @@ public class LeaveRequestController {
 
     @GetMapping("/users/{userId}/leaves")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
-    public ResponseEntity<List<LeaveRequestResponse>> getLeavesByUser(@PathVariable Integer userId) {
-        return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUser(userId)));
+    public ResponseEntity<PageResponse<LeaveRequestResponse>> getLeavesByUser(@PathVariable Integer userId,
+                                                                              Pageable pageable) {
+        return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUser(userId, pageable)));
     }
 
 
@@ -52,18 +58,19 @@ public class LeaveRequestController {
     // stopped calling this one in F1 step 7c, which is what let it close (F7).
     @GetMapping
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<List<LeaveRequestResponse>> getAllLeaves() {
-        return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests()));
+    public ResponseEntity<PageResponse<LeaveRequestResponse>> getAllLeaves(Pageable pageable) {
+        return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests(pageable)));
     }
 
     @GetMapping("/filter")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<List<LeaveRequestResponse>> filterLeaves(@RequestParam LeaveStatus status,
-                                               @RequestParam(required = false) Integer userId) {
+    public ResponseEntity<PageResponse<LeaveRequestResponse>> filterLeaves(@RequestParam LeaveStatus status,
+                                               @RequestParam(required = false) Integer userId,
+                                               Pageable pageable) {
         if (userId != null) {
-            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status)));
+            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status, pageable)));
         }else{
-            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status)));
+            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status, pageable)));
         }
     }
 
@@ -76,8 +83,8 @@ public class LeaveRequestController {
         return ResponseEntity.ok(LeaveRequestResponse.from(updated));
     }
 
-    private static List<LeaveRequestResponse> toResponses(List<LeaveRequest> requests) {
-        return requests.stream().map(LeaveRequestResponse::from).toList();
+    private static PageResponse<LeaveRequestResponse> toResponses(Page<LeaveRequest> requests) {
+        return PageResponse.from(requests, LeaveRequestResponse::from);
     }
 
     /** The employee and the PENDING status are both set by the service, not by the caller. */

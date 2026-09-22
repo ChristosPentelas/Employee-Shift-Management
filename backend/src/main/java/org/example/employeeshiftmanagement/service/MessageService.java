@@ -4,13 +4,22 @@ import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Message;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.MessageRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Service
 public class MessageService {
+
+    /**
+     * Newest first everywhere, the chat included: page 0 of a chat is its
+     * latest messages, which is what a chat screen opens on. The app turns
+     * the page back into oldest-to-newest for display.
+     */
+    private static final Sort NEWEST_FIRST =
+            Sort.by(Sort.Order.desc("timestamp"), Sort.Order.desc("id"));
 
     private final MessageRepository messageRepository;
     private final UserService userService;
@@ -33,21 +42,21 @@ public class MessageService {
         return messageRepository.save(message);
     }
 
-    public List<Message> getChatHistory(Integer user1Id, Integer user2Id) {
-        return messageRepository.findBySenderIdAndReceiverIdOrSenderIdAndReceiverIdOrderByTimestampAsc(user1Id, user2Id,
-                user2Id, user1Id);
+    public Page<Message> getChatHistory(Integer user1Id, Integer user2Id, Pageable pageable) {
+        return messageRepository.findBySenderIdAndReceiverIdOrSenderIdAndReceiverId(user1Id, user2Id,
+                user2Id, user1Id, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
-    public List<Message> getInbox(Integer userId) {
-        return messageRepository.findByReceiverIdOrderByTimestampDesc(userId);
+    public Page<Message> getInbox(Integer userId, Pageable pageable) {
+        return messageRepository.findByReceiverId(userId, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
-    public List<Message> getSendMessages(Integer userId) {
-        return messageRepository.findBySenderIdOrderByTimestampDesc(userId);
+    public Page<Message> getSendMessages(Integer userId, Pageable pageable) {
+        return messageRepository.findBySenderId(userId, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
-    public List<Message> getUnreadMessages(Integer userId) {
-        return messageRepository.findByReceiverIdAndIsReadFalse(userId);
+    public Page<Message> getUnreadMessages(Integer userId, Pageable pageable) {
+        return messageRepository.findByReceiverIdAndIsReadFalse(userId, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
     /**
