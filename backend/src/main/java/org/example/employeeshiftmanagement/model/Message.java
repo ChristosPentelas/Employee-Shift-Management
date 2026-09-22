@@ -30,11 +30,14 @@ public class Message {
     @Column(nullable = false)
     private boolean isRead = false; //To know if the reciever saw it
 
-    @ManyToOne
+    // LAZY: each query decides whether it needs the users. The list queries in
+    // MessageRepository ask for them with @EntityGraph, so they come in the
+    // same SQL statement instead of one extra query per user (F10).
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id",nullable = false)
     private User sender;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reciever_id",nullable = false)
     private User receiver;
 }
