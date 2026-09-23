@@ -63,9 +63,9 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F27 | LOW | Hard-coded backend base URL | Open | | |
 | F28 | LOW | Chat polls every 3 s | Open | | |
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
-| F30 | LOW | No shift-overlap constraint | Open | | |
+| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app does not show the 409 yet (B24) |
 
-Totals: 17 done · 3 partial · 10 open.
+Totals: 18 done · 3 partial · 9 open.
 
 ---
 
@@ -266,7 +266,8 @@ Relates to: F14 (decided during it, deliberately out of scope), F16.
 Fix idea: a `DuplicateEmailException` mapped to 409, and move the BCrypt
 72-byte limit into validation (F15) rather than an `IllegalStateException`.
 Then `IllegalStateException` can be dropped from the advice entirely and fall
-into the 500 catch-all, where it belongs.
+into the 500 catch-all, where it belongs. Since F30 a general
+`ConflictException` → 409 exists; it can be used here instead of a new type.
 Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
 BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
 password passes `@Size` at 100 bytes. It needs a small custom constraint that
@@ -302,7 +303,9 @@ Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
 does nothing with it.
 Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
 answers 400 and the supervisor sees the dialog just sit there, with no hint
-which field is wrong. The same will apply to the shift-time rule F15 adds.
+which field is wrong. The same will apply to the shift-time rule F15 adds,
+and to F30's overlap rule: its 409 carries a readable `detail` ("Overlaps shift
+12 on 2026-09-29, 22:00-06:00") that the dialog could show as it is.
 Relates to: B1 (the server now sends field errors), B19 (same silent-failure
 pattern for leave), F15.
 Fix idea: use `showTimePicker` so a malformed time cannot be typed, and show a
@@ -353,6 +356,35 @@ changing it. Two entities, two patterns for the same job.
 Relates to: B25.
 Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
 `updatable = false`. The column is already `NOT NULL`, so no migration.
+
+**B30 · LOW · Two shift requests at the same moment can both pass the overlap check** — found 2026-09-23
+Where: `ShiftService.rejectOverlaps` reads the employee's nearby shifts, then
+`createShift` / `updateShift` saves - two separate steps, with no transaction
+or lock around them.
+Why it matters: if two supervisors (or one double tap) assign overlapping
+shifts to the same employee at the same instant, both checks see the other
+shift missing and both saves succeed - the rule F30 added is broken exactly
+when it matters. Rare with one company and a few supervisors.
+Relates to: F30, F11 (the same "no transaction boundary" problem).
+Fix idea: with F11, make the write `@Transactional` and lock the employee's
+row first (`@Lock(PESSIMISTIC_WRITE)` on a `UserRepository` lookup), so
+shift writes for one employee queue up. A cheaper partial backstop: make
+`idx_shifts_user_date` `UNIQUE (user_id, date, start_time)` - catches exact
+duplicates only, and the migration fails if the data already has some, so
+check with a `GROUP BY ... HAVING COUNT(*) > 1` first.
+
+**B31 · LOW · A shift can be assigned during the employee's approved leave** — found 2026-09-23
+Where: `ShiftService.createShift` / `updateShift` check only other shifts
+(F30), not `leaves_requests`.
+Why it matters: the supervisor can put someone on the rota on a day they were
+already given off, and nothing says so. Whether that should be refused, only
+warned about, or allowed (e.g. the employee agreed to come in) is a business
+decision, which is why F30 left it out.
+Relates to: F30.
+Fix idea: decide the rule first. If "refuse", look up the employee's
+`APPROVED` leave covering the shift's date and throw `ConflictException`, like
+the overlap check. The reverse also exists: approving leave over days that
+already have shifts.
 
 ---
 

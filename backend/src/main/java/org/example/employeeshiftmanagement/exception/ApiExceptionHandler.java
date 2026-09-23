@@ -48,6 +48,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    /** The request is valid on its own but clashes with stored data (F30). */
+    @ExceptionHandler(ConflictException.class)
+    public ProblemDetail handleConflict(ConflictException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
     /**
      * The request was understood but conflicts with what is already stored -
      * today only "email already taken" and the BCrypt byte limit, both thrown
