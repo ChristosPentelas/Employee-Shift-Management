@@ -58,12 +58,12 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
-| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears |
+| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): say why the assign-shift dialog could not save`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
 | F28 | LOW | Chat polls every 3 s | Open | | |
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
-| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app does not show the 409 yet (B24) |
+| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): say why the assign-shift dialog could not save` |
 
 Totals: 18 done · 3 partial · 9 open.
 
@@ -304,12 +304,15 @@ does nothing with it.
 Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
 answers 400 and the supervisor sees the dialog just sit there, with no hint
 which field is wrong. The same will apply to the shift-time rule F15 adds,
-and to F30's overlap rule: its 409 carries a readable `detail` ("Overlaps shift
-12 on 2026-09-29, 22:00-06:00") that the dialog could show as it is.
+and to F30's overlap rule (409).
+Half fixed by `feat(frontend): say why the assign-shift dialog could not save`: `assignShift` returns an
+`AssignShiftResult` and the dialog stays open with a Greek message for 409,
+400 and anything else. The server's English `detail` is deliberately not
+shown - B2's rule, the app owns the wording (corrected 2026-09-23; an earlier
+note here said to show it as it is). Left: the free-text time fields.
 Relates to: B1 (the server now sends field errors), B19 (same silent-failure
 pattern for leave), F15.
-Fix idea: use `showTimePicker` so a malformed time cannot be typed, and show a
-message when `assignShift` fails.
+Fix idea: use `showTimePicker` so a malformed time cannot be typed.
 
 **B26 · LOW · Paged lists show only their first page** — found 2026-09-19
 Where: every paged list in `ApiService` asks for page 0 only - news 20,
@@ -385,6 +388,55 @@ Fix idea: decide the rule first. If "refuse", look up the employee's
 `APPROVED` leave covering the shift's date and throw `ConflictException`, like
 the overlap check. The reverse also exists: approving leave over days that
 already have shifts.
+
+**B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
+Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled
+during `await _apiService.assignShift(...)`.
+Why it matters: a double tap sends two POSTs. Since F30 the second one usually
+gets a 409 and the supervisor may see "overlaps" for a shift that was in fact
+saved by the first tap; if both arrive at the same instant, both are saved
+(B30). A classic beginner pitfall in any form that submits over the network.
+Relates to: B30, F30.
+Fix idea: a `saving` flag in the dialog state; `onPressed: null` and a small
+spinner while it is true.
+
+**B33 · LOW · Deleting a shift fails without a word** — found 2026-09-23
+Where: `shifts_screen.dart` `_confirmDelete`: `if (success) { ... }` with no
+`else`; `ApiService.deleteShift` returns `bool`.
+Why it matters: the same silent-failure pattern B24 had for assigning - the
+shift simply stays on the calendar and nobody says why.
+Relates to: B24, B19.
+Fix idea: the same shape as `assignShift` since B24: show a message on
+failure.
+
+**B34 · LOW · The assign dialog never opens if the staff list fails to load** — found 2026-09-23
+Where: `shifts_screen.dart` `_showAssignShiftDialog` starts with
+`await _apiService.getAllEmployees()`, which throws on any error, inside an
+`async void` method nobody awaits.
+Why it matters: the exception is unhandled (it only reaches the debug log),
+and the long-press just does nothing.
+Relates to: F25 (the same method then uses `context` after that `await`).
+Fix idea: `try/catch` around it, a SnackBar on failure, and
+`if (!mounted) return;` before `showDialog`.
+
+**B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
+Where: `shifts_screen.dart` `_showAssignShiftDialog` creates three
+`TextEditingController`s as local variables for every dialog it opens.
+Why it matters: a controller holds listeners until `dispose()` is called;
+each opened dialog leaks three. Small here, but the habit leaks real
+resources elsewhere (animation controllers, streams). The local names also
+start with `_`, which the analyzer flags - `_` means "private to the
+library", and a local variable is already private.
+Fix idea: move the dialog into its own `StatefulWidget` that creates the
+controllers in `initState` and disposes them in `dispose`.
+
+**B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
+Where: `api_service.dart` `assignShift` sends
+`shift.date.toIso8601String().split('T')[0]`; `_isoDate()` in the same class
+exists for exactly this.
+Why it matters: both give `YYYY-MM-DD` today, but two ways of writing the same
+format drift apart when one is changed.
+Fix idea: use `_isoDate(shift.date)`.
 
 ---
 

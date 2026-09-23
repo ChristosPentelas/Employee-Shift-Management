@@ -3,6 +3,7 @@
 // silently be missing from that one request.
 
 import 'package:employee_shift_management_ui/models/leave_request_model.dart';
+import 'package:employee_shift_management_ui/models/shift_model.dart';
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:employee_shift_management_ui/utils/session.dart';
@@ -10,6 +11,14 @@ import 'package:employee_shift_management_ui/services/auth_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+Shift aShift() => Shift(
+      id: 0,
+      date: DateTime(2026, 9, 29),
+      startTime: '08:00',
+      endTime: '16:00',
+      position: 'Ταμείο',
+    );
 
 void main() {
   test('requests go through the auth client and carry the token', () async {
@@ -133,5 +142,29 @@ void main() {
 
     expect(staff.single.name, 'Worker');
     expect(sent!.url.queryParameters, {'page': '0', 'size': '100'});
+  });
+
+  test('assigning a shift reports why the server refused it', () async {
+    Future<AssignShiftResult> assignAnswered(int status) {
+      final api = ApiService(
+          client: MockClient((_) async => http.Response('{}', status)));
+      return api.assignShift(aShift(), 7);
+    }
+
+    expect(await assignAnswered(201), AssignShiftResult.created);
+    // 409: the employee already has a shift then (F30).
+    expect(await assignAnswered(409), AssignShiftResult.overlaps);
+    expect(await assignAnswered(400), AssignShiftResult.invalid);
+    expect(await assignAnswered(500), AssignShiftResult.failed);
+  });
+
+  test('assigning a shift without a network is a failure, not a crash', () async {
+    final api = ApiService(client: MockClient((_) async {
+      throw http.ClientException('no network');
+    }));
+
+    final result = await api.assignShift(aShift(), 7);
+
+    expect(result, AssignShiftResult.failed);
   });
 }

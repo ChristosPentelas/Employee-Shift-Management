@@ -6,6 +6,11 @@ import '../utils/session.dart';
 import '../models/user_model.dart';
 
 class ShiftsScreen extends StatefulWidget {
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const ShiftsScreen({super.key, this.apiService});
+
   @override
   _ShiftsScreenState createState() => _ShiftsScreenState();
 }
@@ -15,7 +20,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
   DateTime? _selectedDay;
   List<Shift> _allShifts = [];
   bool _isLoading = true;
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
 
   @override
   void initState() {
@@ -163,6 +168,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
   void _showAssignShiftDialog(DateTime selectedDate) async {
     List<User> employees = await _apiService.getAllEmployees();
     User? selectedEmployee;
+    String? saveError; // Shown in the dialog when the server refuses the shift.
     final _positionController = TextEditingController();
     final _startController = TextEditingController(text: "08:00");
     final _endController = TextEditingController(text: "16:00");
@@ -189,6 +195,11 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                 TextField(controller: _positionController, decoration: InputDecoration(labelText: "Θέση εργασίας")),
                 TextField(controller: _startController, decoration: InputDecoration(labelText: "Έναρξη (HH:mm)")),
                 TextField(controller: _endController, decoration: InputDecoration(labelText: "Λήξη (HH:mm)")),
+                if (saveError != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Text(saveError!, style: TextStyle(color: Colors.red)),
+                  ),
               ],
             ),
           ),
@@ -204,10 +215,19 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                   position: _positionController.text,
                 );
 
-                bool success = await _apiService.assignShift(newShift, selectedEmployee!.id);
-                if (success) {
+                final result = await _apiService.assignShift(newShift, selectedEmployee!.id);
+
+                // The dialog may have been closed while we waited (Cancel, or
+                // an expired login closing every screen); its context is then
+                // no longer in the widget tree and must not be used (F25).
+                if (!context.mounted) return;
+
+                if (result == AssignShiftResult.created) {
                   Navigator.pop(context);
                   _loadShifts();
+                } else {
+                  // The dialog stays open, so the supervisor can fix the times.
+                  setDialogState(() => saveError = _assignErrorText(result));
                 }
               },
               child: Text("Αποθήκευση"),
@@ -216,6 +236,20 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
         ),
       ),
     );
+  }
+
+  String _assignErrorText(AssignShiftResult result) {
+    switch (result) {
+      case AssignShiftResult.overlaps:
+        return "Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.";
+      case AssignShiftResult.invalid:
+        return "Ελέγξτε τις ώρες (μορφή ΩΩ:λλ, π.χ. 08:00).";
+      case AssignShiftResult.failed:
+      // Never shown - created closes the dialog - but Dart wants every case
+      // named, so a value added to the enum later cannot be forgotten here.
+      case AssignShiftResult.created:
+        return "Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.";
+    }
   }
 
   void _confirmDelete(int shiftId) {

@@ -8,6 +8,17 @@ import '../models/shift_model.dart';
 import '../models/message_model.dart';
 import 'auth_client.dart';
 
+/// The outcome of ApiService.assignShift.
+enum AssignShiftResult {
+  created,
+  /// 409: the employee already has a shift at that time (F30).
+  overlaps,
+  /// 400: the server refused a field, e.g. a time that is not HH:mm.
+  invalid,
+  /// Anything else, including no network.
+  failed,
+}
+
 class ApiService {
   //IP 10.0.2.2 is the localhost to my PC
   static const String baseUrl = "http://10.0.2.2:8080/api/v1";
@@ -247,7 +258,9 @@ class ApiService {
     throw Exception("Error loading all shifts");
   }
 
-  Future<bool> assignShift(Shift shift, int userId) async {
+  // What happened to the shift, not how to say it: the screen picks the
+  // wording, because the server's English detail is not for the user (B2).
+  Future<AssignShiftResult> assignShift(Shift shift, int userId) async {
     try {
       final response = await _client.post(
         Uri.parse("$baseUrl/users/$userId/shifts"),
@@ -259,9 +272,19 @@ class ApiService {
           "position": shift.position,
         }),
       );
-      return response.statusCode == 200 || response.statusCode == 201;
+      switch (response.statusCode) {
+        case 200:
+        case 201:
+          return AssignShiftResult.created;
+        case 409:
+          return AssignShiftResult.overlaps;
+        case 400:
+          return AssignShiftResult.invalid;
+        default:
+          return AssignShiftResult.failed;
+      }
     } catch (e) {
-      return false;
+      return AssignShiftResult.failed;
     }
   }
 
