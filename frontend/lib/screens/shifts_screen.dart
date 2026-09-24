@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/shift_model.dart';
 import '../services/api_service.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 import '../models/user_model.dart';
 
-class ShiftsScreen extends StatefulWidget {
+class ShiftsScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
@@ -15,7 +16,7 @@ class ShiftsScreen extends StatefulWidget {
   _ShiftsScreenState createState() => _ShiftsScreenState();
 }
 
-class _ShiftsScreenState extends State<ShiftsScreen> {
+class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   List<Shift> _allShifts = [];
@@ -39,7 +40,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
       DateTime lastDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
 
       List<Shift> shifts;
-      if (Session.isSupervisor()) {
+      if (ref.read(isSupervisorProvider)) {
         shifts = await _apiService.getAllShifts(firstDayOfMonth, lastDayOfMonth);
       } else {
         shifts = await _apiService.getFilteredShifts(firstDayOfMonth, lastDayOfMonth);
@@ -92,7 +93,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                   markerDecoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
               ),
                 onDayLongPressed: (selectedDay, focusedDay) {
-                  if (Session.isSupervisor()) {
+                  if (ref.read(isSupervisorProvider)) {
                     _showAssignShiftDialog(selectedDay);
                   }
                 },
@@ -109,6 +110,8 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
   }
 
   Widget _buildShiftList() {
+    // Called from build, so watch (not read): a role change rebuilds the list.
+    final isSupervisor = ref.watch(isSupervisorProvider);
     final shifts = _selectedDay != null ? _getShiftsForDay(_selectedDay!) : [];
 
     if (shifts.isEmpty) {
@@ -152,7 +155,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                   ),
                 ),
 
-                if (Session.isSupervisor())
+                if (isSupervisor)
                   IconButton(
                     icon: Icon(Icons.delete_sweep, color: Colors.redAccent),
                     onPressed: () => _confirmDelete(s.id),

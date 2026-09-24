@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'helpers/app_scope.dart';
 
 User supervisor() =>
     User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
@@ -22,7 +23,7 @@ ApiService emptyListServer() => ApiService(
     client: MockClient((_) async => http.Response('{"content":[]}', 200)));
 
 Widget appWith(ApiService api) =>
-    MaterialApp(home: EmployeeListScreen(apiService: api));
+    withAppState(MaterialApp(home: EmployeeListScreen(apiService: api)));
 
 void main() {
   tearDown(Session.clear);

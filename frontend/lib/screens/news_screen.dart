@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../models/news_model.dart';
 import '../utils/date_limits.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 
-class NewsScreen extends StatefulWidget {
+class NewsScreen extends ConsumerStatefulWidget {
   @override
   _NewsScreenState createState() => _NewsScreenState();
 }
 
-class _NewsScreenState extends State<NewsScreen> {
+class _NewsScreenState extends ConsumerState<NewsScreen> {
   final ApiService _apiService = ApiService();
   late Future<List<NewsItem>> _newsFuture;
 
@@ -21,6 +22,8 @@ class _NewsScreenState extends State<NewsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSupervisor = ref.watch(isSupervisorProvider);
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
@@ -52,15 +55,15 @@ class _NewsScreenState extends State<NewsScreen> {
 
             return TabBarView(
               children: [
-                _buildNewsList(allNews),
-                _buildNewsList(allNews.where((n) => n.type == 'ANNOUNCEMENT').toList()),
-                _buildNewsList(allNews.where((n) => n.type == 'GOAL').toList()),
-                _buildNewsList(allNews.where((n) => n.type == 'TASK').toList()),
+                _buildNewsList(allNews, isSupervisor),
+                _buildNewsList(allNews.where((n) => n.type == 'ANNOUNCEMENT').toList(), isSupervisor),
+                _buildNewsList(allNews.where((n) => n.type == 'GOAL').toList(), isSupervisor),
+                _buildNewsList(allNews.where((n) => n.type == 'TASK').toList(), isSupervisor),
               ],
             );
           },
         ),
-        floatingActionButton: Session.isSupervisor()
+        floatingActionButton: isSupervisor
           ? FloatingActionButton(
               onPressed: () => _showAddNewsDialog(context),
               child: Icon(Icons.add),
@@ -71,7 +74,7 @@ class _NewsScreenState extends State<NewsScreen> {
     );
   }
 
-  Widget _buildNewsList(List<NewsItem> items){
+  Widget _buildNewsList(List<NewsItem> items, bool isSupervisor){
     if (items.isEmpty) return Center(child: Text("Καμία εγγραφή σε αυτή την κατηγορία."));
 
     return ListView.builder(
@@ -88,7 +91,7 @@ class _NewsScreenState extends State<NewsScreen> {
             ),
             title: Text(item.title, style: TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text("Από: ${item.author.name}"),
-            trailing: Session.isSupervisor()
+            trailing: isSupervisor
               ? IconButton(
                   icon: Icon(Icons.delete, color: Colors.red[300]),
                   onPressed: () => _confirmDelete(context, item.id),
@@ -178,13 +181,18 @@ class _NewsScreenState extends State<NewsScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
             ElevatedButton(
               onPressed: () async {
+                // Read before the await: the session can end while the
+                // request is on its way (B16).
+                final me = ref.read(authProvider);
+                if (me == null) return;
+
                 NewsItem newItem = NewsItem(
                     id: 0,
                     title: _titleController.text,
                     description: _descController.text,
                     type: selectedType,
                     createdAt: DateTime.now(),
-                    author: Session.currentUser!,
+                    author: me.user,
                     deadline: selectedDeadline,
                     targetValue: int.tryParse(_targetController.text),
                 );

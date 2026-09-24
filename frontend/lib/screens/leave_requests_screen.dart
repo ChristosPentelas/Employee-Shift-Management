@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../models/leave_request_model.dart';
 import '../utils/date_limits.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 
-class LeaveRequestsScreen extends StatefulWidget {
+class LeaveRequestsScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
@@ -14,7 +15,7 @@ class LeaveRequestsScreen extends StatefulWidget {
   _LeaveRequestsScreenState createState() => _LeaveRequestsScreenState();
 }
 
-class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
+class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   late final ApiService _apiService = widget.apiService ?? ApiService();
   late Future<List<LeaveRequest>> _leavesFuture;
 
@@ -22,7 +23,7 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
   /// own from the server, instead of downloading everyone's and hiding the
   /// rest on the phone (F7).
   Future<List<LeaveRequest>> _loadLeaves() {
-    return Session.isSupervisor()
+    return ref.read(isSupervisorProvider)
         ? _apiService.getAllLeaveRequests()
         : _apiService.getMyLeaveRequests();
   }
@@ -37,6 +38,8 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSupervisor = ref.watch(isSupervisorProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Αιτήματα Αδείας"),
@@ -65,7 +68,7 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
                 margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
                   leading: Icon(Icons.calendar_month, color: Colors.indigo),
-                  title: Text(Session.isSupervisor()
+                  title: Text(isSupervisor
                       ? "Υπάλληλος: ${req.employee.name}"
                       : "Αίτημα"
                     ),
@@ -76,14 +79,14 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
                       if (req.reason != null) Text("Λόγος: ${req.reason}",style: TextStyle(fontSize: 12)),
                     ],
                   ),
-                  trailing: _buildStatusWidget(req),
+                  trailing: _buildStatusWidget(req, isSupervisor),
                 ),
               );
             },
           );
         },
       ),
-      floatingActionButton: !Session.isSupervisor()
+      floatingActionButton: !isSupervisor
         ? FloatingActionButton(
           onPressed: () => _showAddLeaveDialog(),
           child: Icon(Icons.add),
@@ -93,8 +96,8 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
     );
   }
 
-  Widget _buildStatusWidget(LeaveRequest req) {
-    if (Session.isSupervisor() && req.status == 'PENDING') {
+  Widget _buildStatusWidget(LeaveRequest req, bool isSupervisor) {
+    if (isSupervisor && req.status == 'PENDING') {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -180,9 +183,14 @@ class _LeaveRequestsScreenState extends State<LeaveRequestsScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
             ElevatedButton(
               onPressed: (selectedRange == null) ? null : () async {
+                // Read before the await: the session can end while the
+                // request is on its way (B16).
+                final me = ref.read(authProvider);
+                if (me == null) return;
+
                 LeaveRequest newRequest = LeaveRequest(
                   id: 0,
-                  employee: Session.currentUser!,
+                  employee: me.user,
                   startDate: selectedRange!.start,
                   endDate: selectedRange!.end,
                   status: 'PENDING',

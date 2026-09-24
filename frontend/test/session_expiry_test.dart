@@ -5,6 +5,7 @@ import 'package:employee_shift_management_ui/utils/navigation.dart';
 import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'helpers/app_scope.dart';
 
 User worker() =>
     User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
@@ -34,7 +35,7 @@ void main() {
 
   testWidgets('returns to the login screen, closes other screens and says why',
       (WidgetTester tester) async {
-    await tester.pumpWidget(MyApp());
+    await tester.pumpWidget(withAppState(MyApp()));
     navigatorKey.currentState!.push(MaterialPageRoute(
         builder: (_) => const Scaffold(body: Text('Shifts page'))));
     await tester.pumpAndSettle();

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import '../utils/session.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../state/auth_session.dart';
 import '../services/api_service.dart';
 import '../screens/login_screen.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
 }
 
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final ApiService _apiService = ApiService();
 
   void _showEditDialog() {
-    final user = Session.currentUser!;
+    final me = ref.read(authProvider);
+    if (me == null) return;
+    final user = me.user;
     final _nameController = TextEditingController(text: user.name);
     final _emailController = TextEditingController(text: user.email);
     final _phoneController = TextEditingController(text: user.phoneNumber);
@@ -56,9 +59,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
 
               if (success) {
-                setState(() {
-
-                });
+                // ApiService.updateUser edited the user's fields in place,
+                // which tells no one, so repaint by hand. F24 step 24c makes
+                // it replace the session instead, and this line goes away.
+                setState(() {});
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
                 );
@@ -75,7 +79,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = Session.currentUser;
+    final user = ref.watch(authProvider)?.user;
+    final isSupervisor = ref.watch(isSupervisorProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -89,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: () {
-              Session.clear(); // the user and the token together
+              ref.read(authProvider.notifier).logOut(); // the user and the token together
 
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => LoginScreen()),
@@ -117,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(user.name, style: TextStyle(fontSize: 24,fontWeight: FontWeight.bold)),
                 Chip(
                   label: Text(user.role),
-                  backgroundColor: user.role == 'SUPERVISOR' ? Colors.orange : Colors.blue,
+                  backgroundColor: isSupervisor ? Colors.orange : Colors.blue,
                 ),
                 Divider(height: 40),
 

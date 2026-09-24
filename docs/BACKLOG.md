@@ -57,7 +57,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
-| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` → 24c services stop reading globals, `Session` deleted → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Home's logout already cleared the session before this work |
+| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c services stop reading globals, `Session` deleted → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24b no screen uses `Session`; only `ApiService`, `AuthClient` and `handleRejectedToken` do, and the role check is `isSupervisorProvider`. Home's logout already cleared the session before this work |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
@@ -222,6 +222,10 @@ Relates to: F24 (session is a mutable global), F25 (async gaps).
 Fix idea: read the user once before the `await` and use that local value, or
 stop when it is null. Better, once F1 step 7 lands, the server takes identity
 from the token and the client stops sending its own id at all.
+Progress: the screens are fixed by `refactor(frontend): read the session through
+ref in every screen` (F24 step 24b) - each reads `authProvider` once before its
+first `await`, tested in `messages_list_screen_test.dart`. The `ApiService`
+methods remain; F24 step 24c moves them off `Session`.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
@@ -447,6 +451,16 @@ usable - the next person to call it gets a confusing failure.
 Relates to: F24 - the method also reads `Session.currentUser!`.
 Fix idea: delete it in F24 step 24c, which touches every `Session` read in
 `ApiService`.
+
+**B38 · LOW · The two logout buttons return to login in two different ways** — found 2026-09-24
+Where: `home_screen.dart` goes to the named route
+`pushNamedAndRemoveUntil('/login', ...)`; `profile_screen.dart` builds the page
+itself, `pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LoginScreen()), ...)`.
+Why it matters: both work today, but a change to how the login screen is
+opened (e.g. passing it an argument) has to be made twice, and the profile
+screen imports `LoginScreen` only for this.
+Fix idea: use the named route in both. Better, one `logOut` helper that clears
+the session and navigates, used by both buttons and by `handleRejectedToken`.
 
 ---
 

@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   final User receiver;
 
   ChatScreen({required this.receiver});
@@ -14,7 +15,7 @@ class ChatScreen extends StatefulWidget {
   _ChatScreenState createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _messagegeController = TextEditingController();
   List<Message> _messages = [];
@@ -35,11 +36,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _loadMessages() async {
+    // Read once, before the first await: the session can end while a request
+    // is on its way (B16), and ref may not be used after the screen closes.
+    final me = ref.read(authProvider);
+    if (me == null) return;
+
     try {
       final history = await _apiService.getChatHistory(widget.receiver.id);
 
       for (var msg in history) {
-        if (msg.receiverId == Session.currentUser!.id && !msg.isRead) {
+        if (msg.receiverId == me.user.id && !msg.isRead) {
           await _apiService.markAsRead(msg.id);
         }
       }
@@ -68,6 +74,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final myId = ref.watch(authProvider)?.user.id;
+
     return Scaffold(
       appBar: AppBar(title: Text(widget.receiver.name)),
       body: Column(
@@ -78,7 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context,index) {
                 final msg = _messages[_messages.length - 1 - index];
-                bool isMe = msg.senderId == Session.currentUser?.id;
+                bool isMe = msg.senderId == myId;
 
                 return Align(
                   alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

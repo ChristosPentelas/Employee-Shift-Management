@@ -12,12 +12,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'helpers/app_scope.dart';
 
 // The same named route main.dart registers.
-Widget appStartingAt(Widget home) => MaterialApp(
+Widget appStartingAt(Widget home) => withAppState(MaterialApp(
       home: home,
       routes: {'/login': (context) => LoginScreen()},
-    );
+    ));
 
 NavigatorState navigator(WidgetTester tester) =>
     tester.state<NavigatorState>(find.byType(Navigator));

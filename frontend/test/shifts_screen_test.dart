@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'helpers/app_scope.dart';
 
 /// A fake server: an empty calendar, one employee, and [assignStatus] as the
 /// answer to "assign a shift".
@@ -29,7 +30,7 @@ ApiService serverAnsweringAssign(int assignStatus) =>
 
 /// Opens the assign dialog on the 15th, picks the employee and presses Save.
 Future<void> assignAShift(WidgetTester tester, ApiService api) async {
-  await tester.pumpWidget(MaterialApp(home: ShiftsScreen(apiService: api)));
+  await tester.pumpWidget(withAppState(MaterialApp(home: ShiftsScreen(apiService: api))));
   await tester.pumpAndSettle();
 
   // The calendar shows the current month; the 15th appears in it exactly once.

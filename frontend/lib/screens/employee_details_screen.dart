@@ -1,17 +1,18 @@
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 import '../screens/chat_screen.dart';
 
-class EmployeeDetailsScreen extends StatelessWidget {
+class EmployeeDetailsScreen extends ConsumerWidget {
 
   final User user;
 
   EmployeeDetailsScreen({required this.user});
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context, WidgetRef ref){
     return Scaffold(
       appBar: AppBar(title: Text(user.name)),
       body: Padding(
@@ -44,7 +45,7 @@ class EmployeeDetailsScreen extends StatelessWidget {
 
             SizedBox(height: 10),
 
-            if (Session.isSupervisor())
+            if (ref.watch(isSupervisorProvider))
               OutlinedButton.icon(
                 onPressed: () => _showDeleteDialog(context),
                 icon: Icon(Icons.delete, color: Colors.red),

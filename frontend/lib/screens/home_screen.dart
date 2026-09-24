@@ -1,15 +1,16 @@
 import 'package:employee_shift_management_ui/screens/employee_list_screen.dart';
 import 'package:employee_shift_management_ui/screens/news_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/leave_requests_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/shifts_screen.dart';
 import '../screens/messages_list_screen.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         title: Text("Dashboard"),
@@ -22,7 +23,7 @@ class HomeScreen extends StatelessWidget {
             onPressed: (){
               // Logging out means forgetting the user and the token. Only
               // leaving the screen (the old Navigator.pop) kept both in memory.
-              Session.clear();
+              ref.read(authProvider.notifier).logOut();
               // Remove every screen, so "back" cannot return to the dashboard.
               Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
             },

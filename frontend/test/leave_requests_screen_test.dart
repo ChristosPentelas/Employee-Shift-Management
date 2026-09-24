@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'helpers/app_scope.dart';
 
 void main() {
   tearDown(Session.clear);
@@ -21,7 +22,8 @@ void main() {
       return http.Response('{"content":[]}', 200);
     }));
 
-    await tester.pumpWidget(MaterialApp(home: LeaveRequestsScreen(apiService: api)));
+    await tester.pumpWidget(
+        withAppState(MaterialApp(home: LeaveRequestsScreen(apiService: api))));
     await tester.pumpAndSettle();
     return paths;
   }

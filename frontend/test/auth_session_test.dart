@@ -42,4 +42,21 @@ void main() {
 
     expect(heard, ['abc', null]);
   });
+
+  test('isSupervisorProvider follows whoever is logged in', () {
+    expect(container.read(isSupervisorProvider), isFalse,
+        reason: 'nobody is logged in');
+
+    container.read(authProvider.notifier).logIn(
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'supervisor'),
+        'abc');
+    expect(container.read(isSupervisorProvider), isTrue,
+        reason: 'the role is compared without regard to case');
+
+    container.read(authProvider.notifier).logIn(worker(), 'def');
+    expect(container.read(isSupervisorProvider), isFalse);
+
+    container.read(authProvider.notifier).logOut();
+    expect(container.read(isSupervisorProvider), isFalse);
+  });
 }

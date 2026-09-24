@@ -1,11 +1,12 @@
 import 'package:employee_shift_management_ui/screens/employee_details_screen.dart';
 import 'package:employee_shift_management_ui/screens/register_screen.dart';
-import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../state/auth_session.dart';
 import '../services/api_service.dart';
 import '../models/user_model.dart';
 
-class EmployeeListScreen extends StatefulWidget {
+class EmployeeListScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
@@ -15,7 +16,7 @@ class EmployeeListScreen extends StatefulWidget {
   _EmployeeListScreenState createState() => _EmployeeListScreenState();
 }
 
-class _EmployeeListScreenState extends State<EmployeeListScreen> {
+class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   late final ApiService _apiService = widget.apiService ?? ApiService();
   late Future<List<User>> _employeesFuture;
 
@@ -47,7 +48,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
           title: Text("Λίστα Υπαλλήλων"), backgroundColor: Colors.blue[800]),
       // Only supervisors create accounts (F1 step 5). Hiding the button is a
       // convenience, not security: the server enforces the rule (step 6).
-      floatingActionButton: Session.isSupervisor()
+      floatingActionButton: ref.watch(isSupervisorProvider)
           ? FloatingActionButton(
               tooltip: "Νέος Υπάλληλος",
               backgroundColor: Colors.blue[800],

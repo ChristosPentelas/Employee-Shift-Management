@@ -33,3 +33,11 @@ class AuthNotifier extends Notifier<AuthSession?> {
 
 final authProvider =
     NotifierProvider<AuthNotifier, AuthSession?>(AuthNotifier.new);
+
+/// Whether the logged-in user is a supervisor; false when logged out.
+///
+/// A derived provider: it recomputes whenever authProvider changes, and the
+/// screens that watch it rebuild only when the answer itself changes.
+final isSupervisorProvider = Provider<bool>((ref) {
+  return ref.watch(authProvider)?.user.role.toUpperCase() == 'SUPERVISOR';
+});

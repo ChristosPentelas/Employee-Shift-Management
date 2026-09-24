@@ -1,11 +1,12 @@
 import 'package:employee_shift_management_ui/screens/home_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
-import '../utils/session.dart';
+import '../state/auth_session.dart';
 import 'dart:convert';
 
-class LoginScreen extends StatefulWidget{
+class LoginScreen extends ConsumerStatefulWidget{
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
@@ -15,7 +16,7 @@ class LoginScreen extends StatefulWidget{
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -131,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         var userData = jsonDecode(response.body);
         // AuthClient sends the token with every later request (F1 step 3).
-        Session.logIn(User.fromJson(userData), userData['token']);
+        ref.read(authProvider.notifier).logIn(User.fromJson(userData), userData['token']);
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Επιτυχής σύνδεση!"), backgroundColor: Colors.green),
