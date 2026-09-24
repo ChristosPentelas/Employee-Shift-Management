@@ -13,8 +13,7 @@ void main() {
   tearDown(Session.clear);
 
   test('a rejected current token logs the user out', () {
-    Session.currentUser = worker();
-    Session.token = 'old';
+    Session.logIn(worker(), 'old');
 
     handleRejectedToken('old');
 
@@ -25,8 +24,7 @@ void main() {
   test('a late rejection of an old token does not log out a newer session', () {
     // The user already logged in again; a slow reply to a request made with
     // the previous token arrives only now.
-    Session.currentUser = worker();
-    Session.token = 'new';
+    Session.logIn(worker(), 'new');
 
     handleRejectedToken('old');
 
@@ -42,8 +40,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Shifts page'), findsOneWidget);
 
-    Session.currentUser = worker();
-    Session.token = 'abc';
+    Session.logIn(worker(), 'abc');
 
     handleRejectedToken('abc');
     await tester.pumpAndSettle();

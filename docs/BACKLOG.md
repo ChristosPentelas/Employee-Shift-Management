@@ -57,7 +57,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
-| F24 | MEDIUM | Session is a mutable global | Open | | |
+| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` → 24c services stop reading globals, `Session` deleted → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Home's logout already cleared the session before this work |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 18 done · 3 partial · 9 open.
+Totals: 18 done · 4 partial · 8 open.
 
 ---
 
@@ -437,6 +437,16 @@ exists for exactly this.
 Why it matters: both give `YYYY-MM-DD` today, but two ways of writing the same
 format drift apart when one is changed.
 Fix idea: use `_isoDate(shift.date)`.
+
+**B37 · LOW · `getMyShifts` calls a URL the backend does not have** — found 2026-09-24
+Where: `api_service.dart` `getMyShifts` requests `/shifts/user/{id}`; the
+backend route is `/shifts/users/{id}` (`ShiftController`).
+Why it matters: every call would answer 404. Nothing calls the method today
+(the shifts screen uses the schedule endpoint), so it is dead code that looks
+usable - the next person to call it gets a confusing failure.
+Relates to: F24 - the method also reads `Session.currentUser!`.
+Fix idea: delete it in F24 step 24c, which touches every `Session` read in
+`ApiService`.
 
 ---
 

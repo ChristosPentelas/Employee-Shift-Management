@@ -130,9 +130,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (response.statusCode == 200) {
         var userData = jsonDecode(response.body);
-        Session.currentUser = User.fromJson(userData);
-        // AuthClient sends this with every later request (F1 step 3).
-        Session.token = userData['token'];
+        // AuthClient sends the token with every later request (F1 step 3).
+        Session.logIn(User.fromJson(userData), userData['token']);
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Επιτυχής σύνδεση!"), backgroundColor: Colors.green),

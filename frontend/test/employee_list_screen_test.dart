@@ -29,7 +29,7 @@ void main() {
 
   testWidgets('a supervisor sees the add-employee button',
       (WidgetTester tester) async {
-    Session.currentUser = supervisor();
+    Session.logIn(supervisor(), 'test-token');
 
     await tester.pumpWidget(appWith(emptyListServer()));
     await tester.pumpAndSettle();
@@ -39,7 +39,7 @@ void main() {
 
   testWidgets('an employee does not see the add-employee button',
       (WidgetTester tester) async {
-    Session.currentUser = employee();
+    Session.logIn(employee(), 'test-token');
 
     await tester.pumpWidget(appWith(emptyListServer()));
     await tester.pumpAndSettle();
@@ -50,7 +50,7 @@ void main() {
   testWidgets(
       'a supervisor creates an account with their token, and the list reloads',
       (WidgetTester tester) async {
-    Session.currentUser = supervisor();
+    Session.logIn(supervisor(), 'test-token');
 
     final requests = <http.BaseRequest>[];
     var listCalls = 0;

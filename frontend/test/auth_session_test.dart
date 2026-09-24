@@ -1,0 +1,45 @@
+// Unit tests for authProvider. Each test builds its own ProviderContainer, so
+// no state leaks from one test into the next (unlike a static field).
+
+import 'package:employee_shift_management_ui/models/user_model.dart';
+import 'package:employee_shift_management_ui/state/auth_session.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+User worker() =>
+    User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+
+void main() {
+  late ProviderContainer container;
+
+  setUp(() => container = ProviderContainer());
+  tearDown(() => container.dispose());
+
+  test('the app starts logged out', () {
+    expect(container.read(authProvider), isNull);
+  });
+
+  test('logIn keeps the user and the token together; logOut forgets both', () {
+    final user = worker();
+
+    container.read(authProvider.notifier).logIn(user, 'abc');
+    final session = container.read(authProvider)!;
+    expect(session.user, same(user));
+    expect(session.token, 'abc');
+
+    container.read(authProvider.notifier).logOut();
+    expect(container.read(authProvider), isNull);
+  });
+
+  test('listeners hear about every login and logout', () {
+    // This is what the static Session could not do: nothing was told when it
+    // changed, so screens had to be repainted by hand.
+    final heard = <String?>[];
+    container.listen(authProvider, (_, next) => heard.add(next?.token));
+
+    container.read(authProvider.notifier).logIn(worker(), 'abc');
+    container.read(authProvider.notifier).logOut();
+
+    expect(heard, ['abc', null]);
+  });
+}

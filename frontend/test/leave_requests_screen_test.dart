@@ -28,16 +28,18 @@ void main() {
 
   testWidgets('an employee asks only for their own leave requests',
       (WidgetTester tester) async {
-    Session.currentUser =
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    Session.logIn(
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        'test-token');
 
     expect(await requestedPaths(tester), ['/api/v1/leaves/users/7/leaves']);
   });
 
   testWidgets('a supervisor asks for every leave request',
       (WidgetTester tester) async {
-    Session.currentUser =
-        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    Session.logIn(
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'),
+        'test-token');
 
     expect(await requestedPaths(tester), ['/api/v1/leaves']);
   });

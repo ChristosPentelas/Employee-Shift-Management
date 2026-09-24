@@ -1,6 +1,7 @@
 // Unit tests for AuthClient. No network: MockClient (shipped inside the http
 // package) stands in for the server and records the request it received.
 
+import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/services/auth_client.dart';
 import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,7 +47,9 @@ void main() {
   });
 
   test('by default sends the token stored in Session', () async {
-    Session.token = 'from-session';
+    Session.logIn(
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        'from-session');
     final client = AuthClient(inner: server());
 
     await client.get(uri);

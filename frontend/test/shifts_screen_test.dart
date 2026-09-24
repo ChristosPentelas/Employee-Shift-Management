@@ -47,8 +47,9 @@ Future<void> assignAShift(WidgetTester tester, ApiService api) async {
 }
 
 void main() {
-  setUp(() => Session.currentUser =
-      User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'));
+  setUp(() => Session.logIn(
+      User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'),
+      'test-token'));
   tearDown(Session.clear);
 
   testWidgets('an overlapping shift keeps the dialog open and says why',

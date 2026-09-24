@@ -27,9 +27,7 @@ void main() {
 
   testWidgets('logging out from the dashboard clears the session and all screens',
       (WidgetTester tester) async {
-    Session.currentUser =
-        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
-    Session.token = 'abc';
+    Session.logIn(User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'), 'abc');
 
     await tester.pumpWidget(appStartingAt(HomeScreen()));
     await tester.tap(find.byIcon(Icons.logout));

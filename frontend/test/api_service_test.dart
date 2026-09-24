@@ -39,8 +39,9 @@ void main() {
   });
 
   test('a leave request no longer names the employee it is for', () async {
-    Session.currentUser =
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    Session.logIn(
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        'test-token');
     http.Request? sent;
     final api = ApiService(client: MockClient((request) async {
       sent = request;
@@ -61,8 +62,9 @@ void main() {
   });
 
   test('a message no longer names its sender', () async {
-    Session.currentUser =
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    Session.logIn(
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        'test-token');
     http.BaseRequest? sent;
     final api = ApiService(client: MockClient((request) async {
       sent = request;
@@ -107,8 +109,9 @@ void main() {
   });
 
   test('a chat page arrives newest first and is shown oldest first', () async {
-    Session.currentUser =
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    Session.logIn(
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        'test-token');
     http.BaseRequest? sent;
     String message(int id, String time) =>
         '{"id":$id,"content":"m$id","timestamp":"2026-09-19T$time",'
