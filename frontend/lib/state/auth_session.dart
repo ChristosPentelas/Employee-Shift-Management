@@ -37,6 +37,15 @@ class AuthNotifier extends Notifier<AuthSession?> {
   void logOut() {
     state = null;
   }
+
+  /// Logs out only if [token] is still the session's token, and says whether
+  /// it did. A late 401 for a token from an earlier login must not end the
+  /// newer session (see handleRejectedToken).
+  bool logOutIfCurrent(String token) {
+    if (state?.token != token) return false;
+    state = null;
+    return true;
+  }
 }
 
 final authProvider =

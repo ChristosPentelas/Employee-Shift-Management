@@ -5,7 +5,6 @@ import 'package:http/http.dart' as http;//Library for internet
 import '../models/user_model.dart';
 import '../models/shift_model.dart';
 import '../models/message_model.dart';
-import 'auth_client.dart';
 
 /// The outcome of ApiService.assignShift.
 enum AssignShiftResult {
@@ -22,15 +21,12 @@ class ApiService {
   //IP 10.0.2.2 is the localhost to my PC
   static const String baseUrl = "http://10.0.2.2:8080/api/v1";
 
-  // One client for the whole app. Every screen creates its own ApiService, and
-  // a new http.Client per screen would open a separate connection pool each time.
-  static final http.Client _sharedClient = AuthClient();
-
-  // Every request below goes through this client, which adds the login token.
+  // Every request below goes through this client. In the app it is the
+  // AuthClient from authClientProvider, which adds the login token; tests pass
+  // a fake. Screens get their ApiService from apiServiceProvider.
   final http.Client _client;
 
-  // Tests pass a fake client; the app uses the shared one.
-  ApiService({http.Client? client}) : _client = client ?? _sharedClient;
+  ApiService({required http.Client client}) : _client = client;
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}

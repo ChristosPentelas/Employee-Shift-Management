@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 
 /// A supervisor creates an employee account here (F1 step 5). It is opened
 /// from the employee list, so the request carries the supervisor's token.
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
@@ -13,12 +15,12 @@ class RegisterScreen extends StatefulWidget {
   _RegisterScreenState createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
-  late final _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
   bool _isLoading = false;
 
   void _register() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../models/leave_request_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
@@ -16,7 +17,7 @@ class LeaveRequestsScreen extends ConsumerStatefulWidget {
 }
 
 class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
   late Future<List<LeaveRequest>> _leavesFuture;
 
   /// A supervisor reviews everyone's requests; an employee loads only their

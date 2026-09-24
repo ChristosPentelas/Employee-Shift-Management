@@ -14,7 +14,7 @@ import 'helpers/app_scope.dart';
 void main() {
   testWidgets('app starts on the login screen with email and password fields',
       (WidgetTester tester) async {
-    await tester.pumpWidget(withAppState(MyApp()));
+    await tester.pumpWidget(withAppState(testContainer(), MyApp()));
 
     expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
@@ -23,7 +23,7 @@ void main() {
 
   testWidgets('submitting an empty form shows validation errors, not a request',
       (WidgetTester tester) async {
-    await tester.pumpWidget(withAppState(MyApp()));
+    await tester.pumpWidget(withAppState(testContainer(), MyApp()));
 
     await tester.tap(find.widgetWithText(ElevatedButton, 'ΣΥΝΔΕΣΗ'));
     await tester.pump();
@@ -35,7 +35,7 @@ void main() {
 
   testWidgets('the login screen offers no self-registration',
       (WidgetTester tester) async {
-    await tester.pumpWidget(withAppState(MyApp()));
+    await tester.pumpWidget(withAppState(testContainer(), MyApp()));
 
     // Accounts are created by a supervisor from the employee list (F1 step 5).
     expect(find.textContaining('Εγγραφείτε'), findsNothing);

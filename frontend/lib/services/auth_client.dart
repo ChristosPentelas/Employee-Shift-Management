@@ -1,7 +1,5 @@
 import 'package:http/http.dart' as http;
 
-import '../utils/session.dart';
-import 'session_expiry.dart';
 
 /// An http.Client that adds the login token to every request it sends, and
 /// reports when the server rejects that token.
@@ -18,14 +16,17 @@ class AuthClient extends http.BaseClient {
 
   /// [inner] does the real network work; [token] says which token to send;
   /// [onTokenRejected] runs when the server answers 401 to that token.
-  /// All three have app defaults, and tests replace them with fakes.
+  ///
+  /// All three are required: AuthClient knows nothing about the app's state,
+  /// it is told. authClientProvider (api_providers.dart) connects it to the
+  /// session; tests hand it fakes.
   AuthClient({
-    http.Client? inner,
-    String? Function()? token,
-    void Function(String sentToken)? onTokenRejected,
-  })  : _inner = inner ?? http.Client(),
-        _token = token ?? (() => Session.token),
-        _onTokenRejected = onTokenRejected ?? handleRejectedToken;
+    required http.Client inner,
+    required String? Function() token,
+    required void Function(String sentToken) onTokenRejected,
+  })  : _inner = inner,
+        _token = token,
+        _onTokenRejected = onTokenRejected;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {

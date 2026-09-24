@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth_session.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../screens/login_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -16,7 +17,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
 
   void _showEditDialog() {
     final me = ref.read(authProvider);

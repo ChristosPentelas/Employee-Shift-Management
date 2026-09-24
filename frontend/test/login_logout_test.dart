@@ -7,15 +7,17 @@ import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/home_screen.dart';
 import 'package:employee_shift_management_ui/screens/login_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
-import 'package:employee_shift_management_ui/utils/session.dart';
+import 'package:employee_shift_management_ui/state/auth_session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'helpers/app_scope.dart';
 
 // The same named route main.dart registers.
-Widget appStartingAt(Widget home) => withAppState(MaterialApp(
+Widget appStartingAt(ProviderContainer container, Widget home) =>
+    withAppState(container, MaterialApp(
       home: home,
       routes: {'/login': (context) => LoginScreen()},
     ));
@@ -24,18 +26,18 @@ NavigatorState navigator(WidgetTester tester) =>
     tester.state<NavigatorState>(find.byType(Navigator));
 
 void main() {
-  tearDown(Session.clear);
-
   testWidgets('logging out from the dashboard clears the session and all screens',
       (WidgetTester tester) async {
-    Session.logIn(User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'), 'abc');
+    final container = testContainer(
+        user: User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'),
+        token: 'abc');
 
-    await tester.pumpWidget(appStartingAt(HomeScreen()));
+    await tester.pumpWidget(appStartingAt(container, HomeScreen()));
     await tester.tap(find.byIcon(Icons.logout));
     await tester.pumpAndSettle();
 
-    expect(Session.currentUser, isNull);
-    expect(Session.token, isNull, reason: 'a logged-out app must not keep a working token');
+    expect(container.read(authProvider)?.user, isNull);
+    expect(container.read(authProvider)?.token, isNull, reason: 'a logged-out app must not keep a working token');
     expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
     expect(navigator(tester).canPop(), isFalse,
         reason: '"back" must not return to the dashboard');
@@ -47,7 +49,8 @@ void main() {
         '{"id":9,"name":"Boss","email":"boss@example.com","role":"SUPERVISOR","token":"abc"}',
         200));
 
-    await tester.pumpWidget(appStartingAt(
+    final container = testContainer(); // nobody logged in yet
+    await tester.pumpWidget(appStartingAt(container,
         LoginScreen(apiService: ApiService(client: fakeServer))));
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Email'), 'boss@example.com');
@@ -57,7 +60,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Dashboard'), findsOneWidget);
-    expect(Session.token, 'abc');
+    expect(container.read(authProvider)?.token, 'abc');
     expect(navigator(tester).canPop(), isFalse,
         reason: 'the login screen was replaced, not left underneath');
   });

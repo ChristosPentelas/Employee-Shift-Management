@@ -1,6 +1,6 @@
-import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/api_providers.dart';
 import '../models/user_model.dart';
 import '../state/auth_session.dart';
 import '../screens/chat_screen.dart';
@@ -47,7 +47,7 @@ class EmployeeDetailsScreen extends ConsumerWidget {
 
             if (ref.watch(isSupervisorProvider))
               OutlinedButton.icon(
-                onPressed: () => _showDeleteDialog(context),
+                onPressed: () => _showDeleteDialog(context, ref),
                 icon: Icon(Icons.delete, color: Colors.red),
                 label: Text("Διαγραφή Υπαλλήλου", style: TextStyle(color: Colors.red)),
                 style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.red)),
@@ -58,7 +58,7 @@ class EmployeeDetailsScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteDialog(BuildContext context){
+  void _showDeleteDialog(BuildContext context, WidgetRef ref){
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -74,8 +74,7 @@ class EmployeeDetailsScreen extends ConsumerWidget {
               child: Text("Διαγραφή", style: TextStyle(color:Colors.red)),
               onPressed: () async {
                 try{
-                  final ApiService _apiService = ApiService();
-                  await _apiService.deleteUser(user.id);
+                  await ref.read(apiServiceProvider).deleteUser(user.id);
 
                   Navigator.pop(context);
                   Navigator.pop(context,true);

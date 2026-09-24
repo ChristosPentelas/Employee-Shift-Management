@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/shift_model.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../state/auth_session.dart';
 import '../models/user_model.dart';
 
@@ -21,7 +22,7 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
   DateTime? _selectedDay;
   List<Shift> _allShifts = [];
   bool _isLoading = true;
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
 
   @override
   void initState() {

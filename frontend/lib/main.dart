@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/login_screen.dart';
-import 'state/app_container.dart';
 import 'utils/navigation.dart';
 
 void main() {
-  // UncontrolledProviderScope, not ProviderScope: the widget tree must share
-  // the container that Session already reads, instead of creating its own.
-  runApp(UncontrolledProviderScope(container: appContainer, child: MyApp()));
+  // Holds every provider's state (the session, the network client) for the
+  // whole app. Nothing outside the widget tree reads state any more (F24).
+  runApp(ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {

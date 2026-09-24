@@ -5,7 +5,6 @@
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/shifts_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
-import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -30,7 +29,10 @@ ApiService serverAnsweringAssign(int assignStatus) =>
 
 /// Opens the assign dialog on the 15th, picks the employee and presses Save.
 Future<void> assignAShift(WidgetTester tester, ApiService api) async {
-  await tester.pumpWidget(withAppState(MaterialApp(home: ShiftsScreen(apiService: api))));
+  final boss =
+      User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+  await tester.pumpWidget(withAppState(testContainer(user: boss),
+      MaterialApp(home: ShiftsScreen(apiService: api))));
   await tester.pumpAndSettle();
 
   // The calendar shows the current month; the 15th appears in it exactly once.
@@ -48,11 +50,6 @@ Future<void> assignAShift(WidgetTester tester, ApiService api) async {
 }
 
 void main() {
-  setUp(() => Session.logIn(
-      User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR'),
-      'test-token'));
-  tearDown(Session.clear);
-
   testWidgets('an overlapping shift keeps the dialog open and says why',
       (WidgetTester tester) async {
     await assignAShift(tester, serverAnsweringAssign(409));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../models/news_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
@@ -11,7 +12,7 @@ class NewsScreen extends ConsumerStatefulWidget {
 }
 
 class _NewsScreenState extends ConsumerState<NewsScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = ref.read(apiServiceProvider);
   late Future<List<NewsItem>> _newsFuture;
 
   @override

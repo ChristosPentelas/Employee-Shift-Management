@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth_session.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../models/user_model.dart';
 
 class EmployeeListScreen extends ConsumerStatefulWidget {
@@ -17,7 +18,7 @@ class EmployeeListScreen extends ConsumerStatefulWidget {
 }
 
 class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
   late Future<List<User>> _employeesFuture;
 
   @override

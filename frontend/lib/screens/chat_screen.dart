@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../state/auth_session.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -16,7 +17,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = ref.read(apiServiceProvider);
   final TextEditingController _messagegeController = TextEditingController();
   List<Message> _messages = [];
   Timer? _timer;

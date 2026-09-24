@@ -6,7 +6,6 @@ import 'package:employee_shift_management_ui/models/leave_request_model.dart';
 import 'package:employee_shift_management_ui/models/shift_model.dart';
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
-import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:employee_shift_management_ui/services/auth_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -28,7 +27,8 @@ void main() {
       return http.Response('[]', 200);
     });
     final api = ApiService(
-        client: AuthClient(inner: fakeServer, token: () => 'abc'));
+        client: AuthClient(
+            inner: fakeServer, token: () => 'abc', onTokenRejected: (_) {}));
 
     final shifts =
         await api.getAllShifts(DateTime(2026, 9, 1), DateTime(2026, 9, 30));
@@ -39,9 +39,6 @@ void main() {
   });
 
   test('a leave request no longer names the employee it is for', () async {
-    Session.logIn(
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
-        'test-token');
     http.Request? sent;
     final api = ApiService(client: MockClient((request) async {
       sent = request;
@@ -50,7 +47,7 @@ void main() {
 
     await api.submitLeaveRequest(LeaveRequest(
       id: 0,
-      employee: Session.currentUser!,
+      employee: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
       startDate: DateTime(2026, 10, 1),
       endDate: DateTime(2026, 10, 5),
       status: 'PENDING',
@@ -62,9 +59,6 @@ void main() {
   });
 
   test('a message no longer names its sender', () async {
-    Session.logIn(
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
-        'test-token');
     http.BaseRequest? sent;
     final api = ApiService(client: MockClient((request) async {
       sent = request;
@@ -109,9 +103,6 @@ void main() {
   });
 
   test('a chat page arrives newest first and is shown oldest first', () async {
-    Session.logIn(
-        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
-        'test-token');
     http.BaseRequest? sent;
     String message(int id, String time) =>
         '{"id":$id,"content":"m$id","timestamp":"2026-09-19T$time",'

@@ -5,8 +5,8 @@ import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/employee_list_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:employee_shift_management_ui/services/auth_client.dart';
-import 'package:employee_shift_management_ui/utils/session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -22,17 +22,15 @@ User employee() =>
 ApiService emptyListServer() => ApiService(
     client: MockClient((_) async => http.Response('{"content":[]}', 200)));
 
-Widget appWith(ApiService api) =>
-    withAppState(MaterialApp(home: EmployeeListScreen(apiService: api)));
+Widget appWith(ProviderContainer container, ApiService api) =>
+    withAppState(container, MaterialApp(home: EmployeeListScreen(apiService: api)));
 
 void main() {
-  tearDown(Session.clear);
-
   testWidgets('a supervisor sees the add-employee button',
       (WidgetTester tester) async {
-    Session.logIn(supervisor(), 'test-token');
+    final container = testContainer(user: supervisor());
 
-    await tester.pumpWidget(appWith(emptyListServer()));
+    await tester.pumpWidget(appWith(container, emptyListServer()));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.person_add), findsOneWidget);
@@ -40,9 +38,9 @@ void main() {
 
   testWidgets('an employee does not see the add-employee button',
       (WidgetTester tester) async {
-    Session.logIn(employee(), 'test-token');
+    final container = testContainer(user: employee());
 
-    await tester.pumpWidget(appWith(emptyListServer()));
+    await tester.pumpWidget(appWith(container, emptyListServer()));
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.person_add), findsNothing);
@@ -51,7 +49,7 @@ void main() {
   testWidgets(
       'a supervisor creates an account with their token, and the list reloads',
       (WidgetTester tester) async {
-    Session.logIn(supervisor(), 'test-token');
+    final container = testContainer(user: supervisor());
 
     final requests = <http.BaseRequest>[];
     var listCalls = 0;
@@ -71,9 +69,10 @@ void main() {
           200);
     });
     final api = ApiService(
-        client: AuthClient(inner: server, token: () => 'supervisor-token'));
+        client: AuthClient(
+            inner: server, token: () => 'supervisor-token', onTokenRejected: (_) {}));
 
-    await tester.pumpWidget(appWith(api));
+    await tester.pumpWidget(appWith(container, api));
     await tester.pumpAndSettle();
     expect(find.text('Δεν βρέθηκαν υπάλληλοι.'), findsOneWidget);
 

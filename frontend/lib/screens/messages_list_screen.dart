@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
+import '../services/api_providers.dart';
 import '../state/auth_session.dart';
 import 'chat_screen.dart';
 import '../models/user_model.dart';
@@ -18,7 +19,7 @@ class MessagesListScreen extends ConsumerStatefulWidget {
 }
 
 class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
   bool _isLoading = true;
   List<Message> _inbox = [];
 

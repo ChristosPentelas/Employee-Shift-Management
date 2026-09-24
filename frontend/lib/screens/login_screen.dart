@@ -1,5 +1,6 @@
 import 'package:employee_shift_management_ui/screens/home_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
+import '../services/api_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
@@ -26,7 +27,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   bool _isLoading = false;
 
-  late final ApiService _apiService = widget.apiService ?? ApiService();
+  late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
 
   @override
   Widget build(BuildContext context) {
