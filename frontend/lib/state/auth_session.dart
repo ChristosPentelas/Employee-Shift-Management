@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user_model.dart';
+import 'session_store.dart';
 
 /// Who is logged in, and the token that proves it.
 ///
@@ -20,7 +21,24 @@ class AuthSession {
 /// so screens can rebuild when the user logs in or out (F24 step 24b).
 class AuthNotifier extends Notifier<AuthSession?> {
   @override
-  AuthSession? build() => null; // the app starts logged out
+  AuthSession? build() {
+    final store = ref.read(sessionStoreProvider);
+
+    // Every change is copied to the phone's storage here, in one place, so a
+    // method added later (or a path that skips logIn/logOut) cannot forget
+    // to save. The observer pattern: the notifier changes state, the store
+    // follows.
+    listenSelf((previous, next) {
+      if (next == null) {
+        store.clear();
+      } else {
+        store.save(next);
+      }
+    });
+
+    // What main.dart loaded from storage, or null: log in again.
+    return ref.read(restoredSessionProvider);
+  }
 
   void logIn(User user, String token) {
     state = AuthSession(user: user, token: token);
@@ -50,6 +68,12 @@ class AuthNotifier extends Notifier<AuthSession?> {
 
 final authProvider =
     NotifierProvider<AuthNotifier, AuthSession?>(AuthNotifier.new);
+
+/// The login main.dart restored from storage before the first screen, or
+/// null. Loading is asynchronous and happens once, before runApp, so the
+/// session itself can stay a plain value instead of "still loading" that
+/// every screen would have to handle.
+final restoredSessionProvider = Provider<AuthSession?>((ref) => null);
 
 /// Whether the logged-in user is a supervisor; false when logged out.
 ///

@@ -57,7 +57,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
-| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c1 `ApiService` is handed the user id, `updateUser` replaces the session (done) → 24c2 `AuthClient`/`ApiService` come from providers, `Session` deleted (done) → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24c2 `Session` and the global container are gone: screens use `ref`, the network layer is built by `api_providers.dart`, and every test gets its own `ProviderContainer`. Remaining: the login does not survive a restart (24d). Home's logout already cleared the session before this work |
+| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c1 `ApiService` is handed the user id, `updateUser` replaces the session (done) → 24c2 `AuthClient`/`ApiService` come from providers, `Session` deleted (done) → 24d login saved in `flutter_secure_storage` (done) → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24c2 `Session` and the global container are gone: screens use `ref`, the network layer is built by `api_providers.dart`, and every test gets its own `ProviderContainer`. Since 24d the login is saved in secure storage whenever the session changes (`listenSelf` in `AuthNotifier`) and restored in `main.dart` before the first screen; an expired or unreadable saved login is dropped. Remaining: the close-out. Home's logout already cleared the session before this work |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
@@ -434,6 +434,17 @@ opened (e.g. passing it an argument) has to be made twice, and the profile
 screen imports `LoginScreen` only for this.
 Fix idea: use the named route in both. Better, one `logOut` helper that clears
 the session and navigates, used by both buttons and by `handleRejectedToken`.
+
+**B39 · LOW · The Android build pins Kotlin 1.8.22, which Flutter will soon stop supporting** — found 2026-09-24
+Where: `frontend/android/settings.gradle.kts` -
+`id("org.jetbrains.kotlin.android") version "1.8.22"`. Every Android build
+prints "Flutter support for your project's Kotlin version (1.8.22) will soon be
+dropped. Please upgrade your Kotlin version to a version of at least 2.1.0".
+Why it matters: nothing breaks today, but a future Flutter upgrade will refuse
+to build the Android app until this is raised - at the worst moment, mixed in
+with whatever else that upgrade changes.
+Fix idea: raise the plugin version to a current 2.x in its own commit and check
+`flutter build apk` still passes. Only build config, no new dependency.
 
 ---
 

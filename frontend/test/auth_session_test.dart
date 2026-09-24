@@ -1,10 +1,11 @@
-// Unit tests for authProvider. Each test builds its own ProviderContainer, so
+// Unit tests for authProvider. Each test gets its own ProviderContainer, so
 // no state leaks from one test into the next (unlike a static field).
 
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/state/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'helpers/app_scope.dart';
 
 User worker() =>
     User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
@@ -12,8 +13,7 @@ User worker() =>
 void main() {
   late ProviderContainer container;
 
-  setUp(() => container = ProviderContainer());
-  tearDown(() => container.dispose());
+  setUp(() => container = testContainer());
 
   test('the app starts logged out', () {
     expect(container.read(authProvider), isNull);
