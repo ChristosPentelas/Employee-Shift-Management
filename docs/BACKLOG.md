@@ -50,14 +50,14 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
 | F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
-| F17 | LOW | Broken URL in a dead client method | Open | | Now `api_service.dart:226` (`getMyShifts`). Since F9 it would also parse a list where the server sends a page - delete it rather than fix it |
+| F17 | LOW | Broken URL in a dead client method | Done | `refactor(frontend): hand the services the user they need` | `getMyShifts` deleted in F24 step 24c1. Re-found 2026-09-24 and logged as B37 before this row was checked, so B37 is the same problem |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
-| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c1 `ApiService` is handed the user id, `updateUser` replaces the session (done) → 24c2 `AuthClient`/`ApiService` come from providers, `Session` deleted (done) → 24d login saved in `flutter_secure_storage` (done) → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24c2 `Session` and the global container are gone: screens use `ref`, the network layer is built by `api_providers.dart`, and every test gets its own `ProviderContainer`. Since 24d the login is saved in secure storage whenever the session changes (`listenSelf` in `AuthNotifier`) and restored in `main.dart` before the first screen; an expired or unreadable saved login is dropped. Remaining: the close-out. Home's logout already cleared the session before this work |
+| F24 | MEDIUM | Session is a mutable global | Done | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Done in five steps on 2026-09-24 (24a, 24b, 24c1, 24c2, 24d). The user and token live together in `authProvider` as one immutable `AuthSession`, changed only through `AuthNotifier`; screens read it with `ref`, services are handed what they need, and the network layer is built by `api_providers.dart`. The static `Session` is deleted. The login is kept in `flutter_secure_storage` and restored at startup unless expired. Each of the audit's four points: the force-unwraps are gone (B16), the login survives a restart, screens rebuild on change (no empty `setState`), and both logouts clear the session (Home's did before this work; how they navigate differs, B38). Riverpod adopted, closing B15 |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 18 done · 4 partial · 8 open.
+Totals: 20 done · 3 partial · 7 open.
 
 ---
 
@@ -199,16 +199,6 @@ Relates to: F27 (hard-coded backend base URL) — fix both together.
 Fix idea: serve the backend over HTTPS (or behind a reverse proxy that does),
 and make the base URL configurable per build so production can only be
 `https://`.
-
-**B15 · LOW · CLAUDE.md says the app uses Riverpod; it does not** — found 2026-09-14
-Where: `CLAUDE.md` lists "Flutter 3.x, Dart, Riverpod"; `frontend/pubspec.yaml`
-has no Riverpod package. State lives in the static `Session` class (F24).
-Why it matters: the project instructions describe a different app than the
-code. A reader, or an assistant, following them will look for providers that do
-not exist, or add Riverpod code that does not fit.
-Relates to: F24 (session is a mutable global).
-Fix idea: decide whether Riverpod is the plan. If yes, adopt it when F24 is
-fixed; if not, correct `CLAUDE.md` now.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
@@ -543,3 +533,18 @@ usable - the next person to call it gets a confusing failure.
 Relates to: F24 - the method also reads `Session.currentUser!`.
 Fixed by: `refactor(frontend): hand the services the user they need` (F24
 step 24c1) - the method is deleted.
+Duplicate of F17, noticed at F24's close-out: the audit already had this, and
+the entry should have been a note on F17's row instead (see the Rules above).
+
+**B15 · LOW · CLAUDE.md says the app uses Riverpod; it does not** — found 2026-09-14
+Where: `CLAUDE.md` lists "Flutter 3.x, Dart, Riverpod"; `frontend/pubspec.yaml`
+has no Riverpod package. State lives in the static `Session` class (F24).
+Why it mattered: the project instructions describe a different app than the
+code. A reader, or an assistant, following them will look for providers that do
+not exist, or add Riverpod code that does not fit.
+Relates to: F24 (session is a mutable global).
+Fixed by: F24 (decided 2026-09-24: Riverpod is the plan). `flutter_riverpod`
+was added in `refactor(frontend): keep the session in a Riverpod provider`, and
+by `feat(frontend): stay logged in across app restarts` all app state goes
+through providers, so `CLAUDE.md`'s "Flutter 3.x, Dart, Riverpod" is true
+without changing it.
