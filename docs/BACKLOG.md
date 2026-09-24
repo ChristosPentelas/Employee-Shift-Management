@@ -58,12 +58,12 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Open | | |
-| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): say why the assign-shift dialog could not save`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
+| F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
 | F28 | LOW | Chat polls every 3 s | Open | | |
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
-| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): say why the assign-shift dialog could not save` |
+| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
 Totals: 18 done · 3 partial · 9 open.
 
@@ -305,7 +305,7 @@ Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
 answers 400 and the supervisor sees the dialog just sit there, with no hint
 which field is wrong. The same will apply to the shift-time rule F15 adds,
 and to F30's overlap rule (409).
-Half fixed by `feat(frontend): say why the assign-shift dialog could not save`: `assignShift` returns an
+Half fixed by `feat(frontend): show why a shift could not be assigned`: `assignShift` returns an
 `AssignShiftResult` and the dialog stays open with a Greek message for 409,
 400 and anything else. The server's English `detail` is deliberately not
 shown - B2's rule, the app owns the wording (corrected 2026-09-23; an earlier
