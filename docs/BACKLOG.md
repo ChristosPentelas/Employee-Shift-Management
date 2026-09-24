@@ -57,7 +57,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
-| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c services stop reading globals, `Session` deleted → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24b no screen uses `Session`; only `ApiService`, `AuthClient` and `handleRejectedToken` do, and the role check is `isSupervisorProvider`. Home's logout already cleared the session before this work |
+| F24 | MEDIUM | Session is a mutable global | Partial | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need` | Split 2026-09-24 into 24a provider (done) → 24b screens use `ref` (done) → 24c1 `ApiService` is handed the user id, `updateUser` replaces the session (done) → 24c2 `AuthClient`/`ApiService` come from providers, `Session` deleted → 24d login saved in `flutter_secure_storage` → close-out (also closes B15). Since 24a the user and token live together in `authProvider` as one immutable `AuthSession`; `Session` only forwards to it. Since 24b no screen uses `Session`; only `AuthClient` and `handleRejectedToken` do (since 24c1 not `ApiService`), and the role check is `isSupervisorProvider`. Home's logout already cleared the session before this work |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Open | | |
@@ -209,23 +209,6 @@ not exist, or add Riverpod code that does not fit.
 Relates to: F24 (session is a mutable global).
 Fix idea: decide whether Riverpod is the plan. If yes, adopt it when F24 is
 fixed; if not, correct `CLAUDE.md` now.
-
-**B16 · LOW · Screens assume `Session.currentUser` is never null** — found 2026-09-14
-Where: `Session.currentUser!` in `chat_screen.dart:42` and in several
-`ApiService` methods (`postNews`, `submitLeaveRequest`, `getMyShifts`,
-`getChatHistory`, `sendMessage`).
-Why it matters: since F1 step 3b the session can be cleared while a request is
-still running (the chat polls every 3 s). Code that resumes after its `await`
-then hits `!` on null and throws. Today a surrounding `try/catch` swallows it in
-most places, so nothing visible happens, but that is luck, not design.
-Relates to: F24 (session is a mutable global), F25 (async gaps).
-Fix idea: read the user once before the `await` and use that local value, or
-stop when it is null. Better, once F1 step 7 lands, the server takes identity
-from the token and the client stops sending its own id at all.
-Progress: the screens are fixed by `refactor(frontend): read the session through
-ref in every screen` (F24 step 24b) - each reads `authProvider` once before its
-first `await`, tested in `messages_list_screen_test.dart`. The `ApiService`
-methods remain; F24 step 24c moves them off `Session`.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
@@ -442,16 +425,6 @@ Why it matters: both give `YYYY-MM-DD` today, but two ways of writing the same
 format drift apart when one is changed.
 Fix idea: use `_isoDate(shift.date)`.
 
-**B37 · LOW · `getMyShifts` calls a URL the backend does not have** — found 2026-09-24
-Where: `api_service.dart` `getMyShifts` requests `/shifts/user/{id}`; the
-backend route is `/shifts/users/{id}` (`ShiftController`).
-Why it matters: every call would answer 404. Nothing calls the method today
-(the shifts screen uses the schedule endpoint), so it is dead code that looks
-usable - the next person to call it gets a confusing failure.
-Relates to: F24 - the method also reads `Session.currentUser!`.
-Fix idea: delete it in F24 step 24c, which touches every `Session` read in
-`ApiService`.
-
 **B38 · LOW · The two logout buttons return to login in two different ways** — found 2026-09-24
 Where: `home_screen.dart` goes to the named route
 `pushNamedAndRemoveUntil('/login', ...)`; `profile_screen.dart` builds the page
@@ -531,3 +504,31 @@ Migration V4 backfills NULLs with 1970-01-01 (the feed is newest first, so
 rewrite it. `NewsItemSchemaIntegrationTest` inserts a NULL with plain SQL and
 expects MySQL to refuse it - Hibernate's `validate` does not check nullability,
 so the entity annotation alone would have proven nothing.
+
+**B16 · LOW · Screens assume `Session.currentUser` is never null** — found 2026-09-14
+Where: `Session.currentUser!` in `chat_screen.dart:42` and in several
+`ApiService` methods (`postNews`, `submitLeaveRequest`, `getMyShifts`,
+`getChatHistory`, `sendMessage`).
+Why it mattered: since F1 step 3b the session can be cleared while a request is
+still running (the chat polls every 3 s). Code that resumes after its `await`
+then hits `!` on null and throws. Today a surrounding `try/catch` swallows it in
+most places, so nothing visible happens, but that is luck, not design.
+Relates to: F24 (session is a mutable global), F25 (async gaps).
+Fix idea: read the user once before the `await` and use that local value, or
+stop when it is null. Better, once F1 step 7 lands, the server takes identity
+from the token and the client stops sending its own id at all.
+Fixed by: `refactor(frontend): read the session through ref in every screen`
+(screens, F24 step 24b) and `refactor(frontend): hand the services the user
+they need` (`ApiService`, step 24c1). Screens read `authProvider` once before
+their first `await`; `ApiService` no longer reads the session at all - callers
+pass the user id. Tested in `messages_list_screen_test.dart`.
+
+**B37 · LOW · `getMyShifts` calls a URL the backend does not have** — found 2026-09-24
+Where: `api_service.dart` `getMyShifts` requests `/shifts/user/{id}`; the
+backend route is `/shifts/users/{id}` (`ShiftController`).
+Why it mattered: every call would answer 404. Nothing calls the method today
+(the shifts screen uses the schedule endpoint), so it is dead code that looks
+usable - the next person to call it gets a confusing failure.
+Relates to: F24 - the method also reads `Session.currentUser!`.
+Fixed by: `refactor(frontend): hand the services the user they need` (F24
+step 24c1) - the method is deleted.

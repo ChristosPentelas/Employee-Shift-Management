@@ -43,6 +43,25 @@ void main() {
     expect(heard, ['abc', null]);
   });
 
+  test('updateUser replaces the user, keeps the token and tells listeners', () {
+    container.read(authProvider.notifier).logIn(worker(), 'abc');
+    final heard = <String?>[];
+    container.listen(authProvider, (_, next) => heard.add(next?.user.name));
+
+    container.read(authProvider.notifier).updateUser(User(
+        id: 7, name: 'Renamed', email: 'worker@example.com', role: 'EMPLOYEE'));
+
+    expect(container.read(authProvider)!.token, 'abc');
+    expect(heard, ['Renamed']);
+  });
+
+  test('updateUser after a logout does not log anyone back in', () {
+    // A save can finish after the session expired.
+    container.read(authProvider.notifier).updateUser(worker());
+
+    expect(container.read(authProvider), isNull);
+  });
+
   test('isSupervisorProvider follows whoever is logged in', () {
     expect(container.read(isSupervisorProvider), isFalse,
         reason: 'nobody is logged in');

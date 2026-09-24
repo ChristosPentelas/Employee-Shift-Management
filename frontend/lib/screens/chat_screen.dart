@@ -42,7 +42,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (me == null) return;
 
     try {
-      final history = await _apiService.getChatHistory(widget.receiver.id);
+      final history = await _apiService.getChatHistory(me.user.id, widget.receiver.id);
 
       for (var msg in history) {
         if (msg.receiverId == me.user.id && !msg.isRead) {

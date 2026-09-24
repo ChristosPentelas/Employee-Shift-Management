@@ -26,6 +26,14 @@ class AuthNotifier extends Notifier<AuthSession?> {
     state = AuthSession(user: user, token: token);
   }
 
+  /// Swaps in the saved profile, keeping the token. The user is replaced, not
+  /// edited, so everyone watching authProvider rebuilds with the new values.
+  void updateUser(User user) {
+    final current = state;
+    if (current == null) return; // logged out meanwhile: nothing to update
+    state = AuthSession(user: user, token: current.token);
+  }
+
   void logOut() {
     state = null;
   }

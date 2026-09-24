@@ -1,8 +1,10 @@
+// Every field is final: a changed profile is a new User (see
+// AuthNotifier.updateUser), so whoever watches the session hears about it.
 class User{
   final int id;
-  String name;
-  String email;
-  String? phoneNumber; //can be null
+  final String name;
+  final String email;
+  final String? phoneNumber; //can be null
   final String role;
 
   User({

@@ -3,7 +3,6 @@ import 'package:employee_shift_management_ui/models/leave_request_model.dart';
 import 'package:employee_shift_management_ui/models/news_model.dart';
 import 'package:http/http.dart' as http;//Library for internet
 import '../models/user_model.dart';
-import '../utils/session.dart';
 import '../models/shift_model.dart';
 import '../models/message_model.dart';
 import 'auth_client.dart';
@@ -181,8 +180,9 @@ class ApiService {
 
   /// Only the logged-in employee's own requests. Supervisors use
   /// getAllLeaveRequests; from F1 step 7d an employee may not call that.
-  Future<List<LeaveRequest>> getMyLeaveRequests() async {
-    final userId = Session.currentUser!.id;
+  /// The caller says who is logged in: a service is handed what it needs
+  /// instead of reaching into app state (F24).
+  Future<List<LeaveRequest>> getMyLeaveRequests(int userId) async {
     final response = await _client.get(Uri.parse("$baseUrl/leaves/users/$userId/leaves?page=0&size=50"));
 
     if (response.statusCode == 200) {
@@ -210,7 +210,10 @@ class ApiService {
     );
   }
 
-  Future<bool> updateUser(int userId,String name,String email,String phone) async {
+  /// Saves your own profile and returns it as the server stored it, or null
+  /// if that failed. It does not change the session: the caller decides what
+  /// to do with the result, and the service stays free of app state (F24).
+  Future<User?> updateUser(int userId,String name,String email,String phone) async {
     try{
       final response = await _client.put(
         Uri.parse("$baseUrl/users/$userId"),
@@ -223,26 +226,12 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        Session.currentUser!.name = name;
-        Session.currentUser!.email = email;
-        Session.currentUser!.phoneNumber = phone;
-        return true;
+        return User.fromJson(jsonDecode(response.body));
       }
-      return false;
+      return null;
     } catch (e) {
-      return false;
+      return null;
     }
-  }
-
-  Future<List<Shift>> getMyShifts() async {
-    final userId = Session.currentUser!.id;
-    final response = await _client.get(Uri.parse("$baseUrl/shifts/user/$userId"));
-
-    if(response.statusCode == 200) {
-      List body = jsonDecode(response.body);
-      return body.map((item) => Shift.fromJson(item)).toList();
-    }
-    throw Exception("Αποτυχία φόρτωσης βαρδιών");
   }
 
   // Everyone's shifts from start to end, both days included (at most 366
@@ -298,9 +287,9 @@ class ApiService {
     }
   }
 
-  Future<List<Shift>> getFilteredShifts(DateTime start, DateTime end) async {
+  Future<List<Shift>> getFilteredShifts(int userId, DateTime start, DateTime end) async {
     final response = await _client.get(
-      Uri.parse("$baseUrl/users/${Session.currentUser?.id}/schedule?start=${_isoDate(start)}&end=${_isoDate(end)}")
+      Uri.parse("$baseUrl/users/$userId/schedule?start=${_isoDate(start)}&end=${_isoDate(end)}")
     );
 
     if (response.statusCode == 200) {
@@ -314,9 +303,7 @@ class ApiService {
   // The latest 50 messages of a chat, oldest first. The server sends a page
   // newest-first (page 0 = the latest), so it is turned around here and the
   // chat screen keeps receiving the order it always had.
-  Future<List<Message>> getChatHistory(int otherUserId) async {
-    final currentUserId = Session.currentUser!.id;
-
+  Future<List<Message>> getChatHistory(int currentUserId, int otherUserId) async {
     final response = await _client.get(
       Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId&page=0&size=50")
     );

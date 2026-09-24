@@ -23,9 +23,12 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   /// own from the server, instead of downloading everyone's and hiding the
   /// rest on the phone (F7).
   Future<List<LeaveRequest>> _loadLeaves() {
+    final me = ref.read(authProvider);
+    if (me == null) return Future.value(const []); // logged out: screen is closing
+
     return ref.read(isSupervisorProvider)
         ? _apiService.getAllLeaveRequests()
-        : _apiService.getMyLeaveRequests();
+        : _apiService.getMyLeaveRequests(me.user.id);
   }
 
   @override

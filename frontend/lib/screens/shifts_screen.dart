@@ -30,6 +30,11 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
   }
 
   void _loadShifts() async {
+    // Read before the await: the session can end while the request is on
+    // its way (B16).
+    final me = ref.read(authProvider);
+    if (me == null) return;
+
     setState(() {
       _isLoading = true;
     });
@@ -43,7 +48,7 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
       if (ref.read(isSupervisorProvider)) {
         shifts = await _apiService.getAllShifts(firstDayOfMonth, lastDayOfMonth);
       } else {
-        shifts = await _apiService.getFilteredShifts(firstDayOfMonth, lastDayOfMonth);
+        shifts = await _apiService.getFilteredShifts(me.user.id, firstDayOfMonth, lastDayOfMonth);
       }
 
       setState(() {

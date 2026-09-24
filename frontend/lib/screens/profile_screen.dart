@@ -5,13 +5,18 @@ import '../services/api_service.dart';
 import '../screens/login_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
+  // Tests pass an ApiService with a fake client; the app uses the default.
+  final ApiService? apiService;
+
+  const ProfileScreen({this.apiService});
+
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
 }
 
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
 
   void _showEditDialog() {
     final me = ref.read(authProvider);
@@ -51,18 +56,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              bool success = await _apiService.updateUser(
+              final saved = await _apiService.updateUser(
                 user.id,
                 _nameController.text,
                 _emailController.text,
                 _phoneController.text,
               );
 
-              if (success) {
-                // ApiService.updateUser edited the user's fields in place,
-                // which tells no one, so repaint by hand. F24 step 24c makes
-                // it replace the session instead, and this line goes away.
-                setState(() {});
+              // The screen may have closed while saving (e.g. the session
+              // expired); its ref and context are no longer usable then.
+              if (!mounted) return;
+
+              if (saved != null) {
+                // A new session with the saved user: build() watches
+                // authProvider, so the profile repaints by itself.
+                ref.read(authProvider.notifier).updateUser(saved);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
                 );

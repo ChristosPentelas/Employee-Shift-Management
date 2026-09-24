@@ -124,11 +124,28 @@ void main() {
           200);
     }));
 
-    final chat = await api.getChatHistory(9);
+    final chat = await api.getChatHistory(7, 9);
 
     expect(chat.map((m) => m.id), [1, 2]);
     expect(sent!.url.queryParameters['page'], '0');
     expect(sent!.url.queryParameters['size'], '50');
+    expect(sent!.url.queryParameters['user1Id'], '7',
+        reason: 'the caller says who is asking; the service no longer looks it up');
+  });
+
+  test('own leave requests and own schedule are asked for the id passed in',
+      () async {
+    final paths = <String>[];
+    final api = ApiService(client: MockClient((request) async {
+      paths.add(request.url.path);
+      return http.Response(
+          request.url.path.contains('leaves') ? '{"content":[]}' : '[]', 200);
+    }));
+
+    await api.getMyLeaveRequests(7);
+    await api.getFilteredShifts(7, DateTime(2026, 2, 1), DateTime(2026, 2, 28));
+
+    expect(paths, ['/api/v1/leaves/users/7/leaves', '/api/v1/users/7/schedule']);
   });
 
   test('the staff list asks for the largest page the server allows', () async {
