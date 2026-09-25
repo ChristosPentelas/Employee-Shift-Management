@@ -18,8 +18,15 @@ enum AssignShiftResult {
 }
 
 class ApiService {
-  //IP 10.0.2.2 is the localhost to my PC
-  static const String baseUrl = "http://10.0.2.2:8080/api/v1";
+  // Where the backend lives, chosen when the app is built (F27):
+  //   flutter run --dart-define=API_BASE_URL=http://192.168.1.50:8080/api/v1
+  // Without it, 10.0.2.2 is used: the Android emulator's name for the PC it
+  // runs on. The value is compiled in, so changing it needs a full restart,
+  // not a hot reload. See frontend/README.md.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8080/api/v1',
+  );
 
   // Every request below goes through this client. In the app it is the
   // AuthClient from authClientProvider, which adds the login token; tests pass

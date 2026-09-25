@@ -60,12 +60,12 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F24 | MEDIUM | Session is a mutable global | Done | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Done in five steps on 2026-09-24 (24a, 24b, 24c1, 24c2, 24d). The user and token live together in `authProvider` as one immutable `AuthSession`, changed only through `AuthNotifier`; screens read it with `ref`, services are handed what they need, and the network layer is built by `api_providers.dart`. The static `Session` is deleted. The login is kept in `flutter_secure_storage` and restored at startup unless expired. Each of the audit's four points: the force-unwraps are gone (B16), the login survives a restart, screens rebuild on change (no empty `setState`), and both logouts clear the session (Home's did before this work; how they navigate differs, B38). Riverpod adopted, closing B15 |
 | F25 | MEDIUM | `BuildContext` across async gaps | Open | | More likely since F1 step 3b: a rejected token closes every screen, possibly mid-request, so a missing `mounted` check now logs "setState() called after dispose()". Also `employee_details_screen.dart` delete dialog: pops two routes, then shows its snackbar through the popped context, so "deleted successfully" likely never appears. `shifts_screen.dart`: the assign dialog's Save checks `context.mounted` since `feat(frontend): show why a shift could not be assigned`; the dialog's own opening (after `getAllEmployees`) and `_confirmDelete`'s snackbar still use a context across an `await` |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
-| F27 | LOW | Hard-coded backend base URL | Open | | |
+| F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
 | F28 | LOW | Chat polls every 3 s | Open | | |
 | F29 | LOW | `fromJson` assumes every field is present | Open | | |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 20 done · 3 partial · 7 open.
+Totals: 21 done · 3 partial · 6 open.
 
 ---
 
@@ -199,6 +199,8 @@ Relates to: F27 (hard-coded backend base URL) — fix both together.
 Fix idea: serve the backend over HTTPS (or behind a reverse proxy that does),
 and make the base URL configurable per build so production can only be
 `https://`.
+Since F27: the base URL is configurable per build (`API_BASE_URL`). Left:
+HTTPS itself, and a release build that refuses a plain-HTTP address.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
