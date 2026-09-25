@@ -91,7 +91,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
               color: item.type == 'TASK' ? Colors.orange : (item.type == 'GOAL' ? Colors.green : Colors.blue),
             ),
             title: Text(item.title, style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text("Από: ${item.author.name}"),
+            subtitle: Text("Από: ${item.author?.name ?? 'Άγνωστος'}"),
             trailing: isSupervisor
               ? IconButton(
                   icon: Icon(Icons.delete, color: Colors.red[300]),

@@ -62,10 +62,10 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
 | F28 | LOW | Chat polls every 3 s | Open | | |
-| F29 | LOW | `fromJson` assumes every field is present | Open | | |
+| F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 21 done · 3 partial · 6 open.
+Totals: 22 done · 3 partial · 5 open.
 
 ---
 
@@ -108,6 +108,9 @@ fifth repository it forgot; F14 (every exception becomes a 404/500).
 Fix idea: decide what should happen to a departed author's news (reassign,
 keep with a null author, or delete) and enforce it in one place. Database-level
 `ON DELETE` rules or JPA cascades would remove the hand-written list entirely.
+Since F29: the app shows a post with a null author as "Από: Άγνωστος"
+instead of failing the whole news list, so "keep with a null author" is now
+safe for the client.
 
 **B6 · LOW · Two different `@Transactional` annotations in use** — found 2026-09-11
 Where: `UserService.java` imports `jakarta.transaction.Transactional` (the Java
@@ -443,6 +446,29 @@ to build the Android app until this is raised - at the worst moment, mixed in
 with whatever else that upgrade changes.
 Fix idea: raise the plugin version to a current 2.x in its own commit and check
 `flutter build apk` still passes. Only build config, no new dependency.
+
+**B40 · LOW · `LeaveRequestResponse`'s comment still describes F7 as open** — found 2026-09-25
+Where: the Javadoc on `LeaveRequestResponse.java` says the response "still
+carries every employee's leave to every caller - that is F7, and it needs the
+authenticated principal from F1 to fix properly".
+Why it matters: F7 was closed on 2026-09-16 (F1 step 7d): employees only get
+their own requests, and the full list is supervisor-only. A comment that states
+old behaviour as current misleads the next reader into "fixing" something that
+is already fixed, or into trusting the wrong picture of who sees leave reasons.
+Fix idea: keep the first sentence (leave reasons are health and family
+information) and replace the F7 part with where the rule is now enforced.
+
+**B41 · LOW · Three screens show raw Dart exceptions to the user** — found 2026-09-25
+Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
+`news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
+Why it matters: the user sees the exception's text, e.g. `Exception: Σφάλμα
+σύνδεσης: ` followed by the underlying Dart error in English: developer
+detail, and no hint of what to do. F29 removed the most likely cause on the
+news screen (a null author), but any network failure still shows this.
+Relates to: F29 (the audit's example), F26 (the same failures are also
+`print`ed).
+Fix idea: show a short Greek message and a "retry" button, and keep the
+technical detail for the debug log.
 
 ---
 

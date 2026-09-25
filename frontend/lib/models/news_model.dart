@@ -6,7 +6,9 @@ class NewsItem{
   final String description;
   final String type;
   final DateTime createdAt;
-  final User author;
+  // Null when the post has no author: the column allows it (author_id is
+  // DEFAULT NULL), and the server then sends "author": null (F29).
+  final User? author;
   final DateTime? deadline;
   final int? targetValue;
 
@@ -16,7 +18,7 @@ class NewsItem{
     required this.description,
     required this.type,
     required this.createdAt,
-    required this.author,
+    this.author,
     this.deadline,
     this.targetValue
   });
@@ -27,23 +29,10 @@ class NewsItem{
       title: json['title'],
       description: json['description'],
       type: json['type'],
-      author: User.fromJson(json['author']),
+      author: json['author'] != null ? User.fromJson(json['author']) : null,
       createdAt: DateTime.parse(json['createdAt']),
       deadline: json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
       targetValue: json['targetValue']?.toInt(),
     );
-  }
-
-  Map<String, dynamic> toJson(){
-    return{
-      'id' : id,
-      'title' : title,
-      'description' : description,
-      'type' : type,
-      'author' : author,
-      'createdAt' : createdAt,
-      'deadline' : deadline,
-      'targetValue' : targetValue,
-    };
   }
 }
