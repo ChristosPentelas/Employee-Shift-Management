@@ -199,8 +199,14 @@ Relates to: F27 (hard-coded backend base URL) — fix both together.
 Fix idea: serve the backend over HTTPS (or behind a reverse proxy that does),
 and make the base URL configurable per build so production can only be
 `https://`.
-Since F27: the base URL is configurable per build (`API_BASE_URL`). Left:
-HTTPS itself, and a release build that refuses a plain-HTTP address.
+Since F27: the base URL is configurable per build (`API_BASE_URL`).
+Since `feat(frontend): refuse plain HTTP in release builds`: `main()` calls
+`checkApiAddress`, which throws on startup when a release build's address is
+not `https://` (debug and profile builds may still use `http://`).
+Left: HTTPS on the backend itself. Wait for a hosting target: TLS normally
+ends at a reverse proxy or the host, with a Let's Encrypt certificate. A
+self-signed certificate in Spring would push the app towards
+`badCertificateCallback: (...) => true`, which switches the protection off.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on

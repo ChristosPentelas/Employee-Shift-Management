@@ -20,6 +20,11 @@ listens on every network interface.
 The value is compiled into the app: after changing it, stop and start
 `flutter run` again. A hot reload or hot restart keeps the old address.
 
+A **release** build refuses to start unless the address begins with
+`https://`, because every request carries the login token. Note that
+`flutter build apk` builds release by default: to try the app on a phone
+against your PC over `http://`, use `flutter build apk --debug`.
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
