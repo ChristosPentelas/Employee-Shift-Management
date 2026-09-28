@@ -141,10 +141,12 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   Future<void> _updateStatus(int id,String status) async {
     try{
       await _apiService.updateLeaveStatus(id, status);
+      if (!mounted) return;
       setState(() {
         _leavesFuture = _loadLeaves();
       });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
     }
   }

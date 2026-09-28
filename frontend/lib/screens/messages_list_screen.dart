@@ -39,13 +39,17 @@ class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
       final incoming = await _apiService.getInbox(me.user.id);
       final outgoing = await _apiService.getSent(me.user.id);
 
+      if (!mounted) return;
+
       setState(() {
         _inbox = [...incoming, ...outgoing];
         _inbox.sort((a,b) => b.timestamp.compareTo(a.timestamp));
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      if(mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

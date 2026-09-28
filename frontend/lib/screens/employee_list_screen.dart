@@ -94,7 +94,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                       ),
                     );
 
-                    if (result == true) {
+                    if (result == true && mounted) {
                       setState(() {
                         _employeesFuture = _apiService.getAllEmployees();
                       });

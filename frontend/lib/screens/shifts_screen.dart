@@ -52,6 +52,8 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
         shifts = await _apiService.getFilteredShifts(me.user.id, firstDayOfMonth, lastDayOfMonth);
       }
 
+      if (!mounted) return;
+
       setState(() {
 
         _allShifts = List.from(shifts);
@@ -59,6 +61,7 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
         _selectedDay = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
 
@@ -175,7 +178,19 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
   }
 
   void _showAssignShiftDialog(DateTime selectedDate) async {
-    List<User> employees = await _apiService.getAllEmployees();
+    // Assigned in try; the catch returns, so after it Dart knows it is set.
+    final List<User> employees;
+    try {
+      employees = await _apiService.getAllEmployees();
+    } catch (e) {
+      // Without this the long-press did nothing and the error reached only
+      // the debug log (B34).
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Δεν ήταν δυνατή η φόρτωση των υπαλλήλων. Δοκιμάστε ξανά.")));
+      return;
+    }
+    if (!mounted) return;
     User? selectedEmployee;
     String? saveError; // Shown in the dialog when the server refuses the shift.
     final _positionController = TextEditingController();
@@ -268,12 +283,13 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
         title: Text("Διαγραφή Βάρδιας"),
         content: Text("Είστε σίγουροι ότι θέλετε να διαγράψετε αυτή τη βάρδια;"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.of(dialogContext, rootNavigator: true).pop();
               bool success = await _apiService.deleteShift(shiftId);
+              if (!mounted) return;
               if (success) {
                 _loadShifts();
                 setState(() {

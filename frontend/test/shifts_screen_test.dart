@@ -2,6 +2,8 @@
 // and stay open. Before this, it just sat there and the supervisor could not
 // tell a saved shift from a refused one.
 
+import 'dart:async';
+
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/shifts_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
@@ -64,5 +66,58 @@ void main() {
     await assignAShift(tester, serverAnsweringAssign(201));
 
     expect(find.text('Αποθήκευση'), findsNothing);
+  });
+
+  testWidgets('a staff list that fails to load says so (B34)',
+      (WidgetTester tester) async {
+    final boss =
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    final api = ApiService(client: MockClient((request) async {
+      if (request.url.path == '/api/v1/users') return http.Response('', 500);
+      return http.Response('[]', 200); // the month's shifts
+    }));
+    await tester.pumpWidget(withAppState(testContainer(user: boss),
+        MaterialApp(home: ShiftsScreen(apiService: api))));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('15'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Δεν ήταν δυνατή η φόρτωση των υπαλλήλων. Δοκιμάστε ξανά.'),
+        findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  // F25: the error path runs after the await too. A failed reply goes to the
+  // catch block, which must not touch a screen that has closed either.
+  testWidgets('a failed reply that arrives after the screen closed is ignored',
+      (WidgetTester tester) async {
+    final boss =
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    // The month's shifts wait until the test completes this.
+    final reply = Completer<http.Response>();
+    final api = ApiService(client: MockClient((_) => reply.future));
+    final navigator = GlobalKey<NavigatorState>();
+
+    await tester.pumpWidget(withAppState(testContainer(user: boss),
+        MaterialApp(navigatorKey: navigator, home: const Text('Home'))));
+    navigator.currentState!
+        .push(MaterialPageRoute(builder: (_) => ShiftsScreen(apiService: api)));
+    // pump, not pumpAndSettle: the spinner animates forever, so it never
+    // settles. A pushed page spends its first frame offstage (being measured
+    // for the transition), and finders skip offstage widgets, so move time
+    // past the transition before looking.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle(); // the screen is gone now
+
+    // getAllShifts throws on a 500, so this lands in _loadShifts' catch.
+    reply.complete(http.Response('', 500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Home'), findsOneWidget);
   });
 }

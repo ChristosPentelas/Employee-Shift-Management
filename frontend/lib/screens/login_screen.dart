@@ -130,6 +130,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final response = await _apiService.login(
           _emailController.text, _passwordController.text);
 
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         var userData = jsonDecode(response.body);
         // AuthClient sends the token with every later request (F1 step 3).
@@ -157,14 +159,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }catch (e) {
       //if the server is closed or incorrect IP
       print("Connection Error: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Αδυναμία σύνδεσης με τον διακοσμιτή.")),
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-
   }
 }

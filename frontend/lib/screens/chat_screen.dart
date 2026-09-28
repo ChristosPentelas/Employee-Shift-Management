@@ -68,6 +68,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messagegeController.clear();
 
     bool success = await _apiService.sendMessage(widget.receiver.id, text);
+    if (!mounted) return;
     if (success) {
       _loadMessages();
     }

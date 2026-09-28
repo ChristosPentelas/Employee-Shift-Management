@@ -51,39 +51,39 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildMenuCard(BuildContext context,String title,IconData icon,Color color){
     return InkWell(
-      onTap:() async {
+      onTap:(){
         if(title == "Υπάλληλοι") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => EmployeeListScreen()),
           );
         }
         if(title == "Νέα") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => NewsScreen()),
           );
         }
         if(title == "Αιτήματα Αδείας") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => LeaveRequestsScreen()),
           );
         }
         if(title == "Προφίλ") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ProfileScreen()),
           );
         }
         if(title == "Βάρδιες") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ShiftsScreen()),
           );
         }
         if(title == "Μηνύματα") {
-          await Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => MessagesListScreen()),
           );
