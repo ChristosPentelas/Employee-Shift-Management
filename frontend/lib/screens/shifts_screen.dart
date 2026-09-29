@@ -199,8 +199,10 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      // `_`: this outer context is not used. Named `context`, it would hide the
+      // screen's, and every `context` below would quietly mean the dialog (F25).
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
           title: Text("Ανάθεση: ${selectedDate.day}/${selectedDate.month}"),
           content: SingleChildScrollView(
             child: Column(
@@ -228,7 +230,7 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
               onPressed: (selectedEmployee == null) ? null : () async {
                 Shift newShift = Shift(
@@ -241,15 +243,14 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
 
                 final result = await _apiService.assignShift(newShift, selectedEmployee!.id);
 
-                // The dialog may have been closed while we waited (Cancel, or
-                // an expired login closing every screen); its context is then
-                // no longer in the widget tree and must not be used (F25).
-                if (!context.mounted) return;
-
+                // Closing the dialog needs the dialog; reloading the calendar
+                // needs the screen. Either can be gone by now (a tap outside
+                // the dialog, the back button, or an expired login closing
+                // every screen), so each is checked on its own (F25).
                 if (result == AssignShiftResult.created) {
-                  Navigator.pop(context);
-                  _loadShifts();
-                } else {
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) _loadShifts();
+                } else if (dialogContext.mounted) {
                   // The dialog stays open, so the supervisor can fix the times.
                   setDialogState(() => saveError = _assignErrorText(result));
                 }

@@ -42,6 +42,32 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
     }
   }
 
+  // A method, not code inside the row's onTap: in a State method `context` is
+  // this screen's, which is the one `mounted` checks. Inside the list's
+  // builders `context` would be the row's, and the analyzer rightly calls
+  // `mounted` unrelated to it (F25).
+  Future<void> _openEmployee(User emp) async {
+    final deleted = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EmployeeDetailsScreen(user: emp),
+      ),
+    );
+
+    // true means the details screen deleted this employee. That screen is
+    // closed by now, so this one, the screen on display, says so.
+    if (deleted == true && mounted) {
+      setState(() {
+        _employeesFuture = _apiService.getAllEmployees();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("Ο υπάλληλος διαγράφηκε επιτυχώς"),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -86,20 +112,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
                       emp.name, style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text("${emp.role} • ${emp.email}"),
                   trailing: Icon(Icons.chevron_right),
-                  onTap: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => EmployeeDetailsScreen(user: emp),
-                      ),
-                    );
-
-                    if (result == true && mounted) {
-                      setState(() {
-                        _employeesFuture = _apiService.getAllEmployees();
-                      });
-                    }
-                  },
+                  onTap: () => _openEmployee(emp),
                 ),
               );
             },

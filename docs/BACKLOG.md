@@ -58,14 +58,14 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Done | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Done in five steps on 2026-09-24 (24a, 24b, 24c1, 24c2, 24d). The user and token live together in `authProvider` as one immutable `AuthSession`, changed only through `AuthNotifier`; screens read it with `ref`, services are handed what they need, and the network layer is built by `api_providers.dart`. The static `Session` is deleted. The login is kept in `flutter_secure_storage` and restored at startup unless expired. Each of the audit's four points: the force-unwraps are gone (B16), the login survives a restart, screens rebuild on change (no empty `setState`), and both logouts clear the session (Home's did before this work; how they navigate differs, B38). Riverpod adopted, closing B15 |
-| F25 | MEDIUM | `BuildContext` across async gaps | Partial | `fix(frontend): stop screens using their state after they close` | Real since F1 step 3b: a rejected token removes every screen and dialog, possibly mid-request. Split in two on 2026-09-28. **25a (done):** a screen's own `setState`, `context` and `ref` after an `await` are guarded by `mounted` in login, leave status, messages list, shifts (load, delete, opening the assign dialog), employee list and chat, on the error path (`catch`, `finally`) as well as the success path; Home no longer awaits routes it ignores. B34 closed with it. `flutter analyze` doesn't see `setState`/`ref` after an `await`, only `context`, so those sites were found by reading. **25b (left):** dialogs whose builder names its context `context`, hiding the screen's: news post and delete, leave submit, profile save, and `employee_details_screen.dart` delete, which pops two routes and then shows its snackbar through a context on its way out |
+| F25 | MEDIUM | `BuildContext` across async gaps | Done | `94bdb9b`, `fix(frontend): tell a dialog's context from its screen's` | Real since F1 step 3b: a rejected token removes every screen and dialog, possibly mid-request. Done in two steps (2026-09-28/29). **25a:** a screen's own `setState`, `context` and `ref` after an `await` are guarded by `mounted`, on the error path (`catch`, `finally`) as well as the success path; Home no longer awaits routes it ignores; B34 closed with it. **25b:** every dialog builder names its context `dialogContext` (an unused outer one is `_`), so `context` always means the screen: the dialog is closed only if `dialogContext.mounted`, the screen is touched only if `mounted`. Confirmation dialogs close before their request. Deleting an employee pops the details screen with `true` and the list shows "deleted". `flutter analyze` now reports no `use_build_context_synchronously`, but it never sees `setState`, `setDialogState` or `ref` after an `await`, so a clean run is not proof |
 | F26 | MEDIUM | Debug `print`s ship in the app | Open | | |
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
 | F28 | LOW | Chat polls every 3 s | Open | | |
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 22 done · 4 partial · 4 open.
+Totals: 23 done · 3 partial · 4 open.
 
 ---
 
@@ -399,7 +399,9 @@ failure.
 
 **B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
 Where: `shifts_screen.dart` `_showAssignShiftDialog` creates three
-`TextEditingController`s as local variables for every dialog it opens.
+`TextEditingController`s as local variables for every dialog it opens. Seen
+again in F25 step 25b (2026-09-29): the news post (`_showAddNewsDialog`), leave
+(`_showAddLeaveDialog`) and profile (`_showEditDialog`) dialogs do the same.
 Why it matters: a controller holds listeners until `dispose()` is called;
 each opened dialog leaks three. Small here, but the habit leaks real
 resources elsewhere (animation controllers, streams). The local names also
@@ -451,6 +453,8 @@ information) and replace the F7 part with where the rule is now enforced.
 **B41 · LOW · Three screens show raw Dart exceptions to the user** — found 2026-09-25
 Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
 `news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
+Snackbars do the same with `Text("Σφάλμα: $e")` (seen in F25 step 25b): news
+post and delete, employee delete, and leave approve/reject.
 Why it matters: the user sees the exception's text, e.g. `Exception: Σφάλμα
 σύνδεσης: ` followed by the underlying Dart error in English: developer
 detail, and no hint of what to do. F29 removed the most likely cause on the
@@ -471,6 +475,17 @@ Relates to: B19 (`submitLeaveRequest` ignores its status code the same way).
 Fix idea: throw when the status is not 200, as `getAllShifts` does, and let
 `_updateStatus`'s existing `catch` show it (in Greek, not the raw exception:
 B41).
+
+**B43 · LOW · A delete can be started twice** — found 2026-09-29
+Where: `employee_details_screen.dart`, `news_screen.dart` and
+`shifts_screen.dart` close their confirmation dialog before the delete request
+(F25), and nothing is disabled or shown while it runs.
+Why it matters: on a slow network the supervisor can press delete and confirm
+again. The second request finds nothing and fails, so an error snackbar appears
+although the delete worked.
+Relates to: F25 (why the dialog closes first).
+Fix idea: a "deleting" flag in the screen's state that disables the button and
+shows a small progress indicator until the reply arrives.
 
 ---
 

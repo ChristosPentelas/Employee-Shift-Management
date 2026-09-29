@@ -3,6 +3,7 @@
 
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/employee_list_screen.dart';
+import 'package:employee_shift_management_ui/services/api_providers.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:employee_shift_management_ui/services/auth_client.dart';
 import 'package:flutter/material.dart';
@@ -94,5 +95,47 @@ void main() {
 
     // Back on the list, which reloaded and shows the new employee.
     expect(find.text('New Hire'), findsOneWidget);
+  });
+
+  // F25: the details screen used to show "deleted" through the context of a
+  // dialog it had just closed, after closing itself too. Now it only reports
+  // back, and the list - the screen on display - shows the message.
+  testWidgets(
+      'deleting an employee returns to the list, which reloads and says so',
+      (WidgetTester tester) async {
+    final requests = <String>[];
+    var listCalls = 0;
+    final network = MockClient((request) async {
+      requests.add('${request.method} ${request.url.path}');
+      if (request.method == 'DELETE') return http.Response('', 204);
+      listCalls++;
+      // The employee before the delete, nobody after it.
+      return http.Response(
+          listCalls == 1
+              ? '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}]}'
+              : '{"content":[]}',
+          200);
+    });
+    // The details screen takes its ApiService from the providers, so the
+    // network is faked there rather than passed to the list.
+    final container = testContainer(
+        user: supervisor(),
+        overrides: [networkClientProvider.overrideWithValue(network)]);
+
+    await tester.pumpWidget(
+        withAppState(container, MaterialApp(home: EmployeeListScreen())));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Worker'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή Υπαλλήλου'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+    await tester.pumpAndSettle();
+
+    expect(requests, contains('DELETE /api/v1/users/7'));
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Δεν βρέθηκαν υπάλληλοι.'), findsOneWidget); // reloaded
+    expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsOneWidget);
   });
 }

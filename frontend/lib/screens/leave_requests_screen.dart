@@ -157,8 +157,10 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+      // `_`: this outer context is not used. Named `context`, it would hide the
+      // screen's, and every `context` below would quietly mean the dialog (F25).
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
           title: Text("Αίτηση Αδειας"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -171,10 +173,13 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                   ),
                 onPressed: () async {
                   final DateTimeRange? picked = await showDateRangePicker(
-                    context: context,
+                    context: dialogContext,
                     firstDate: DateTime.now(),
                     lastDate: latestPickableDate(DateTime.now()),
                   );
+                  // setDialogState belongs to the dialog, so ask about the
+                  // dialog, not the screen (F25).
+                  if (!dialogContext.mounted) return;
                   if (picked != null) setDialogState(() => selectedRange = picked);
                 },
               ),
@@ -186,7 +191,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
               onPressed: (selectedRange == null) ? null : () async {
                 // Read before the await: the session can end while the
@@ -204,7 +209,10 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                 );
 
                 await _apiService.submitLeaveRequest(newRequest);
-                Navigator.pop(context);
+                // The dialog and the screen are checked separately: the dialog
+                // can be closed (tap outside) while the screen stays (F25).
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (!mounted) return;
                 setState(() {
                   _leavesFuture = _loadLeaves();
                 });

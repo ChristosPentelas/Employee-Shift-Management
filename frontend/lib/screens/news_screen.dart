@@ -66,7 +66,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
         ),
         floatingActionButton: isSupervisor
           ? FloatingActionButton(
-              onPressed: () => _showAddNewsDialog(context),
+              onPressed: () => _showAddNewsDialog(),
               child: Icon(Icons.add),
               backgroundColor: Colors.blue,
             )
@@ -95,7 +95,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             trailing: isSupervisor
               ? IconButton(
                   icon: Icon(Icons.delete, color: Colors.red[300]),
-                  onPressed: () => _confirmDelete(context, item.id),
+                  onPressed: () => _confirmDelete(item.id),
                 )
               : null,
             children: [
@@ -122,7 +122,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     );
   }
 
-  void _showAddNewsDialog(BuildContext context) {
+  void _showAddNewsDialog() {
     final _titleController = TextEditingController();
     final _descController = TextEditingController();
     final _targetController = TextEditingController();
@@ -132,8 +132,10 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context,setDialogState) => AlertDialog(
+      // `_`: this outer context is not used. Named `context`, it would hide the
+      // screen's, and every `context` below would quietly mean the dialog (F25).
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext,setDialogState) => AlertDialog(
           title: Text("Νέα Ανάρτηση"),
           content: SingleChildScrollView(
             child: Column(
@@ -168,10 +170,11 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                     trailing: Icon(Icons.calendar_today),
                     onTap: () async {
                       DateTime? picked = await showDatePicker(
-                        context: context,
+                        context: dialogContext,
                         initialDate: DateTime.now(),
                         firstDate: DateTime.now(),
                         lastDate: latestPickableDate(DateTime.now()),);
+                      if (!dialogContext.mounted) return;
                       if (picked != null) setDialogState(() => selectedDeadline = picked);
                     },
                   ),
@@ -179,7 +182,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
               onPressed: () async {
                 // Read before the await: the session can end while the
@@ -200,11 +203,17 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
 
                 try{
                   await _apiService.postNews(newItem);
-                  Navigator.pop(context);
+                  // Two checks, because either can be gone: the dialog (a tap
+                  // outside it, the back button) or the whole screen (an
+                  // expired login). The post was saved either way, so a
+                  // missing dialog must not skip the refresh below (F25).
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (!mounted) return;
                   setState(() {
                     _newsFuture = _apiService.getNews();
                   });
                 } catch (e) {
+                  if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
                 }
               },
@@ -216,19 +225,23 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     );
   }
 
-  void _confirmDelete(BuildContext context, int newsId) {
+  void _confirmDelete(int newsId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text("Διαγραφή Ανάρτησης"),
         content: Text("Είστε σίγουροι ότι θέλετε να διαγράψετε αυτή την ενημέρωση;"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
           TextButton(
             onPressed: () async {
+              // Close the question first: after the await only the screen
+              // matters, and it must not pop again - `Navigator.pop` removes
+              // whatever is on top, which would then be this screen (F25).
+              Navigator.pop(dialogContext);
               try{
                 await _apiService.deleteNews(newsId);
-                Navigator.pop(context);
+                if (!mounted) return;
                 setState(() {
                   _newsFuture = _apiService.getNews();
                 });
@@ -236,7 +249,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                   SnackBar(content: Text("Η ανάρτηση διαγράφηκε")),
                 );
               } catch (e) {
-                Navigator.pop(context);
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Σφάλμα διαγραφής: $e")),
                 );

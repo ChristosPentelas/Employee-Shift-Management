@@ -61,29 +61,33 @@ class EmployeeDetailsScreen extends ConsumerWidget {
   void _showDeleteDialog(BuildContext context, WidgetRef ref){
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: Text("Επιβεβαίωση Διαγραφής"),
           content: Text("Είστε σίγουροι ότι θέλετε να διαγράψετε τον υπάλληλο ${user.name};"),
           actions: [
             TextButton(
               child: Text("Ακύρωση"),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
             ),
             TextButton(
               child: Text("Διαγραφή", style: TextStyle(color:Colors.red)),
               onPressed: () async {
+                // Close the question first: after the await only this screen
+                // matters. Read the service now too; ref may not be used once
+                // the screen is gone.
+                Navigator.pop(dialogContext);
+                final api = ref.read(apiServiceProvider);
                 try{
-                  await ref.read(apiServiceProvider).deleteUser(user.id);
+                  await api.deleteUser(user.id);
+                  // A ConsumerWidget has no `mounted`; its context has (F25).
+                  if (!context.mounted) return;
 
-                  Navigator.pop(context);
+                  // true tells the employee list to reload and to say the
+                  // employee was deleted (it is the screen on display then).
                   Navigator.pop(context,true);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Ο υπάλληλος διαγράφηκε επιτυχώς"), backgroundColor: Colors.red),
-                  );
                 } catch (e) {
-                  Navigator.pop(context);
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("Σφάλμα: $e")),
                   );

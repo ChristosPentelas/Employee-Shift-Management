@@ -29,7 +29,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text("Επεξεργασία Προφίλ"),
         content: SingleChildScrollView(
           child: Column(
@@ -52,7 +52,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text("Ακύρωση"),
           ),
           ElevatedButton(
@@ -72,7 +72,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 // A new session with the saved user: build() watches
                 // authProvider, so the profile repaints by itself.
                 ref.read(authProvider.notifier).updateUser(saved);
-                Navigator.pop(context);
+                // `mounted` above is the screen's. The dialog is checked on
+                // its own: a tap outside can close it while saving (F25).
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
                 );
               } else {
