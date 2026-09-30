@@ -22,6 +22,10 @@ The owner of this repo is a junior developer using this project to learn.
 5. Never introduce a new dependency without asking first.
 6. Never weaken or delete a test to make it pass.
 7. Point out beginner pitfalls in the existing code as you encounter them.
+8. The owner writes the production code. Plan together first: give a todo
+   with every place to edit, the pitfalls, and what to read. Do not write
+   the implementation unless asked to for a specific part. Claude writes
+   the tests and the `docs/BACKLOG.md` changes, and reviews the owner's diff.
 
 ## Conventions
 - Controllers never expose JPA entities. DTOs only.
