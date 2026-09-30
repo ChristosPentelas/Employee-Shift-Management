@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user_model.dart';
 import '../state/auth_session.dart';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 class LoginScreen extends ConsumerStatefulWidget{
   // Tests pass an ApiService with a fake client; the app uses the default.
@@ -158,10 +159,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     }catch (e) {
       //if the server is closed or incorrect IP
-      print("Connection Error: $e");
+      developer.log("Login request failed", name: "LoginScreen", error: e);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Αδυναμία σύνδεσης με τον διακοσμιτή.")),
+        SnackBar(content: Text("Αδυναμία σύνδεσης με τον διακομιστή.")),
       );
     } finally {
       if (mounted) {

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;//Library for internet
 import '../models/user_model.dart';
 import '../models/shift_model.dart';
 import '../models/message_model.dart';
+import 'dart:developer' as developer;
 
 /// The outcome of ApiService.assignShift.
 enum AssignShiftResult {
@@ -84,7 +85,7 @@ class ApiService {
 
   Future<void> deleteUser(int userId) async {
     try{
-      print("Full Delete URL: ${baseUrl}/users/$userId");
+
       final response = await _client.delete(
         Uri.parse("$baseUrl/users/$userId"),
         headers: {"Content-Type" : "application/json"},
@@ -129,7 +130,6 @@ class ApiService {
         throw Exception("Αποτυχία φόρτωσης ειδήσεων");
     }
     } catch (e) {
-      print("DEBUG ERROR: $e"); // Αυτό θα το δεις στο Terminal του VS Code/Android Studio
       throw Exception("Σφάλμα σύνδεσης: $e");
     }
   }
@@ -330,30 +330,27 @@ class ApiService {
 
   Future<void> markAsRead(int messageId) async {
     try {
-      final response = await _client.put(
+      await _client.put(
         Uri.parse("$baseUrl/messages/$messageId/read"),
       );
-      print("Marking message $messageId as read. Status: ${response.statusCode}");
     } catch (e) {
-      print("Error marking as read: $e");
+      developer.log("markAsRead failed", name: "ApiService", error: e);
     }
   }
 
   Future<List<Message>> getInbox(int userId) async {
     try {
-      print("Fetching inbox for user: $userId"); // DEBUG
       final response = await _client.get(
         Uri.parse("$baseUrl/messages/inbox/$userId?page=0&size=50"),
       );
 
-      print("Response Status: ${response.statusCode}"); // DEBUG
-      print("Response Body: ${response.body}"); // DEBUG
+
 
       if (response.statusCode == 200) {
         return _pageContent(response).map((item) => Message.fromJson(item)).toList();
       }
     } catch (e) {
-      print("Error in getInbox: $e");
+      developer.log("getInbox failed", name: "ApiService", error: e);
     }
     return [];
   }
@@ -369,7 +366,7 @@ class ApiService {
         return _pageContent(response).map((item) => Message.fromJson(item)).toList();
       }
     } catch (e) {
-      print("Error in getSent: $e");
+      developer.log("getSent failed", name: "ApiService", error: e);
     }
     return [];
   }

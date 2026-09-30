@@ -2,6 +2,8 @@
 // given. If a method went back to calling http.get directly, the token would
 // silently be missing from that one request.
 
+import 'dart:async';
+
 import 'package:employee_shift_management_ui/models/leave_request_model.dart';
 import 'package:employee_shift_management_ui/models/shift_model.dart';
 import 'package:employee_shift_management_ui/models/user_model.dart';
@@ -178,4 +180,51 @@ void main() {
 
     expect(result, AssignShiftResult.failed);
   });
+
+  // F26: print() goes to the device log in release builds too, so nothing the
+  // service does may reach it, whether the call works or fails.
+  group('nothing is printed to the device log', () {
+    test('when the server answers', () async {
+      final api = ApiService(client: MockClient((request) async {
+        return http.Response('{"content":[]}', 200);
+      }));
+
+      final printed = await printedBy(() async {
+        await api.getInbox(7);
+        await api.getSent(7);
+        await api.markAsRead(3);
+        await api.deleteUser(7);
+        await api.getNews();
+      });
+
+      expect(printed, isEmpty);
+    });
+
+    test('when there is no network', () async {
+      final api = ApiService(client: MockClient((_) async {
+        throw http.ClientException('no network');
+      }));
+
+      final printed = await printedBy(() async {
+        await api.getInbox(7);
+        await api.getSent(7);
+        await api.markAsRead(3);
+        await expectLater(api.getNews(), throwsException);
+      });
+
+      expect(printed, isEmpty);
+    });
+  });
+}
+
+/// Runs [body] and returns every line it sent to print().
+Future<List<String>> printedBy(Future<void> Function() body) async {
+  final lines = <String>[];
+  await runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) => lines.add(line),
+    ),
+  );
+  return lines;
 }

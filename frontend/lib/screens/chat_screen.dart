@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../state/auth_session.dart';
+import 'dart:developer' as developer;
 
 class ChatScreen extends ConsumerStatefulWidget {
   final User receiver;
@@ -57,7 +58,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
     } catch (e) {
-      print("Error loading chat: $e");
+      developer.log("Loading the chat failed", name: "ChatScreen", error: e);
     }
   }
 
