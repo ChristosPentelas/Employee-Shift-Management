@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class NewsItemService {
@@ -29,6 +30,7 @@ public class NewsItemService {
         this.userService = userService;
     }
 
+    @Transactional
     public NewsItem createNewsItem(NewsItem newsItem, Integer authorId) {
         // The id arrives as a plain Integer instead of wrapped in a half-built
         // NewsItem.author, so a missing author is a clear argument rather than
@@ -55,6 +57,7 @@ public class NewsItemService {
                 .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
     }
 
+    @Transactional
     public NewsItem updateNewsItem(NewsItem details,Integer id) {
         NewsItem newsItem = newsItemRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
@@ -66,6 +69,7 @@ public class NewsItemService {
         return newsItemRepository.save(newsItem);
     }
 
+    @Transactional
     public void deleteNewsItem(Integer id) {
         if(!newsItemRepository.existsById(id)) {
             throw new ResourceNotFoundException("News item not found");

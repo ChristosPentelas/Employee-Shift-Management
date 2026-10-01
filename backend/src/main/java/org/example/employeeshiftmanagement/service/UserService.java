@@ -1,6 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -97,6 +97,7 @@ public class UserService {
         return user.filter(found -> passwordEncoder.matches(rawPassword, found.getPassword()));
     }
 
+    @Transactional
     public User registerNewEmployee(User user) {
         //Check if email already exists
         Optional<User> existingUser = userRepository.findByEmail(user.getEmail());
@@ -131,6 +132,7 @@ public class UserService {
      * Reuses registerNewEmployee, which keeps a role that is already set, so the
      * duplicate-email check, the byte limit and the hashing stay in one place.
      */
+    @Transactional
     public boolean createFirstSupervisorIfNone(String name, String email, String rawPassword) {
         if (userRepository.existsByRole("SUPERVISOR")) {
             return false;
@@ -146,6 +148,7 @@ public class UserService {
         return true;
     }
 
+    @Transactional
     public User updateUser(Integer id,User userDetails) {
 
         User user = findUserById(id);

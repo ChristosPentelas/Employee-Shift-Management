@@ -1,6 +1,5 @@
 package org.example.employeeshiftmanagement.repository;
 
-import jakarta.transaction.Transactional;
 import org.example.employeeshiftmanagement.model.Message;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,10 +32,8 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
     Page<Message> findByReceiverIdAndIsReadFalse(Integer receiverId, Pageable pageable);
 
     @Modifying
-    @Transactional
     void deleteBySenderId(Integer senderId);
 
     @Modifying
-    @Transactional
     void deleteByReceiverId(Integer receiverId);
 }

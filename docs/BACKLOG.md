@@ -44,8 +44,8 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
-| F11 | MEDIUM | Writes without a transaction boundary | Open | | Also: the `deleteBy...` repository methods use `jakarta.transaction.Transactional`, not Spring's, and put it on the repository instead of the service |
-| F12 | MEDIUM | `deleteUser` cascades by hand | Open | | |
+| F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check still races (B30, planned as step 11b) |
+| F12 | MEDIUM | `deleteUser` cascades by hand | Open | | To check first (noted 2026-10-01): the audit calls the `deleteBy...` methods bulk deletes, but `@Modifying` probably has no effect on a *derived* delete method, which loads each row and deletes it one by one |
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 24 done · 3 partial · 3 open.
+Totals: 25 done · 3 partial · 2 open.
 
 ---
 
@@ -111,18 +111,6 @@ keep with a null author, or delete) and enforce it in one place. Database-level
 Since F29: the app shows a post with a null author as "Από: Άγνωστος"
 instead of failing the whole news list, so "keep with a null author" is now
 safe for the client.
-
-**B6 · LOW · Two different `@Transactional` annotations in use** — found 2026-09-11
-Where: `UserService.java` imports `jakarta.transaction.Transactional` (the Java
-EE / JTA one); `UserServiceTest` uses Spring's
-`org.springframework.transaction.annotation.Transactional`.
-Why it matters: Spring honours both, but only its own has `readOnly`,
-`rollbackFor` and `propagation`, and two annotations with the same name make
-readers wonder whether they behave differently. Beginners often pick whichever
-the IDE auto-imports first.
-Relates to: F11 (writes without a transaction boundary) — settle this when
-adding `@Transactional` to the other services.
-Fix idea: use Spring's everywhere.
 
 **B8 · MEDIUM · Nobody can change their own password** — found 2026-09-14
 Where: `UserController` has no password endpoint; `UpdateUserRequest` carries
@@ -350,14 +338,16 @@ Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
 
 **B30 · LOW · Two shift requests at the same moment can both pass the overlap check** — found 2026-09-23
 Where: `ShiftService.rejectOverlaps` reads the employee's nearby shifts, then
-`createShift` / `updateShift` saves - two separate steps, with no transaction
-or lock around them.
+`createShift` / `updateShift` saves - two separate steps, with no lock around
+them. Since F11 both steps run in one transaction, but that alone does not
+help: under MySQL's REPEATABLE READ a plain `SELECT` takes no lock, so two
+transactions still both see the shift missing.
 Why it matters: if two supervisors (or one double tap) assign overlapping
 shifts to the same employee at the same instant, both checks see the other
 shift missing and both saves succeed - the rule F30 added is broken exactly
 when it matters. Rare with one company and a few supervisors.
-Relates to: F30, F11 (the same "no transaction boundary" problem).
-Fix idea: with F11, make the write `@Transactional` and lock the employee's
+Relates to: F30, F11 (gave the write its transaction; planned as F11 step 11b).
+Fix idea: inside that transaction, lock the employee's
 row first (`@Lock(PESSIMISTIC_WRITE)` on a `UserRepository` lookup), so
 shift writes for one employee queue up. A cheaper partial backstop: make
 `idx_shifts_user_date` `UNIQUE (user_id, date, start_time)` - catches exact
@@ -503,6 +493,38 @@ raised).
 Fix idea: throw on failure as `getAllShifts` does, and let each screen show
 a short Greek message with a retry, as B41 describes.
 
+**B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
+Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
+`LeaveRequestService.updateLeaveRequest`, `UserService.updateUser`; no entity
+has a `@Version` column.
+Why it matters: supervisor A opens a shift's edit dialog, supervisor B opens
+the same one, A saves, then B saves - B's old copy replaces A's change and
+nobody is told. This is the scenario the audit gave for F11, but a
+transaction cannot prevent it: the two edits are separate HTTP requests,
+minutes apart, and even two overlapping transactions both read without a
+lock under MySQL's REPEATABLE READ, so the last write wins. Approving and
+rejecting the same leave request at once ends the same way.
+Relates to: F11 (the audit expected `@Transactional` to fix this).
+Fix idea: optimistic locking. A `version` column (new migration) mapped with
+`@Version`, sent in each response DTO and back in each update request; the
+service compares it with the stored one, and a stale one becomes a 409 the
+app explains ("someone else changed this - reload"). Checking `@Version` only
+inside the server would cover overlapping requests, not the dialog case.
+
+**B46 · LOW · Registering the same email twice at the same moment answers 500** — found 2026-10-01
+Where: `UserService.registerNewEmployee` checks `findByEmail`, then saves.
+Why it matters: two requests with the same new email can both pass the
+check (the read takes no lock, F11's transaction or not). The unique key on
+`users.email` then refuses the second insert, which is good - the data stays
+right - but `DataIntegrityViolationException` has no handler, so the caller
+gets a 500 instead of the 400 "User already exists" it gets otherwise. Needs
+two supervisors adding the same employee at the same instant, so rare.
+Relates to: F11, F14 (the error handler), B20 (whether that 400 should be a 409).
+Fix idea: catch `DataIntegrityViolationException` around the save in
+`registerNewEmployee` (and the email change in `updateUser`) and throw the
+same exception as the normal duplicate check. `saveAndFlush` is needed there,
+or the insert only reaches the database at commit, after the catch.
+
 ---
 
 ## Done
@@ -627,3 +649,16 @@ Fixed by: `fix(frontend): stop screens using their state after they close`,
 with F25 step 25a. A failed load now shows "Δεν ήταν δυνατή η φόρτωση των
 υπαλλήλων. Δοκιμάστε ξανά." and no dialog opens; `shifts_screen_test.dart`
 covers it.
+
+**B6 · LOW · Two different `@Transactional` annotations in use** — found 2026-09-11
+Where: `UserService.java` and the three repositories with `deleteBy...`
+methods imported `jakarta.transaction.Transactional` (the Java EE / JTA one);
+the tests use Spring's `org.springframework.transaction.annotation.Transactional`.
+Why it mattered: Spring honours both, but only its own has `readOnly`,
+`rollbackFor` and `propagation`, and two annotations with the same name make
+readers wonder whether they behave differently. Beginners often pick whichever
+the IDE auto-imports first.
+Fixed by: `fix(backend): run each service write in one transaction`, with F11.
+Spring's annotation is the only one left; `src/main` no longer mentions
+`jakarta.transaction`. The repositories lost theirs instead of switching it:
+the transaction belongs to the service that calls them.

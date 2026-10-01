@@ -9,7 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,6 +33,7 @@ public class ShiftService {
         this.userService = userService;
     }
 
+    @Transactional
     public Shift createShift(Integer userId,Shift shift){
         User user = userService.findUserById(userId);
         rejectOverlaps(userId, null, shift);
@@ -49,6 +50,7 @@ public class ShiftService {
         return shiftRepository.findByUserId(userId, Paging.withSort(pageable, LATEST_FIRST));
     }
 
+    @Transactional
     public Shift updateShift(Integer shiftId,Shift shiftDetails){
         Shift existingShift = shiftRepository.findById(shiftId)
                 .orElseThrow(()-> new ResourceNotFoundException("Shift not found with id "+shiftId));
@@ -66,6 +68,7 @@ public class ShiftService {
         return shiftRepository.save(existingShift);
     }
 
+    @Transactional
     public void deleteShift(Integer shiftId){
         if(!shiftRepository.existsById(shiftId)){
             throw new ResourceNotFoundException("Shift not found with id "+shiftId);

@@ -1,6 +1,6 @@
 package org.example.employeeshiftmanagement.repository;
 
-import jakarta.transaction.Transactional;
+
 import org.example.employeeshiftmanagement.model.Shift;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +34,5 @@ public interface ShiftRepository extends JpaRepository<Shift, Integer> {
     //We implement the schedule, we take the shifts in a specific time period
 
     @Modifying
-    @Transactional
     void deleteByUserId(Integer userId);
 }

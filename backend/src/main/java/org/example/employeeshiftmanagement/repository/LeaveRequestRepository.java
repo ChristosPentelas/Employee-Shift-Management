@@ -1,6 +1,5 @@
 package org.example.employeeshiftmanagement.repository;
 
-import jakarta.transaction.Transactional;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.springframework.data.domain.Page;
@@ -34,6 +33,5 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     Page<LeaveRequest> findByUserIdAndStatus(Integer userId, LeaveStatus status, Pageable pageable);
 
     @Modifying
-    @Transactional
     void deleteByUserId(Integer userId);
 }

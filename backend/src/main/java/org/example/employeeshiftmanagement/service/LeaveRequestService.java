@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LeaveRequestService {
@@ -25,6 +26,7 @@ public class LeaveRequestService {
         this.userService = userService;
     }
 
+    @Transactional
     public LeaveRequest createLeaveRequest(Integer userId, LeaveRequest request) {
         // Resolve the employee here rather than trusting one supplied by the
         // caller, the same way ShiftService and MessageService already do.
@@ -53,6 +55,7 @@ public class LeaveRequestService {
         return leaveRequestRepository.findByUserIdAndStatus(userId, status, Paging.withSort(pageable, LATEST_FIRST));
     }
 
+    @Transactional
     public LeaveRequest updateLeaveRequest(Integer requestId, LeaveStatus newStatus) {
         LeaveRequest request = leaveRequestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Leave Request Not Found with Id: " + requestId));

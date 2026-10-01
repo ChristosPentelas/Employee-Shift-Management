@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MessageService {
@@ -30,6 +31,7 @@ public class MessageService {
     }
 
     /** senderId must come from the caller's token (CurrentUser), never from the request. */
+    @Transactional
     public Message sendMessage(Integer senderId, Integer receiverId, String content) {
         User sender = userService.findUserById(senderId);
         User receiver = userService.findUserById(receiverId);
@@ -66,6 +68,7 @@ public class MessageService {
      * This rule needs the message loaded first, which is why it lives here and
      * not in a @PreAuthorize on the controller.
      */
+    @Transactional
     public Message markAsRead(Integer messageId, Integer currentUserId) {
         Message message = findMessage(messageId);
 
@@ -78,6 +81,7 @@ public class MessageService {
     }
 
     /** Only the sender can delete a message. */
+    @Transactional
     public void deleteMessage(Integer messageId, Integer currentUserId) {
         Message message = findMessage(messageId);
 
