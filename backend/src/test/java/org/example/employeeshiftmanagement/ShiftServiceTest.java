@@ -7,6 +7,7 @@ import org.example.employeeshiftmanagement.service.ShiftService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +31,10 @@ import static org.mockito.Mockito.when;
  * The repository is a mock that returns the employee's "nearby" shifts - the
  * day before to the day after, which is what ShiftService asks for. Each test
  * names the stored shift it puts there and the one it tries to save.
+ *
+ * The last two tests check only the ORDER of the calls: the employee is
+ * locked before the overlap query (B30). A mock has no locks, so whether
+ * the lock really makes a second request wait is ShiftConcurrencyIntegrationTest's job.
  */
 class ShiftServiceTest {
 
@@ -40,7 +46,7 @@ class ShiftServiceTest {
 
     @BeforeEach
     void employeeSevenExists() {
-        when(userService.findUserById(7)).thenReturn(TestUsers.employee());
+        when(userService.findLockedUserById(7)).thenReturn(TestUsers.employee());
         when(shiftRepository.save(any(Shift.class))).thenAnswer(call -> call.getArgument(0));
     }
 
@@ -134,5 +140,29 @@ class ShiftServiceTest {
         // Refused before anything changed, not half-way through.
         assertEquals(LocalTime.of(9, 0), existing.getStartTime());
         verify(shiftRepository, never()).save(any());
+    }
+
+    @Test
+    void createShiftLocksTheEmployeeBeforeCheckingForOverlaps() {
+        stored();
+
+        shiftService.createShift(7, shift(null, DAY, "09:00", "13:00"));
+
+        InOrder order = inOrder(userService, shiftRepository);
+        order.verify(userService).findLockedUserById(7);
+        order.verify(shiftRepository).findByUserIdAndDateBetween(eq(7), any(), any(), any(Sort.class));
+    }
+
+    @Test
+    void updateShiftLocksTheEmployeeBeforeCheckingForOverlaps() {
+        Shift existing = shift(12, DAY, "09:00", "13:00");
+        stored(existing);
+        when(shiftRepository.findById(12)).thenReturn(Optional.of(existing));
+
+        shiftService.updateShift(12, shift(null, DAY, "10:00", "14:00"));
+
+        InOrder order = inOrder(userService, shiftRepository);
+        order.verify(userService).findLockedUserById(7);
+        order.verify(shiftRepository).findByUserIdAndDateBetween(eq(7), any(), any(), any(Sort.class));
     }
 }

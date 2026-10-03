@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,9 +34,23 @@ public class ShiftService {
         this.userService = userService;
     }
 
-    @Transactional
+    /*
+     * createShift and updateShift both check for overlaps, then save. Two
+     * requests for the same employee at the same moment could both check
+     * before either saves, and both pass (B30). So each first locks the
+     * employee's row: the second request waits at that lock until the first
+     * commits, and only then runs its own check.
+     *
+     * READ_COMMITTED makes the check after the wait see what the first
+     * request saved. Under MySQL's default, REPEATABLE READ, every plain
+     * SELECT in a transaction reads one snapshot, taken at the first one - in
+     * updateShift that is loading the shift, before the wait - so the check
+     * would still miss it.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Shift createShift(Integer userId,Shift shift){
-        User user = userService.findUserById(userId);
+        // First, before any read the overlap check depends on.
+        User user = userService.findLockedUserById(userId);
         rejectOverlaps(userId, null, shift);
         shift.setUser(user);
         return shiftRepository.save(shift);
@@ -50,15 +65,18 @@ public class ShiftService {
         return shiftRepository.findByUserId(userId, Paging.withSort(pageable, LATEST_FIRST));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Shift updateShift(Integer shiftId,Shift shiftDetails){
         Shift existingShift = shiftRepository.findById(shiftId)
                 .orElseThrow(()-> new ResourceNotFoundException("Shift not found with id "+shiftId));
 
+        Integer existingUserId = existingShift.getUser().getId();
+        userService.findLockedUserById(existingUserId);
+
         // Checked before the fields change, so the query below never sees a
         // half-edited copy of this shift. getId() on the lazy user is free:
         // Hibernate already knows the id without loading the user.
-        rejectOverlaps(existingShift.getUser().getId(), shiftId, shiftDetails);
+        rejectOverlaps(existingUserId, shiftId, shiftDetails);
 
         existingShift.setDate(shiftDetails.getDate());
         existingShift.setStartTime(shiftDetails.getStartTime());
@@ -95,6 +113,10 @@ public class ShiftService {
      *
      * Existing shifts are not re-checked: two that overlapped before this rule
      * stay, but editing either one is refused until the clash is removed.
+     *
+     * The caller must already hold the employee's lock
+     * (UserService.findLockedUserById); otherwise two requests can both pass
+     * this check at the same moment (B30).
      */
     private void rejectOverlaps(Integer userId, Integer ignoredShiftId, Shift shift) {
         LocalDateTime start = startOf(shift);

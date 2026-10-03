@@ -44,7 +44,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
-| F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check still races (B30, planned as step 11b) |
+| F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Open | | To check first (noted 2026-10-01): the audit calls the `deleteBy...` methods bulk deletes, but `@Modifying` probably has no effect on a *derived* delete method, which loads each row and deletes it one by one |
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
@@ -335,24 +335,6 @@ changing it. Two entities, two patterns for the same job.
 Relates to: B25.
 Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
 `updatable = false`. The column is already `NOT NULL`, so no migration.
-
-**B30 · LOW · Two shift requests at the same moment can both pass the overlap check** — found 2026-09-23
-Where: `ShiftService.rejectOverlaps` reads the employee's nearby shifts, then
-`createShift` / `updateShift` saves - two separate steps, with no lock around
-them. Since F11 both steps run in one transaction, but that alone does not
-help: under MySQL's REPEATABLE READ a plain `SELECT` takes no lock, so two
-transactions still both see the shift missing.
-Why it matters: if two supervisors (or one double tap) assign overlapping
-shifts to the same employee at the same instant, both checks see the other
-shift missing and both saves succeed - the rule F30 added is broken exactly
-when it matters. Rare with one company and a few supervisors.
-Relates to: F30, F11 (gave the write its transaction; planned as F11 step 11b).
-Fix idea: inside that transaction, lock the employee's
-row first (`@Lock(PESSIMISTIC_WRITE)` on a `UserRepository` lookup), so
-shift writes for one employee queue up. A cheaper partial backstop: make
-`idx_shifts_user_date` `UNIQUE (user_id, date, start_time)` - catches exact
-duplicates only, and the migration fails if the data already has some, so
-check with a `GROUP BY ... HAVING COUNT(*) > 1` first.
 
 **B31 · LOW · A shift can be assigned during the employee's approved leave** — found 2026-09-23
 Where: `ShiftService.createShift` / `updateShift` check only other shifts
@@ -662,3 +644,33 @@ Fixed by: `fix(backend): run each service write in one transaction`, with F11.
 Spring's annotation is the only one left; `src/main` no longer mentions
 `jakarta.transaction`. The repositories lost theirs instead of switching it:
 the transaction belongs to the service that calls them.
+
+**B30 · LOW · Two shift requests at the same moment could both pass the overlap check** — found 2026-09-23
+Where: `ShiftService.rejectOverlaps` read the employee's nearby shifts, then
+`createShift` / `updateShift` saved - two separate steps with nothing between
+them to stop a second request. After F11 step 11a both ran in one
+transaction, which alone did not help: a plain `SELECT` takes no lock.
+Why it mattered: two supervisors (or one double tap) assigning overlapping
+shifts to the same employee at the same instant both passed the check and
+both saved - the rule F30 added broke exactly when it mattered.
+Fixed by: `fix(backend): lock the employee while checking shift overlaps`,
+F11 step 11b. Both methods first call `UserService.findLockedUserById`
+(`SELECT ... FOR UPDATE` on the employee's row, `PESSIMISTIC_WRITE`), so
+shift writes for one employee run one after another; other employees are not
+affected. They also run at READ COMMITTED: under MySQL's default REPEATABLE
+READ, `updateShift`'s overlap check read the snapshot its `findById` took
+before the wait, and still missed the shift committed meanwhile. That was
+seen, not just reasoned: with the lock but without READ COMMITTED,
+`ShiftConcurrencyIntegrationTest` failed. The test replays the race with two
+threads and asks MySQL (`information_schema.PROCESSLIST`) which statement the
+second request is stuck in; without the lock, it was stuck at its own
+`INSERT`/`UPDATE` (the foreign-key check waits for the lock too), after its
+overlap check had passed. `ShiftServiceTest` checks the call order (lock,
+then overlap query) without a database.
+Side effect, accepted: while a shift write holds the lock (milliseconds),
+other writes that reference that employee - a message, a leave request -
+wait for it, because their foreign-key check needs the same row. A request
+waiting longer than MySQL's `innodb_lock_wait_timeout` (50 s) would get a
+500; unreachable while these transactions stay this short.
+Not chosen: the `UNIQUE (user_id, date, start_time)` index. It catches only
+identical shifts, not overlapping ones.

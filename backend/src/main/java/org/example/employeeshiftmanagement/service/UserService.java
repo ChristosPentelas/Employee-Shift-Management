@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -64,6 +65,22 @@ public class UserService {
 
     public User findUserById(Integer id) {
         return userRepository.findById(id).
+                orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    /**
+     * Like findUserById, but also locks the user's row (SELECT ... FOR UPDATE).
+     * Any other transaction asking for the same lock waits here until this
+     * one ends. Use it to make writes for one user happen one after another,
+     * as ShiftService does so two overlapping shifts cannot both pass its check.
+     *
+     * The lock lasts until the caller's transaction ends - there is no
+     * "unlock". MANDATORY makes calling this without a transaction an error:
+     * the lock would be released the moment it was taken, protecting nothing.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public User findLockedUserById(Integer id) {
+        return userRepository.findLockedById(id).
                 orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
