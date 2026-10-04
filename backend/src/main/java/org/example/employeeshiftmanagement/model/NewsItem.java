@@ -1,6 +1,8 @@
 package org.example.employeeshiftmanagement.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -47,8 +49,12 @@ public class NewsItem {
     // LAZY: each query decides whether it needs the author. The list queries in
     // NewsItemRepository ask for it with @EntityGraph, so it comes in the
     // same SQL statement instead of one extra query per user (F10).
+    // SET_NULL: deleting the author keeps the post, with no author (B7). MySQL
+    // does it, from the foreign key's ON DELETE rule (V5); this annotation only
+    // states the rule here.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id")
+    @OnDelete(action = OnDeleteAction.SET_NULL)
     private User author;
 
 }

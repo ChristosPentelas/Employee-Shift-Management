@@ -96,8 +96,9 @@ class TransactionBoundaryIntegrationTest {
     void deleteWhatTheTestCreated() {
         for (String email : emails) {
             userRepository.findByEmail(email).ifPresent(user -> {
-                // deleteUser does not remove news posts (F12), and their
-                // foreign key would refuse to let the user go.
+                // Deleting the author keeps their news posts, with no author
+                // (V5), and a leftover post would show up in other tests'
+                // "all news" lists. So the posts go first, by hand.
                 newsItemRepository.deleteAll(
                         newsItemRepository.findByAuthorId(user.getId(), Pageable.unpaged()).getContent());
                 userService.deleteUser(user.getId());
