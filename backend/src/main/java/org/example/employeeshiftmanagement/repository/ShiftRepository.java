@@ -7,7 +7,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -32,7 +31,4 @@ public interface ShiftRepository extends JpaRepository<Shift, Integer> {
     @EntityGraph(attributePaths = "user")
     List<Shift> findByUserIdAndDateBetween(Integer userId, LocalDate startDate, LocalDate endDate, Sort sort);
     //We implement the schedule, we take the shifts in a specific time period
-
-    @Modifying
-    void deleteByUserId(Integer userId);
 }

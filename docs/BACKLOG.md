@@ -45,7 +45,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
 | F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
-| F12 | MEDIUM | `deleteUser` cascades by hand | Open | | To check first (noted 2026-10-01): the audit calls the `deleteBy...` methods bulk deletes, but `@Modifying` probably has no effect on a *derived* delete method, which loads each row and deletes it one by one |
+| F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Left: deleting a user deletes the messages they sent to others (B47) |
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 25 done · 3 partial · 2 open.
+Totals: 26 done · 3 partial · 1 open.
 
 ---
 
@@ -93,24 +93,6 @@ endings (`/bin/sh^M: bad interpreter`).
 Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
 `*.cmd`/`*.bat text eol=crlf` for the Windows wrappers (`mvnw.cmd`). Then run
 `git add --renormalize .` and check the diff comes out empty.
-
-**B7 · MEDIUM · `deleteUser` forgets news items, so deleting an author fails** — found 2026-09-13
-Where: `UserService.deleteUser` clears `messages`, `leaves_requests` and
-`shifts` before deleting the user, but not `news_items`, whose `author` column
-is a foreign key to `users`.
-Why it matters: deleting a user who ever posted news hits a foreign-key
-constraint error. `UserController.deleteUser` catches `RuntimeException` and
-answers 500, so the client is told "server error" for what is really "this user
-still has news items". Employees cannot post news today, so only supervisors
-trigger it, which is why it has gone unnoticed.
-Relates to: F12 (deleteUser cascades by hand across repositories) — this is the
-fifth repository it forgot; F14 (every exception becomes a 404/500).
-Fix idea: decide what should happen to a departed author's news (reassign,
-keep with a null author, or delete) and enforce it in one place. Database-level
-`ON DELETE` rules or JPA cascades would remove the hand-written list entirely.
-Since F29: the app shows a post with a null author as "Από: Άγνωστος"
-instead of failing the whole news list, so "keep with a null author" is now
-safe for the client.
 
 **B8 · MEDIUM · Nobody can change their own password** — found 2026-09-14
 Where: `UserController` has no password endpoint; `UpdateUserRequest` carries
@@ -507,6 +489,20 @@ Fix idea: catch `DataIntegrityViolationException` around the save in
 same exception as the normal duplicate check. `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
+**B47 · LOW · Deleting a user also deletes the messages they sent to others** — found 2026-10-04
+Where: V5's `ON DELETE CASCADE` on `messages.sender_id` and `receiver_id`.
+Why it matters: when an employee leaves, every message they ever sent
+disappears from their colleagues' inboxes and chats too, and so do the
+messages colleagues sent them. This is what the hand-written `deleteUser` did
+before F12 as well; F12 only moved the rule into the schema. Whether it is
+wrong is a product decision: a conversation's history may matter to the
+person still here.
+Relates to: F12, B7 (news posts are kept with no author instead).
+Fix idea: the same as news: `ON DELETE SET NULL`, which first needs both
+columns to allow `NULL` (a migration), `Message.sender`/`receiver` to be
+optional, `MessageResponse` and the app to cope with a missing user, and a
+decision on what a chat with a deleted user looks like.
+
 ---
 
 ## Done
@@ -674,3 +670,26 @@ waiting longer than MySQL's `innodb_lock_wait_timeout` (50 s) would get a
 500; unreachable while these transactions stay this short.
 Not chosen: the `UNIQUE (user_id, date, start_time)` index. It catches only
 identical shifts, not overlapping ones.
+
+**B7 · MEDIUM · `deleteUser` forgets news items, so deleting an author fails** — found 2026-09-13
+Where: `UserService.deleteUser` clears `messages`, `leaves_requests` and
+`shifts` before deleting the user, but not `news_items`, whose `author` column
+is a foreign key to `users`.
+Why it matters: deleting a user who ever posted news hits a foreign-key
+constraint error. `UserController.deleteUser` catches `RuntimeException` and
+answers 500, so the client is told "server error" for what is really "this user
+still has news items". Employees cannot post news today, so only supervisors
+trigger it, which is why it has gone unnoticed.
+Relates to: F12 (deleteUser cascades by hand across repositories) — this is the
+fifth repository it forgot; F14 (every exception becomes a 404/500).
+Fix idea: decide what should happen to a departed author's news (reassign,
+keep with a null author, or delete) and enforce it in one place. Database-level
+`ON DELETE` rules or JPA cascades would remove the hand-written list entirely.
+Since F29: the app shows a post with a null author as "Από: Άγνωστος"
+instead of failing the whole news list, so "keep with a null author" is now
+safe for the client.
+Fixed by: `db74c1f`, with F12 step 12a. Decided 2026-10-04: keep the post with
+no author. V5 gives `news_items.author_id` the rule `ON DELETE SET NULL`, so
+MySQL detaches the posts when their author is deleted.
+`UserDeletionIntegrationTest.deletingAnAuthorKeepsTheirNewsWithNoAuthor`
+reproduced the foreign-key error before the fix.

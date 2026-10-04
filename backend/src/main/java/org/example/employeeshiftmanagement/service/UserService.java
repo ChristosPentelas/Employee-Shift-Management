@@ -10,9 +10,6 @@ import org.springframework.stereotype.Service;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
-import org.example.employeeshiftmanagement.repository.MessageRepository;
-import org.example.employeeshiftmanagement.repository.ShiftRepository;
-import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -31,9 +28,6 @@ public class UserService {
     private static final Sort BY_NAME = Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"));
 
     private final UserRepository userRepository;
-    private final MessageRepository messageRepository;
-    private final LeaveRequestRepository leaveRequestRepository;
-    private final ShiftRepository shiftRepository;
     private final PasswordEncoder passwordEncoder;
 
     /** Hash of a password nobody has; see authenticate. */
@@ -46,14 +40,8 @@ public class UserService {
      * automatically; no @Autowired needed.
      */
     public UserService(UserRepository userRepository,
-                       MessageRepository messageRepository,
-                       LeaveRequestRepository leaveRequestRepository,
-                       ShiftRepository shiftRepository,
                        PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
-        this.messageRepository = messageRepository;
-        this.leaveRequestRepository = leaveRequestRepository;
-        this.shiftRepository = shiftRepository;
         this.passwordEncoder = passwordEncoder;
         this.dummyHash = passwordEncoder.encode("no-user-has-this-password");
     }
@@ -187,14 +175,21 @@ public class UserService {
     }
 
 
+    /**
+     * Deletes the user; the database deletes or detaches everything that
+     * points at them, from each foreign key's ON DELETE rule (V5): their
+     * shifts, leave requests and messages go, their news posts stay with no
+     * author. There is no list of tables here to keep up to date - a new table
+     * that references users needs its own rule, which
+     * UserDeletionIntegrationTest checks for.
+     *
+     * Those rows are removed by MySQL, behind Hibernate's back. Any of them
+     * already loaded in the same transaction would be stale, so do not load
+     * them here first.
+     */
     @Transactional
     public void deleteUser(Integer id) {
         User user = findUserById(id);
-
-        messageRepository.deleteBySenderId(user.getId());
-        messageRepository.deleteByReceiverId(user.getId());
-        leaveRequestRepository.deleteByUserId(user.getId());
-        shiftRepository.deleteByUserId(user.getId());
 
         userRepository.delete(user);
     }

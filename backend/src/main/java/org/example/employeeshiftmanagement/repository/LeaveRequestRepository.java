@@ -6,7 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -31,7 +30,4 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
 
     @EntityGraph(attributePaths = "user")
     Page<LeaveRequest> findByUserIdAndStatus(Integer userId, LeaveStatus status, Pageable pageable);
-
-    @Modifying
-    void deleteByUserId(Integer userId);
 }
