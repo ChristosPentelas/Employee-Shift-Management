@@ -32,7 +32,7 @@ void main() {
     final container = testContainer(
         user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'));
 
-    expect(await requestedPaths(tester, container), ['/api/v1/leaves/users/7/leaves']);
+    expect(await requestedPaths(tester, container), ['/api/v1/users/7/leaves']);
   });
 
   testWidgets('a supervisor asks for every leave request',

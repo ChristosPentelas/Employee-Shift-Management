@@ -49,7 +49,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
-| F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a`, `2a73052`, `11b5cc6`, `85ab045`, `feat(backend): serve a user's shifts and leaves under /users/{userId}` | Done by F14: `ResponseEntity<?>` is gone from all handlers but one, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Planned 2026-10-05 in six steps: **16a** every delete answers 204 the same way (B21, done) · **16b** `login`, the last `ResponseEntity<?>` (missed when this row was first written), now throws `InvalidCredentialsException` and `ApiExceptionHandler` answers the 401 with the same body as before (done) · **16c** base paths (B12, done) · **16d1–3** lists that belong to one user live at `/users/{userId}/<resource>`: `GET /shifts/users/{id}` moves, `/leaves/users/{id}/leaves` is added at the new path, the app switches, the old path goes. 16d1 done: the shift history moved with no alias (no client called it; the old path answers 404), and `getLeavesByUser` answers on both leave paths through one `@GetMapping` with two paths, which keeps the installed app working. Controllers with nested routes are mapped at `/api/v1` and spell out each method's full path. Out of scope, logged: B48, B49, B22 |
+| F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a`, `2a73052`, `11b5cc6`, `85ab045`, `738dfb2`, `refactor(frontend): ask for own leave requests at their new path` | Done by F14: `ResponseEntity<?>` is gone from all handlers but one, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Planned 2026-10-05 in six steps: **16a** every delete answers 204 the same way (B21, done) · **16b** `login`, the last `ResponseEntity<?>` (missed when this row was first written), now throws `InvalidCredentialsException` and `ApiExceptionHandler` answers the 401 with the same body as before (done) · **16c** base paths (B12, done) · **16d1–3** lists that belong to one user live at `/users/{userId}/<resource>`: `GET /shifts/users/{id}` moves, `/leaves/users/{id}/leaves` is added at the new path, the app switches, the old path goes. 16d1 done: the shift history moved with no alias (no client called it; the old path answers 404), and `getLeavesByUser` answers on both leave paths through one `@GetMapping` with two paths, which keeps the installed app working. 16d2 done: `ApiService.getMyLeaveRequests` asks for `/users/{id}/leaves`, so no app code uses the old path; it must not ship to phones before a backend with 16d1 is running. Controllers with nested routes are mapped at `/api/v1` and spell out each method's full path. Out of scope, logged: B48, B49, B22 |
 | F17 | LOW | Broken URL in a dead client method | Done | `refactor(frontend): hand the services the user they need` | `getMyShifts` deleted in F24 step 24c1. Re-found 2026-09-24 and logged as B37 before this row was checked, so B37 is the same problem |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
@@ -523,6 +523,25 @@ Fix idea: set the header in `handleInvalidCredentials` (a `ResponseEntity`
 with `WWW-Authenticate: Bearer`), or decide that a failed login is not a 401
 at all - some APIs answer 400, since the request carried no credentials the
 header could describe. Either is a contract change, with its own test.
+
+**B51 · LOW · `flutter analyze` reports 35 issues that nobody tracks as a whole** — found 2026-10-06
+Where: counted during F16 step 16d2, the same 35 before and after it. Ten
+`no_leading_underscores_for_local_identifiers` are B35's dialog variables and
+the one `unused_element` is `_buildStatColumn` (F20). Not tracked anywhere
+else: every screen's constructor has no `key` parameter
+(`use_key_in_widget_constructors`, 10) and two could be `const`; nine
+`createState` methods return a private `_...State` type in a public API
+(`library_private_types_in_public_api`); `child` is not the last argument
+twice (`leave_requests_screen.dart:96`, `news_screen.dart:70`); and
+`leave_requests_screen.dart:122` calls `withOpacity`, deprecated in favour of
+`withValues`.
+Why it matters: each is small, but 35 standing warnings teach everyone to
+ignore the analyzer, so a real new one (like F25's
+`use_build_context_synchronously`) is easy to miss among them. The deprecated
+call stops compiling when Flutter removes it.
+Fix idea: one screen at a time, or one rule at a time; most are mechanical
+(`super.key`, `const`, `State<X>` as the return type). Aim for a clean
+`flutter analyze` so a new issue stands out.
 
 ---
 

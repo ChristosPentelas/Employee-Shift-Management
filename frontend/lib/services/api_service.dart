@@ -186,7 +186,7 @@ class ApiService {
   /// The caller says who is logged in: a service is handed what it needs
   /// instead of reaching into app state (F24).
   Future<List<LeaveRequest>> getMyLeaveRequests(int userId) async {
-    final response = await _client.get(Uri.parse("$baseUrl/leaves/users/$userId/leaves?page=0&size=50"));
+    final response = await _client.get(Uri.parse("$baseUrl/users/$userId/leaves?page=0&size=50"));
 
     if (response.statusCode == 200) {
       return _pageContent(response).map((item) => LeaveRequest.fromJson(item)).toList();
