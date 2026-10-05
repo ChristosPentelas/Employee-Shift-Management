@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/")//in the shift controller we have two different types of routes(from users and from shifts)
+@RequestMapping("/api/v1")
 public class ShiftController {
 
     private final ShiftService shiftService;
@@ -71,11 +71,11 @@ public class ShiftController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Same range rules as GET /shifts. */
+    /** Same range rules as GET /shifts.
+    *We filter by date with query parameters (?start=&end=), as defined by REST standards*/
     @GetMapping("/users/{userId}/schedule")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<List<ShiftResponse>> getSchedule(@PathVariable Integer userId,
-                                         //We filter by date with query parameters (?start=&end=), as defined by REST standards
                                          @Valid DateRangeQuery range) {
         return ResponseEntity.ok(toResponses(shiftService.getSchedule(userId, range.start(), range.end())));
     }
