@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
  * (F9). See NewsItemController.getAllNews for the defaults and the cap.
  */
 @RestController
-@RequestMapping("/api/v1/leaves")
+@RequestMapping("/api/v1")
 public class LeaveRequestController {
 
     private final LeaveRequestService leaveRequestService;
@@ -32,7 +32,7 @@ public class LeaveRequestController {
 
     //endpoints for EMPLOYEES
 
-    @PostMapping
+    @PostMapping("/leaves")
     public ResponseEntity<LeaveRequestResponse> createLeave(Authentication authentication,
                                         @Valid @RequestBody CreateLeaveRequest request) {
         // Always filed for the caller: an employee cannot file leave for a
@@ -42,8 +42,8 @@ public class LeaveRequestController {
         return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
     }
 
-
-    @GetMapping("/users/{userId}/leaves")
+    // The old path(/leaves/users/{userId}/leaves) is only for app versions from before 16d2, and is removed in 16d3.
+    @GetMapping({"/users/{userId}/leaves", "/leaves/users/{userId}/leaves"})
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<PageResponse<LeaveRequestResponse>> getLeavesByUser(@PathVariable Integer userId,
                                                                               Pageable pageable) {
@@ -54,15 +54,15 @@ public class LeaveRequestController {
     //endpoints for SUPERVISOR
 
     // Everyone's requests, reasons included - health and family information.
-    // Employees read their own through /leaves/users/{userId}/leaves; the app
+    // Employees read their own through /users/{userId}/leaves; the app
     // stopped calling this one in F1 step 7c, which is what let it close (F7).
-    @GetMapping
+    @GetMapping("/leaves")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<PageResponse<LeaveRequestResponse>> getAllLeaves(Pageable pageable) {
         return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests(pageable)));
     }
 
-    @GetMapping("/filter")
+    @GetMapping("/leaves/filter")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<PageResponse<LeaveRequestResponse>> filterLeaves(@RequestParam LeaveStatus status,
                                                @RequestParam(required = false) Integer userId,
@@ -75,7 +75,7 @@ public class LeaveRequestController {
     }
 
 
-    @PutMapping("/{requestId}/status")
+    @PutMapping("/leaves/{requestId}/status")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<LeaveRequestResponse> updateLeaveStatus(@PathVariable Integer requestId,
                                                                   @RequestParam LeaveStatus status) {

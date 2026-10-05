@@ -48,7 +48,7 @@ public class ShiftController {
     }
 
     /** One employee's shift history, one page at a time, latest first (F9). */
-    @GetMapping("/shifts/users/{userId}")
+    @GetMapping("/users/{userId}/shifts")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<PageResponse<ShiftResponse>> getShiftsByUser(@PathVariable Integer userId,
                                                                        Pageable pageable) {

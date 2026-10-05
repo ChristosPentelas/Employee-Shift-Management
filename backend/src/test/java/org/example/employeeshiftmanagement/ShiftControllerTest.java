@@ -240,7 +240,7 @@ class ShiftControllerTest {
     void anEmployeeCanReadTheirOwnShifts() throws Exception {
         when(shiftService.getShiftsByEmployee(eq(7), any(Pageable.class))).thenReturn(TestPages.of(shift()));
 
-        mockMvc.perform(get("/api/v1/shifts/users/7").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/users/7/shifts").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].position").value("Ταμείο"))
                 .andExpect(jsonPath("$.totalElements").value(1));
@@ -248,8 +248,18 @@ class ShiftControllerTest {
 
     @Test
     void anEmployeeCannotReadSomeoneElsesShifts() throws Exception {
-        mockMvc.perform(get("/api/v1/shifts/users/9").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/users/9/shifts").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).getShiftsByEmployee(anyInt(), any());
+    }
+
+    @Test
+    void theOldShiftHistoryPathIsGone() throws Exception {
+        // Moved to /users/{userId}/shifts in F16 step 16d1 with no alias:
+        // no client ever called it.
+        mockMvc.perform(get("/api/v1/shifts/users/7").with(TestTokens.employee()))
+                .andExpect(status().isNotFound());
 
         verify(shiftService, never()).getShiftsByEmployee(anyInt(), any());
     }

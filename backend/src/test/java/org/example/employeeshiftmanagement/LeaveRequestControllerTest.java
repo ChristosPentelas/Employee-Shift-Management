@@ -186,7 +186,7 @@ class LeaveRequestControllerTest {
     void anEmployeeCanReadTheirOwnLeaveList() throws Exception {
         when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
 
-        mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/users/7/leaves").with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].status").value("PENDING"));
     }
@@ -194,7 +194,7 @@ class LeaveRequestControllerTest {
     @Test
     void anEmployeeCannotReadSomeoneElsesLeaveList() throws Exception {
         // Leave reasons are medical and family information (F7).
-        mockMvc.perform(get("/api/v1/leaves/users/9/leaves").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/users/9/leaves").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
 
         verify(leaveRequestService, never()).getLeavesByUser(anyInt(), any());
@@ -204,8 +204,19 @@ class LeaveRequestControllerTest {
     void aSupervisorCanReadAnEmployeesLeaveList() throws Exception {
         when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
 
-        mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.supervisor()))
+        mockMvc.perform(get("/api/v1/users/7/leaves").with(TestTokens.supervisor()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void theOldLeaveListPathStillWorksForTheInstalledApp() throws Exception {
+        // The expand step of F16 16d1: the app calls this path until 16d2
+        // switches it. Delete this test with the path in 16d3.
+        when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
+
+        mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
     }
 
     @Test
