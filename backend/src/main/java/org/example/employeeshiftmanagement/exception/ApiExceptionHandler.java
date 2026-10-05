@@ -54,6 +54,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
+    /** A failed login (F16 step 16b; until then the controller built this 401 itself). */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
     /**
      * The request was understood but conflicts with what is already stored -
      * today only "email already taken" and the BCrypt byte limit, both thrown

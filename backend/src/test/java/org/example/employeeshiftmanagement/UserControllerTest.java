@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultMatcher;
 
 import java.util.Optional;
 
@@ -251,7 +252,8 @@ class UserControllerTest {
                         .content("""
                                 {"email":"nobody@example.com","password":"secret123"}
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpectAll(theFailedLoginBody());
     }
 
     @Test
@@ -386,7 +388,23 @@ class UserControllerTest {
                 .andExpect(status().isUnauthorized())
                 // Was the Greek string "Λάθος email ή password". The app shows
                 // its own Greek text for a 401, so the server stays English (B2).
-                .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.detail").value("Invalid email or password"));
+                .andExpectAll(theFailedLoginBody());
+    }
+
+    /**
+     * The 401 body exactly as it was before F16 step 16b moved it from the
+     * controller into ApiExceptionHandler. That step was a refactor, so this
+     * must not change: the app reads only the status, but another client may
+     * read the body. An unknown email gets the same body - telling the two
+     * apart would reveal which emails are registered.
+     */
+    private static ResultMatcher[] theFailedLoginBody() {
+        return new ResultMatcher[] {
+                content().contentType(MediaType.APPLICATION_PROBLEM_JSON),
+                jsonPath("$.status").value(401),
+                jsonPath("$.title").value("Unauthorized"),
+                jsonPath("$.detail").value("Invalid email or password"),
+                jsonPath("$.instance").value("/api/v1/users/login")
+        };
     }
 }

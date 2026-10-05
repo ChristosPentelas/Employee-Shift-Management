@@ -7,18 +7,16 @@ import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.dto.RegisterRequest;
 import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
 import org.example.employeeshiftmanagement.dto.UserResponse;
+import org.example.employeeshiftmanagement.exception.InvalidCredentialsException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 @RestController
 @RequestMapping("api/v1/users")
@@ -77,19 +75,12 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
-        Optional<User> user = userService.authenticate(loginRequest.email(), loginRequest.password());
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        User user = userService.authenticate(loginRequest.email(), loginRequest.password())
+                .orElseThrow(InvalidCredentialsException::new);
 
-        if (user.isPresent()) {
-            String token = tokenService.issueToken(user.get());
-            return ResponseEntity.ok(LoginResponse.from(user.get(), token));
-        }
-        // English, in the standard error shape. The app picks the Greek text it
-        // shows from the 401 itself (login_screen.dart), so user-facing wording
-        // stays in the UI and a second client is not stuck with our language (B2).
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ProblemDetail.forStatusAndDetail(
-                        HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        String token = tokenService.issueToken(user);
+        return ResponseEntity.ok(LoginResponse.from(user, token));
     }
 
     /**
