@@ -139,7 +139,7 @@ void main() {
     await api.getFilteredShifts(7, DateTime(2026, 2, 1), DateTime(2026, 2, 28));
 
     // /users/{id}/leaves since F16 step 16d2; the old
-    // /leaves/users/{id}/leaves is removed from the server in 16d3.
+    // /leaves/users/{id}/leaves was removed from the server in 16d3.
     expect(paths, ['/api/v1/users/7/leaves', '/api/v1/users/7/schedule']);
   });
 

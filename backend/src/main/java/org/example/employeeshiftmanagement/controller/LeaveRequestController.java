@@ -42,8 +42,7 @@ public class LeaveRequestController {
         return new ResponseEntity<>(LeaveRequestResponse.from(newRequest), HttpStatus.CREATED);
     }
 
-    // The old path(/leaves/users/{userId}/leaves) is only for app versions from before 16d2, and is removed in 16d3.
-    @GetMapping({"/users/{userId}/leaves", "/leaves/users/{userId}/leaves"})
+    @GetMapping("/users/{userId}/leaves")
     @PreAuthorize("#userId.toString() == authentication.name or hasRole('SUPERVISOR')")
     public ResponseEntity<PageResponse<LeaveRequestResponse>> getLeavesByUser(@PathVariable Integer userId,
                                                                               Pageable pageable) {

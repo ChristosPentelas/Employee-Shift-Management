@@ -209,14 +209,13 @@ class LeaveRequestControllerTest {
     }
 
     @Test
-    void theOldLeaveListPathStillWorksForTheInstalledApp() throws Exception {
-        // The expand step of F16 16d1: the app calls this path until 16d2
-        // switches it. Delete this test with the path in 16d3.
-        when(leaveRequestService.getLeavesByUser(eq(7), any(Pageable.class))).thenReturn(TestPages.of(leaveRequest()));
-
+    void theOldLeaveListPathIsGone() throws Exception {
+        // /users/{userId}/leaves replaced it (F16): added in 16d1, the app
+        // switched in 16d2, and the old path was removed in 16d3.
         mockMvc.perform(get("/api/v1/leaves/users/7/leaves").with(TestTokens.employee()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].status").value("PENDING"));
+                .andExpect(status().isNotFound());
+
+        verify(leaveRequestService, never()).getLeavesByUser(anyInt(), any());
     }
 
     @Test
