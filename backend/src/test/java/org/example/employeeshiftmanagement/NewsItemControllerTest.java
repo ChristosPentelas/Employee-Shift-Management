@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -196,6 +197,15 @@ class NewsItemControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(newsItemService, never()).createNewsItem(any(), any());
+    }
+
+    @Test
+    void aSupervisorDeletingNewsGetsNoContentWithNoBody() throws Exception {
+        mockMvc.perform(delete("/api/v1/news/1").with(TestTokens.supervisor()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(newsItemService).deleteNewsItem(1);
     }
 
     @Test

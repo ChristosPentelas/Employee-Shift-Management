@@ -29,6 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -204,6 +205,17 @@ class MessageControllerTest {
         // Before 7a the controller's catch-all turned every exception into 404.
         mockMvc.perform(put("/api/v1/messages/1/read").with(TestTokens.supervisor()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deletingYourOwnMessageAnswersNoContentWithNoBody() throws Exception {
+        // 204 like every other delete; it used to be 200 with an English
+        // sentence as the body (B21, F16).
+        mockMvc.perform(delete("/api/v1/messages/1").with(TestTokens.employee()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(messageService).deleteMessage(1, 7);
     }
 
     @Test

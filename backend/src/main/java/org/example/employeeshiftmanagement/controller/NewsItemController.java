@@ -79,7 +79,7 @@ public class NewsItemController {
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         newsItemService.deleteNewsItem(id);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        return ResponseEntity.noContent().build();
     }
 
     private NewsItem toNewsItem(CreateNewsRequest request) {

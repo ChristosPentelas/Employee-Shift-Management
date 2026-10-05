@@ -87,10 +87,9 @@ public class MessageController {
     }
 
     @DeleteMapping("/{messageId}")
-    public ResponseEntity<String> deleteMessage(Authentication authentication,
-                                                @PathVariable Integer messageId) {
+    public ResponseEntity<Void> deleteMessage(Authentication authentication,
+                                              @PathVariable Integer messageId) {
         messageService.deleteMessage(messageId, CurrentUser.id(authentication));
-        // A plain string where every other delete answers 204 - see B21.
-        return ResponseEntity.ok("Message deleted successfully");
+        return ResponseEntity.noContent().build();
     }
 }

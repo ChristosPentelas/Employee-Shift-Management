@@ -49,7 +49,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
-| F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a` | Done by F14: `ResponseEntity<?>` is gone, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Left: `DELETE /messages/{id}` returns a string (B21), the `/leaves/users/{id}/leaves` path, `ShiftController`'s base path and `UserController`'s missing leading slash (B12) |
+| F16 | MEDIUM | Inconsistent API shapes | Partial | `e5f9e0a`, `fix(backend): answer 204 when a message is deleted` | Done by F14: `ResponseEntity<?>` is gone from all handlers but one, `DELETE /users/{id}` answers 404 not 500, login is no longer Greek. Planned 2026-10-05 in six steps: **16a** every delete answers 204 the same way (B21, done) · **16b** `login`, the last `ResponseEntity<?>` (missed when this row was first written) · **16c** base paths (B12) · **16d1–3** lists that belong to one user live at `/users/{userId}/<resource>`: `GET /shifts/users/{id}` moves, `/leaves/users/{id}/leaves` is added at the new path, the app switches, the old path goes. Controllers with nested routes are mapped at `/api/v1` and spell out each method's full path. Out of scope, logged: B48, B49, B22 |
 | F17 | LOW | Broken URL in a dead client method | Done | `refactor(frontend): hand the services the user they need` | `getMyShifts` deleted in F24 step 24c1. Re-found 2026-09-24 and logged as B37 before this row was checked, so B37 is the same problem |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
@@ -230,18 +230,6 @@ Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
 BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
 password passes `@Size` at 100 bytes. It needs a small custom constraint that
 counts bytes, like `@ValidLeaveDates` does for its rule.
-
-**B21 · LOW · `DELETE /messages/{id}` returns a string where every other delete returns 204** — found 2026-09-16
-Where: `MessageController.deleteMessage` returns `ResponseEntity.ok("Message
-deleted successfully")`; `/users/{id}`, `/shifts/{id}` and `/news/{id}` all
-return 204 with no body.
-Why it matters: the client needs a special case for this one route, and the
-string is user-facing copy in English sitting in a controller - the same thing
-B2 fixed for login. The Flutter app has no `deleteMessage` at all (nothing in
-`ApiService` calls `DELETE /messages/{id}`), so changing it breaks nothing
-today.
-Relates to: F16 (it is one of that finding's bullets).
-Fix idea: return 204 like the others; delete the string.
 
 **B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
 Where: the `ResourceNotFoundException` messages - `"User not found"`,
@@ -503,6 +491,34 @@ columns to allow `NULL` (a migration), `Message.sender`/`receiver` to be
 optional, `MessageResponse` and the app to cope with a missing user, and a
 decision on what a chat with a deleted user looks like.
 
+**B48 · LOW · Message lists put the caller's own id in the URL** — found 2026-10-05
+Where: `MessageController` - `GET /messages/inbox/{userId}`,
+`/messages/sent/{userId}`, `/messages/unread/{userId}`, and
+`/messages/chat?user1Id=&user2Id=`.
+Why it matters: since F1 step 7 the only id `@PreAuthorize` accepts there is
+the caller's own (for the chat, one of the two), so the id in the URL says
+nothing the token does not - it is one more thing a client can get wrong and
+the server has to reject. It is also a third URL shape next to
+`/users/{userId}/<resource>` (F16) and the token-only `POST /messages`.
+Relates to: F16 (found while planning it, not one of its bullets), B18 (a
+conversation-list endpoint would change these routes anyway).
+Fix idea: decide between `/messages/inbox` (identity from the token only, like
+`POST /messages`) and `/users/{userId}/inbox` (the F16 rule). Either is an
+expand-then-contract change, since the app calls inbox, sent and chat.
+
+**B49 · LOW · List filters are written three different ways** — found 2026-10-05
+Where: path segments (`/news/type/{type}`, `/news/author/{authorId}`), a
+`/filter` sub-path with query parameters (`/leaves/filter?status=&userId=`),
+and query parameters on the collection itself (`/shifts?start=&end=`).
+Why it matters: a client has to learn each resource's way of narrowing a list,
+and path-segment filters cannot be combined (news by type *and* author would
+need a third route). It also sets the pattern for the next filter someone adds.
+Relates to: F16 (found while planning it, not one of its bullets).
+Fix idea: query parameters on the collection everywhere (`/news?type=`,
+`/leaves?status=&userId=`), each optional. The app calls none of the three
+filter routes (checked 2026-10-05), so they can move without
+expand-then-contract.
+
 ---
 
 ## Done
@@ -693,3 +709,23 @@ no author. V5 gives `news_items.author_id` the rule `ON DELETE SET NULL`, so
 MySQL detaches the posts when their author is deleted.
 `UserDeletionIntegrationTest.deletingAnAuthorKeepsTheirNewsWithNoAuthor`
 reproduced the foreign-key error before the fix.
+
+**B21 · LOW · `DELETE /messages/{id}` returns a string where every other delete returns 204** — found 2026-09-16
+Where: `MessageController.deleteMessage` returned `ResponseEntity.ok("Message
+deleted successfully")`; `/users/{id}`, `/shifts/{id}` and `/news/{id}` all
+returned 204 with no body.
+Why it mattered: the client needed a special case for this one route, and the
+string was user-facing copy in English sitting in a controller - the same
+thing B2 fixed for login. The Flutter app has no `deleteMessage`, so nothing
+read the string.
+Relates to: F16 (it is one of that finding's bullets).
+Fixed by: `fix(backend): answer 204 when a message is deleted`, F16 step 16a.
+All four deletes now return `ResponseEntity<Void>` built with
+`ResponseEntity.noContent().build()`; before, two spellings of the same 204
+were in use. None of the four had a test for a successful delete (shift
+delete had no test at all): each now has one that checks the 204, the empty
+body and the service call. Run against the code before the fix, only the
+message test failed (`Status expected:<204> but was:<200>`).
+Not chosen: `@ResponseStatus(HttpStatus.NO_CONTENT)` on a `void` method. It
+works, but every other handler returns `ResponseEntity`, and two styles side by
+side is the inconsistency F16 is about.

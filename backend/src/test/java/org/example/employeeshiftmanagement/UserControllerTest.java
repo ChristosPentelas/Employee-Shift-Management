@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -193,6 +194,15 @@ class UserControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(userService, never()).registerNewEmployee(any());
+    }
+
+    @Test
+    void aSupervisorDeletingAUserGetsNoContentWithNoBody() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/7").with(TestTokens.supervisor()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(userService).deleteUser(7);
     }
 
     @Test

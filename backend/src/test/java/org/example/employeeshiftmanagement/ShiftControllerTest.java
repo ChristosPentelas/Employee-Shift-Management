@@ -25,9 +25,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -215,6 +217,23 @@ class ShiftControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(shiftService, never()).createShift(anyInt(), any());
+    }
+
+    @Test
+    void aSupervisorDeletingAShiftGetsNoContentWithNoBody() throws Exception {
+        mockMvc.perform(delete("/api/v1/shifts/3").with(TestTokens.supervisor()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(shiftService).deleteShift(3);
+    }
+
+    @Test
+    void anEmployeeCannotDeleteShifts() throws Exception {
+        mockMvc.perform(delete("/api/v1/shifts/3").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).deleteShift(anyInt());
     }
 
     @Test

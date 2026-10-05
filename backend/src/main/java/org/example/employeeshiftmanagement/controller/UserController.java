@@ -73,7 +73,7 @@ public class UserController {
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<Void> deleteUser(@PathVariable("userId") Integer id) {
         userService.deleteUser(id);
-        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/login")
