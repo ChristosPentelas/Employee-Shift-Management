@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.NewsItemController;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
@@ -214,6 +215,101 @@ class NewsItemControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(newsItemService, never()).deleteNewsItem(anyInt());
+    }
+
+    @Test
+    void anyoneCanReadOneNewsItem() throws Exception {
+        when(newsItemService.getNewsItemById(1)).thenReturn(newsItem());
+
+        mockMvc.perform(get("/api/v1/news/1").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.title").value("Staff meeting"))
+                .andExpect(jsonPath("$.author.name").value("Boss"))
+                .andExpect(jsonPath("$.author.password").doesNotExist());
+    }
+
+    @Test
+    void aMissingNewsItemIsNotFound() throws Exception {
+        when(newsItemService.getNewsItemById(99))
+                .thenThrow(new ResourceNotFoundException("News item not found"));
+
+        mockMvc.perform(get("/api/v1/news/99").with(TestTokens.employee()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("News item not found"));
+    }
+
+    @Test
+    void newsCanBeListedByType() throws Exception {
+        when(newsItemService.getNewsByType(eq(NewsType.ANNOUNCEMENT), any(Pageable.class)))
+                .thenReturn(onePage());
+
+        mockMvc.perform(get("/api/v1/news/type/ANNOUNCEMENT").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].type").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.content[0].author.password").doesNotExist())
+                .andExpect(jsonPath("$.page").value(0));
+    }
+
+    @Test
+    void anUnknownNewsTypeIsABadRequest() throws Exception {
+        // The path segment is turned into a NewsType before the method runs.
+        // A word that is not one of its values is the caller's mistake (400),
+        // not a missing page (404) and not a crash (500).
+        mockMvc.perform(get("/api/v1/news/type/PARTY").with(TestTokens.employee()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+
+        verify(newsItemService, never()).getNewsByType(any(), any());
+    }
+
+    @Test
+    void newsCanBeListedByAuthor() throws Exception {
+        when(newsItemService.getNewsItemsByAuthor(eq(9), any(Pageable.class))).thenReturn(onePage());
+
+        mockMvc.perform(get("/api/v1/news/author/9").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].author.id").value(9))
+                .andExpect(jsonPath("$.content[0].author.password").doesNotExist());
+    }
+
+    @Test
+    void aSupervisorCanEditNews() throws Exception {
+        NewsItem edited = newsItem();
+        edited.setTitle("Meeting moved");
+        edited.setTargetValue(5);
+        when(newsItemService.updateNewsItem(any(NewsItem.class), eq(1))).thenReturn(edited);
+
+        mockMvc.perform(put("/api/v1/news/1")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Meeting moved","description":"Tuesday 09:00","targetValue":5}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Meeting moved"))
+                .andExpect(jsonPath("$.author.password").doesNotExist());
+
+        // The id comes from the path, the new text from the body.
+        ArgumentCaptor<NewsItem> details = ArgumentCaptor.forClass(NewsItem.class);
+        verify(newsItemService).updateNewsItem(details.capture(), eq(1));
+        assertEquals("Meeting moved", details.getValue().getTitle());
+        assertEquals("Tuesday 09:00", details.getValue().getDescription());
+        assertEquals(5, details.getValue().getTargetValue());
+    }
+
+    @Test
+    void anEmployeeCannotEditNews() throws Exception {
+        mockMvc.perform(put("/api/v1/news/1")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Meeting moved","description":"Tuesday 09:00"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(newsItemService, never()).updateNewsItem(any(), anyInt());
     }
 
     @Test
