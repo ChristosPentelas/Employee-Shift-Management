@@ -391,6 +391,64 @@ class UserControllerTest {
                 .andExpectAll(theFailedLoginBody());
     }
 
+    @Test
+    void youCanReadYourOwnProfileWithoutThePassword() throws Exception {
+        // Your own profile on purpose: whether an employee should read a
+        // colleague's email and phone is an open question (B52), and this test
+        // should not quietly answer it.
+        when(userService.findUserById(7)).thenReturn(TestUsers.employee());
+
+        mockMvc.perform(get("/api/v1/users/7").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.email").value("worker@example.com"))
+                .andExpect(jsonPath("$.role").value("EMPLOYEE"))
+                .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void aSupervisorCanFindAUserByEmail() throws Exception {
+        when(userService.findUserByEmail("worker@example.com")).thenReturn(Optional.of(TestUsers.employee()));
+
+        mockMvc.perform(get("/api/v1/users/search")
+                        .param("email", "worker@example.com")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void searchingForAnUnknownEmailIsNotFound() throws Exception {
+        // Unlike every other 404 here, this one is thrown by the controller
+        // itself (the service answers with an empty Optional), so it needs its
+        // own test.
+        when(userService.findUserByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/users/search")
+                        .param("email", "nobody@example.com")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("User not found"));
+    }
+
+    @Test
+    void registeringATakenEmailIsABadRequestWithTheReason() throws Exception {
+        // Today's contract, pinned on purpose. B20 proposes 409 Conflict; when
+        // that is decided, this test changes with the contract.
+        when(userService.registerNewEmployee(any(User.class)))
+                .thenThrow(new IllegalStateException("User already exists"));
+
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(NEW_ACCOUNT))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("User already exists"));
+    }
+
     /**
      * The 401 body exactly as it was before F16 step 16b moved it from the
      * controller into ApiExceptionHandler. That step was a refactor, so this
