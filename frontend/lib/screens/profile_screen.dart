@@ -155,13 +155,4 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       subtitle: Text(value,style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
     );
   }
-
-  Widget _buildStatColumn(String label,String value) {
-    return Column(
-      children: [
-        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        Text(label, style: TextStyle(color: Colors.grey)),
-      ],
-    );
-  }
 }

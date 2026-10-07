@@ -99,23 +99,6 @@ class ApiService {
     }
   }
 
-  Future<User?> findUserByEmail(String email) async {
-    try{
-      final response = await _client.get(
-        Uri.parse("$baseUrl/users/search?email=$email"),
-        headers: {"Content-Type" : "application/json"},
-      );
-
-      if(response.statusCode == 200){
-        return User.fromJson(jsonDecode(response.body));
-      }else {
-        return null;
-      }
-    } catch (e) {
-      throw Exception("Σφάλμα αναζήτησης: $e");
-    }
-  }
-
   // The newest page of news.
   Future<List<NewsItem>> getNews({int page = 0, int size = 20}) async {
     try{

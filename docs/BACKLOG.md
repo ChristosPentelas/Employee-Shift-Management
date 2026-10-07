@@ -53,7 +53,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F17 | LOW | Broken URL in a dead client method | Done | `refactor(frontend): hand the services the user they need` | `getMyShifts` deleted in F24 step 24c1. Re-found 2026-09-24 and logged as B37 before this row was checked, so B37 is the same problem |
 | F18 | MEDIUM | `UserService` mixes constructor and field injection | Done | `ee2af05` | |
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
-| F20 | LOW | Dead code, unused imports, debug artifact | Partial | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list` | `profile_screen.dart:143` (`_buildStatColumn`) |
+| F20 | LOW | Dead code, unused imports, debug artifact | Done | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list`, `refactor(frontend): delete code nothing calls` | The last step (2026-10-07) deleted the profile screen's `_buildStatColumn` and also `ApiService.findUserByEmail`, which the audit missed: nothing in `lib/` or `test/` called it, and the analyzer cannot say so because `unused_element` only covers private members. The backend's `GET /users/search` stays; it is supervisor-only and tested. A sweep of the backend found no `printStackTrace`, `System.out` or unused imports left. `flutter analyze` went from 35 to 34 issues |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
 | F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 27 done · 2 partial · 1 open.
+Totals: 28 done · 1 partial · 1 open.
 
 ---
 
@@ -527,8 +527,8 @@ header could describe. Either is a contract change, with its own test.
 **B51 · LOW · `flutter analyze` reports 35 issues that nobody tracks as a whole** — found 2026-10-06
 Where: counted during F16 step 16d2, the same 35 before and after it. Ten
 `no_leading_underscores_for_local_identifiers` are B35's dialog variables and
-the one `unused_element` is `_buildStatColumn` (F20). Not tracked anywhere
-else: every screen's constructor has no `key` parameter
+the one `unused_element` was `_buildStatColumn`, deleted with F20 on
+2026-10-07, leaving 34. Not tracked anywhere else: every screen's constructor has no `key` parameter
 (`use_key_in_widget_constructors`, 10) and two could be `const`; nine
 `createState` methods return a private `_...State` type in a public API
 (`library_private_types_in_public_api`); `child` is not the last argument
