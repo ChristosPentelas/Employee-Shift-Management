@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.MessageController;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Message;
 import org.example.employeeshiftmanagement.service.MessageService;
 import org.junit.jupiter.api.Test;
@@ -225,5 +226,51 @@ class MessageControllerTest {
 
         mockMvc.perform(delete("/api/v1/messages/1").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void youCanReadYourOwnUnreadMessages() throws Exception {
+        when(messageService.getUnreadMessages(eq(7), any(Pageable.class))).thenReturn(TestPages.of(message()));
+
+        mockMvc.perform(get("/api/v1/messages/unread/7").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].read").value(false))
+                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
+                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist())
+                .andExpect(jsonPath("$.page").value(0));
+    }
+
+    @Test
+    void youCannotReadSomeoneElsesUnreadMessages() throws Exception {
+        mockMvc.perform(get("/api/v1/messages/unread/9").with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(messageService, never()).getUnreadMessages(anyInt(), any());
+    }
+
+    @Test
+    void youCanReadYourOwnSentMessages() throws Exception {
+        // message() goes from the supervisor (9) to the employee (7), so it is
+        // in the supervisor's sent list.
+        when(messageService.getSendMessages(eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
+
+        mockMvc.perform(get("/api/v1/messages/sent/9").with(TestTokens.supervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].sender.id").value(9))
+                .andExpect(jsonPath("$.content[0].receiver.id").value(7))
+                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
+                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist());
+    }
+
+    @Test
+    void markingAMissingMessageReadIsNotFound() throws Exception {
+        // The service looks the message up before checking who is asking, so a
+        // message that does not exist is 404 for everyone, never 403.
+        when(messageService.markAsRead(99, 7)).thenThrow(new ResourceNotFoundException("Message not found"));
+
+        mockMvc.perform(put("/api/v1/messages/99/read").with(TestTokens.employee()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("Message not found"));
     }
 }
