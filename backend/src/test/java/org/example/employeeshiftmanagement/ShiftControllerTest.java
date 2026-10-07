@@ -4,9 +4,11 @@ import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.ShiftController;
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.service.ShiftService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -19,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -380,5 +383,66 @@ class ShiftControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(shiftService, never()).getSchedule(anyInt(), any(), any());
+    }
+
+    @Test
+    void aSupervisorCanEditAShift() throws Exception {
+        Shift edited = shift();
+        edited.setDate(LocalDate.of(2026, 9, 15));
+        edited.setStartTime(LocalTime.of(10, 0));
+        edited.setEndTime(LocalTime.of(18, 0));
+        edited.setPosition("Αποθήκη");
+        when(shiftService.updateShift(eq(1), any(Shift.class))).thenReturn(edited);
+
+        mockMvc.perform(put("/api/v1/shifts/1")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-15","startTime":"10:00","endTime":"18:00",
+                                 "position":"Αποθήκη"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.endTime").value("18:00:00"))
+                .andExpect(jsonPath("$.user.password").doesNotExist());
+
+        // The shift to change comes from the path, its new times from the body.
+        ArgumentCaptor<Shift> details = ArgumentCaptor.forClass(Shift.class);
+        verify(shiftService).updateShift(eq(1), details.capture());
+        assertEquals(LocalDate.of(2026, 9, 15), details.getValue().getDate());
+        assertEquals(LocalTime.of(10, 0), details.getValue().getStartTime());
+        assertEquals(LocalTime.of(18, 0), details.getValue().getEndTime());
+        assertEquals("Αποθήκη", details.getValue().getPosition());
+    }
+
+    @Test
+    void anEmployeeCannotEditShifts() throws Exception {
+        mockMvc.perform(put("/api/v1/shifts/1")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-15","startTime":"10:00","endTime":"18:00",
+                                 "position":"Αποθήκη"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(shiftService, never()).updateShift(anyInt(), any());
+    }
+
+    @Test
+    void editingAMissingShiftIsNotFound() throws Exception {
+        when(shiftService.updateShift(eq(99), any(Shift.class)))
+                .thenThrow(new ResourceNotFoundException("Shift not found with id 99"));
+
+        mockMvc.perform(put("/api/v1/shifts/99")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-15","startTime":"10:00","endTime":"18:00",
+                                 "position":"Αποθήκη"}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("Shift not found with id 99"));
     }
 }
