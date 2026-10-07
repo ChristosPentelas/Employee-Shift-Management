@@ -55,7 +55,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F19 | LOW | DTOs split across two packages | Done | `c39d4c8` | |
 | F20 | LOW | Dead code, unused imports, debug artifact | Done | `a97a5b0`, `c39d4c8`, `feat(frontend): move account creation to the supervisor's employee list`, `refactor(frontend): delete code nothing calls` | The last step (2026-10-07) deleted the profile screen's `_buildStatColumn` and also `ApiService.findUserByEmail`, which the audit missed: nothing in `lib/` or `test/` called it, and the analyzer cannot say so because `unused_element` only covers private members. The backend's `GET /users/search` stays; it is supervisor-only and tested. A sweep of the backend found no `printStackTrace`, `System.out` or unused imports left. `flutter analyze` went from 35 to 34 issues |
 | F21 | HIGH | Flutter test suite does not compile | Done | `5c6ae2e` | |
-| F22 | HIGH | No endpoint tests | Partial | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | 14 of 32 endpoints tested (the audit counted 25). F14 added the first tests that assert 404, 500 and error bodies at all |
+| F22 | HIGH | No endpoint tests | Done | `a97a5b0`, `c39d4c8`, `88ff852`, `d48a52e`, `071e61f`, `e5f9e0a`, `d06629a`, `a3ad93f`, `cd8acb5`, `f5e9bff`, `96b936c`, `de5a17b`, `2339f49`, `test(backend): cover every leave endpoint` | Finished 2026-10-07 in five steps, one controller each (22a news, 22b messages, 22c users, 22d shifts, 22e leaves; 21 tests). Recounted first: the "14 of 32" written here had not been updated since F9, F14 and F16 added tests. 28 of the 32 endpoints had a test, but several only one that the wrong caller is refused. Now every endpoint has a test that it works (status, the main body fields, no `password` wherever a user is embedded) and a 403 test for each `@PreAuthorize`. Each controller has one 404 test, plus `/users/search`, whose 404 the controller throws itself (decided 2026-10-07: `ApiExceptionHandler` is shared and the service is mocked, so a 404 per endpoint would test the same handler again). Every new test was seen to fail: the code it guards was broken in a copy of `backend/` and the test went red. The taken-email test on `POST /users` pins today's 400; fixing B20 changes it to 409 on purpose. Left: creating a shift does not check that the body's fields reach the service (updating does, since 22d), so a dropped setter in `ShiftController.toShift` is caught on update only. Suite: 207 tests, all green |
 | F23 | MEDIUM | Tests ran against the developer's MySQL | Done | `5e04e5a` | |
 | F24 | MEDIUM | Session is a mutable global | Done | `refactor(frontend): keep the session in a Riverpod provider`, `refactor(frontend): read the session through ref in every screen`, `refactor(frontend): hand the services the user they need`, `refactor(frontend): build the network layer from providers`, `feat(frontend): stay logged in across app restarts` | Done in five steps on 2026-09-24 (24a, 24b, 24c1, 24c2, 24d). The user and token live together in `authProvider` as one immutable `AuthSession`, changed only through `AuthNotifier`; screens read it with `ref`, services are handed what they need, and the network layer is built by `api_providers.dart`. The static `Session` is deleted. The login is kept in `flutter_secure_storage` and restored at startup unless expired. Each of the audit's four points: the force-unwraps are gone (B16), the login survives a restart, screens rebuild on change (no empty `setState`), and both logouts clear the session (Home's did before this work; how they navigate differs, B38). Riverpod adopted, closing B15 |
 | F25 | MEDIUM | `BuildContext` across async gaps | Done | `94bdb9b`, `fix(frontend): tell a dialog's context from its screen's` | Real since F1 step 3b: a rejected token removes every screen and dialog, possibly mid-request. Done in two steps (2026-09-28/29). **25a:** a screen's own `setState`, `context` and `ref` after an `await` are guarded by `mounted`, on the error path (`catch`, `finally`) as well as the success path; Home no longer awaits routes it ignores; B34 closed with it. **25b:** every dialog builder names its context `dialogContext` (an unused outer one is `_`), so `context` always means the screen: the dialog is closed only if `dialogContext.mounted`, the screen is touched only if `mounted`. Confirmation dialogs close before their request. Deleting an employee pops the details screen with `true` and the list shows "deleted". `flutter analyze` now reports no `use_build_context_synchronously`, but it never sees `setState`, `setDialogState` or `ref` after an `await`, so a clean run is not proof |
@@ -65,7 +65,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 28 done · 1 partial · 1 open.
+Totals: 29 done · 0 partial · 1 open.
 
 ---
 
@@ -220,6 +220,10 @@ Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
 BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
 password passes `@Size` at 100 bytes. It needs a small custom constraint that
 counts bytes, like `@ValidLeaveDates` does for its rule.
+Also (found 2026-10-07, F22): the 400 sends the exception's message to the
+client as `detail`. A library's `IllegalStateException` would put its internal
+text on the phone, which is the leak `handleAnythingElse` exists to prevent.
+Same fix.
 
 **B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
 Where: the `ResourceNotFoundException` messages - `"User not found"`,
@@ -542,6 +546,39 @@ call stops compiling when Flutter removes it.
 Fix idea: one screen at a time, or one rule at a time; most are mechanical
 (`super.key`, `const`, `State<X>` as the return type). Aim for a clean
 `flutter analyze` so a new issue stands out.
+
+**B52 · LOW · Every employee can read every colleague's email and phone number** — found 2026-10-07
+Where: `UserController.getAllUsers` and `getUserById` have no
+`@PreAuthorize`, and `UserResponse` carries `email` and `phoneNumber`. The app
+shows this on purpose: Home opens `EmployeeListScreen` for everyone, and
+`EmployeeDetailsScreen` shows the phone number; only the add and delete
+buttons are supervisor-only.
+Why it matters: a phone number and a private email are personal data, and
+right now one employee's token reads the whole staff list's in one request
+(`?size=100`). That may be exactly what a small company wants (a staff
+directory), but nobody has decided it; F1 step 7 decided who reads leave,
+shifts and messages, not profiles.
+Relates to: F1 step 7. Found while writing F22's profile test, which reads
+your own profile so it does not quietly approve the current rule.
+Fix idea: decide first. If colleagues may see each other, write that down
+and add a test that says so. If not, give employees a smaller response (id and
+name, enough for a list of colleagues) and keep the full `UserResponse` for supervisors
+and for your own profile.
+Side note, same controllers: two names do not say what the code does.
+`MessageService.getSendMessages` returns sent messages, and
+`NewsItemController.getNewsAuthorById` returns news, not an author. Rename them
+when either file is next changed.
+
+**B53 · LOW · Home decides where a menu card goes by comparing its Greek label** — found 2026-10-07
+Where: `home_screen.dart`, `_buildMenuCard` - `if(title == "Υπάλληλοι")`,
+`if(title == "Νέα")` and so on, one `if` per card.
+Why it matters: the label is shown text, not an identifier. Fixing a typo in
+it, or translating it, makes the card do nothing when tapped, with no error
+from the analyzer or at runtime. Also no card checks the role, which is why
+employees reach the staff list (B52).
+Fix idea: pass the destination with the card (a `WidgetBuilder` or the screen
+itself) instead of matching the title, so each card says where it goes.
+Found while checking B52.
 
 ---
 

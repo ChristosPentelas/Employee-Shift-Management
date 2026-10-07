@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.LeaveRequestController;
+import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
@@ -239,5 +240,49 @@ class LeaveRequestControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].status").value("PENDING"))
                 .andExpect(jsonPath("$.page").value(0));
+    }
+
+    @Test
+    void theStatusFilterNarrowsToOneEmployeeWhenAsked() throws Exception {
+        // The controller picks one of two service methods by whether userId
+        // was sent. This is the branch the test above does not run.
+        when(leaveRequestService.getLeavesByUserAndStatus(eq(7), eq(LeaveStatus.PENDING), any(Pageable.class)))
+                .thenReturn(TestPages.of(leaveRequest()));
+
+        mockMvc.perform(get("/api/v1/leaves/filter")
+                        .param("status", "PENDING")
+                        .param("userId", "7")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].user.id").value(7))
+                .andExpect(jsonPath("$.content[0].user.password").doesNotExist());
+
+        verify(leaveRequestService, never()).getLeavesByStatus(any(), any());
+    }
+
+    @Test
+    void anEmployeeCannotUseTheStatusFilter() throws Exception {
+        // Not even for their own leave: that list is /users/{userId}/leaves.
+        mockMvc.perform(get("/api/v1/leaves/filter")
+                        .param("status", "PENDING")
+                        .param("userId", "7")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+
+        verify(leaveRequestService, never()).getLeavesByUserAndStatus(anyInt(), any(), any());
+        verify(leaveRequestService, never()).getLeavesByStatus(any(), any());
+    }
+
+    @Test
+    void approvingAMissingLeaveIsNotFound() throws Exception {
+        when(leaveRequestService.updateLeaveRequest(99, LeaveStatus.APPROVED))
+                .thenThrow(new ResourceNotFoundException("Leave Request Not Found with Id: 99"));
+
+        mockMvc.perform(put("/api/v1/leaves/99/status")
+                        .param("status", "APPROVED")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("Leave Request Not Found with Id: 99"));
     }
 }
