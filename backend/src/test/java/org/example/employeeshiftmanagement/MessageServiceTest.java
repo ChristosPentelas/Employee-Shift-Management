@@ -82,6 +82,19 @@ class MessageServiceTest {
     }
 
     @Test
+    void markingAChatReadMarksWhatTheOtherPersonSentToTheCaller() {
+        when(messageRepository.markChatAsRead(9, 7)).thenReturn(3);
+
+        // The employee (7) opens their chat with the supervisor (9).
+        int marked = messageService.markChatAsRead(9, 7);
+
+        assertEquals(3, marked);
+        // Sender 9, receiver 7. Swapped, the employee would mark their own
+        // messages as read by the supervisor: a faked read receipt.
+        verify(messageRepository).markChatAsRead(9, 7);
+    }
+
+    @Test
     void aChatPageHoldsBothDirectionsNewestFirst() {
         when(messageRepository.findBySenderIdAndReceiverIdOrSenderIdAndReceiverId(
                 any(), any(), any(), any(), any(Pageable.class))).thenReturn(Page.empty());

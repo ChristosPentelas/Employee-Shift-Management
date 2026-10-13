@@ -209,6 +209,26 @@ class MessageControllerTest {
     }
 
     @Test
+    void markingAChatReadTakesTheReceiverFromTheToken() throws Exception {
+        when(messageService.markChatAsRead(9, 7)).thenReturn(2);
+
+        // The URL names only the other person; the caller (7) is the receiver.
+        mockMvc.perform(put("/api/v1/messages/chat/9/read").with(TestTokens.employee()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(messageService).markChatAsRead(9, 7);
+    }
+
+    @Test
+    void markingAChatReadWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(put("/api/v1/messages/chat/9/read"))
+                .andExpect(status().isUnauthorized());
+
+        verify(messageService, never()).markChatAsRead(anyInt(), anyInt());
+    }
+
+    @Test
     void deletingYourOwnMessageAnswersNoContentWithNoBody() throws Exception {
         // 204 like every other delete; it used to be 200 with an English
         // sentence as the body (B21, F16).

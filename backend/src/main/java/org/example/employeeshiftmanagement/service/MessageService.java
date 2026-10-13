@@ -80,6 +80,16 @@ public class MessageService {
         return messageRepository.save(message);
     }
 
+    /**
+     * Marks read every unread message otherUserId sent to the
+     *      caller. currentUserId must come from the caller's token
+     *      (CurrentUser), never from the request.
+     */
+    @Transactional
+    public int markChatAsRead(Integer otherUserId, Integer currentUserId) {
+        return messageRepository.markChatAsRead(otherUserId, currentUserId);
+    }
+
     /** Only the sender can delete a message. */
     @Transactional
     public void deleteMessage(Integer messageId, Integer currentUserId) {

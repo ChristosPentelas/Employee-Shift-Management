@@ -86,6 +86,16 @@ public class MessageController {
                 messageService.markAsRead(messageId, CurrentUser.id(authentication))));
     }
 
+    /**
+     * The URL names only the other person, and the receiver is always the caller.
+     *  That's why there is no @PreAuthorize: there's nobody else's data this request could touch.
+     */
+    @PutMapping("/chat/{otherUserId}/read")
+    public ResponseEntity<Void> markChatRead(Authentication authentication, @PathVariable Integer otherUserId) {
+        messageService.markChatAsRead(otherUserId, CurrentUser.id(authentication));
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{messageId}")
     public ResponseEntity<Void> deleteMessage(Authentication authentication,
                                               @PathVariable Integer messageId) {

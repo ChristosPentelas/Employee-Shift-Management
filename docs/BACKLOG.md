@@ -61,11 +61,11 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F25 | MEDIUM | `BuildContext` across async gaps | Done | `94bdb9b`, `fix(frontend): tell a dialog's context from its screen's` | Real since F1 step 3b: a rejected token removes every screen and dialog, possibly mid-request. Done in two steps (2026-09-28/29). **25a:** a screen's own `setState`, `context` and `ref` after an `await` are guarded by `mounted`, on the error path (`catch`, `finally`) as well as the success path; Home no longer awaits routes it ignores; B34 closed with it. **25b:** every dialog builder names its context `dialogContext` (an unused outer one is `_`), so `context` always means the screen: the dialog is closed only if `dialogContext.mounted`, the screen is touched only if `mounted`. Confirmation dialogs close before their request. Deleting an employee pops the details screen with `true` and the list shows "deleted". `flutter analyze` now reports no `use_build_context_synchronously`, but it never sees `setState`, `setDialogState` or `ref` after an `await`, so a clean run is not proof |
 | F26 | MEDIUM | Debug `print`s ship in the app | Done | `fix(frontend): keep debug output out of the device log` | Checked 2026-10-01: 11 `print`s, not the audit's 10 (line numbers had moved). The six traces are deleted, including the inbox response body. The five in `catch` blocks that swallow their error (`getInbox`, `getSent`, `markAsRead`, the chat and login screens) became `developer.log` with a `name` and `error:`, which only reaches a debugger and so is silent in release. `api_service_test.dart` fails if `ApiService` prints anything, on success or without a network. The swallowed errors themselves are B44 |
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
-| F28 | LOW | Chat polls every 3 s | Open | | |
+| F28 | LOW | Chat polls every 3 s | Partial | `feat(backend): mark a whole chat read in one request` | Planned in three steps (2026-10-13). **28a done:** `PUT /api/v1/messages/chat/{otherUserId}/read` marks every unread message the other person sent to the caller with one JPQL `UPDATE` and answers 204; the receiver comes from the token, so it needs no `@PreAuthorize`. Covered by V3's `idx_messages_chat`, so no migration. **Left:** 28b, the chat calls it once instead of one `PUT` per message (closes B27); 28c, poll every 5 s instead of 3, never two loads at once, paused while the app is in the background |
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
-Totals: 29 done · 0 partial · 1 open.
+Totals: 29 done · 1 partial · 0 open.
 
 ---
 
@@ -579,6 +579,16 @@ employees reach the staff list (B52).
 Fix idea: pass the destination with the card (a `WidgetBuilder` or the screen
 itself) instead of matching the title, so each card says where it goes.
 Found while checking B52.
+
+**B54 · LOW · A message that fails to send is lost without a word** — found 2026-10-13
+Where: `chat_screen.dart` `_send()` clears the text field before calling
+`sendMessage`, and does nothing when it returns `false`.
+Why it matters: on a network or server error the typed message disappears and
+nothing says it was not sent, so the user believes it was.
+Relates to: B44 (the same silent failure on loading), F28 (same screen).
+Fix idea: clear the field only after a successful send; on failure keep the
+text and show a short Greek snackbar.
+Found while planning F28.
 
 ---
 
