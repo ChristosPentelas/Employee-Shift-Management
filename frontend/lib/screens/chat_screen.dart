@@ -19,7 +19,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   late final ApiService _apiService = ref.read(apiServiceProvider);
-  final TextEditingController _messagegeController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
   List<Message> _messages = [];
   Timer? _timer;
   // Was 3 s (F28). With no polling in the background and no loads piling up,
@@ -62,7 +62,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _lifecycle.dispose();
     _timer?.cancel();
-    _messagegeController.dispose();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -109,10 +109,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _send() async {
-    if (_messagegeController.text.trim().isEmpty) return;
+    if (_messageController.text.trim().isEmpty) return;
 
-    String text = _messagegeController.text;
-    _messagegeController.clear();
+    String text = _messageController.text;
+    _messageController.clear();
 
     bool success = await _apiService.sendMessage(widget.receiver.id, text);
     if (!mounted) return;
@@ -174,7 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           Expanded(
             child: TextField(
-              controller: _messagegeController,
+              controller: _messageController,
               decoration: InputDecoration(hintText: "Γράψτε ένα μήνυμα..."),
             ),
           ),
