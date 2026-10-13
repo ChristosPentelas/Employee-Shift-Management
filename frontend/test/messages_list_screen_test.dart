@@ -1,5 +1,5 @@
 // The session can end while a request is on its way: the chat polls every
-// 3 seconds, and any 401 clears the session (F1 step 3b). Screens must not
+// 5 seconds, and any 401 clears the session (F1 step 3b). Screens must not
 // re-read the session after an await and assume it is still there (B16).
 
 import 'dart:async';
