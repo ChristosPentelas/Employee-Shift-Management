@@ -126,6 +126,31 @@ void main() {
         reason: 'the caller says who is asking; the service no longer looks it up');
   });
 
+  test('a chat is marked read with one request naming only the other person',
+      () async {
+    final sent = <http.BaseRequest>[];
+    final api = ApiService(client: MockClient((request) async {
+      sent.add(request);
+      return http.Response('', 204);
+    }));
+
+    await api.markChatAsRead(9);
+
+    // One PUT for the whole chat (B27). The server takes the receiver from
+    // the token, so the caller's own id is not in the URL.
+    expect(sent.map((r) => '${r.method} ${r.url.path}'),
+        ['PUT /api/v1/messages/chat/9/read']);
+  });
+
+  test('marking a chat read reports a refusal instead of hiding it', () async {
+    final api = ApiService(client: MockClient((_) async {
+      return http.Response('', 500);
+    }));
+
+    // Not markAsRead's old catch-everything shape (B44): the caller decides.
+    await expectLater(api.markChatAsRead(9), throwsException);
+  });
+
   test('own leave requests and own schedule are asked for the id passed in',
       () async {
     final paths = <String>[];
@@ -188,13 +213,15 @@ void main() {
   group('nothing is printed to the device log', () {
     test('when the server answers', () async {
       final api = ApiService(client: MockClient((request) async {
+        // A PUT answers 204 with no body, like the server's mark-chat-read.
+        if (request.method == 'PUT') return http.Response('', 204);
         return http.Response('{"content":[]}', 200);
       }));
 
       final printed = await printedBy(() async {
         await api.getInbox(7);
         await api.getSent(7);
-        await api.markAsRead(3);
+        await api.markChatAsRead(9);
         await api.deleteUser(7);
         await api.getNews();
       });
@@ -210,7 +237,7 @@ void main() {
       final printed = await printedBy(() async {
         await api.getInbox(7);
         await api.getSent(7);
-        await api.markAsRead(3);
+        await expectLater(api.markChatAsRead(9), throwsException);
         await expectLater(api.getNews(), throwsException);
       });
 

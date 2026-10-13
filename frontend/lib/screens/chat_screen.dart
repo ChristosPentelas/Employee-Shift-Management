@@ -46,16 +46,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final history = await _apiService.getChatHistory(me.user.id, widget.receiver.id);
 
-      for (var msg in history) {
-        if (msg.receiverId == me.user.id && !msg.isRead) {
-          await _apiService.markAsRead(msg.id);
-        }
-      }
+      if (!mounted) return;
 
-      if (mounted) {
-        setState(() {
-          _messages = history;
-        });
+      setState(() {
+        _messages = history;
+      });
+
+      // Shown first, marked after: a failed read receipt must not hide the
+      // chat. Only when something sent to me is unread, so an idle open chat
+      // sends nothing (B27).
+      if (history.any((msg) => msg.receiverId == me.user.id && !msg.isRead)) {
+        await _apiService.markChatAsRead(widget.receiver.id);
       }
     } catch (e) {
       developer.log("Loading the chat failed", name: "ChatScreen", error: e);

@@ -61,7 +61,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F25 | MEDIUM | `BuildContext` across async gaps | Done | `94bdb9b`, `fix(frontend): tell a dialog's context from its screen's` | Real since F1 step 3b: a rejected token removes every screen and dialog, possibly mid-request. Done in two steps (2026-09-28/29). **25a:** a screen's own `setState`, `context` and `ref` after an `await` are guarded by `mounted`, on the error path (`catch`, `finally`) as well as the success path; Home no longer awaits routes it ignores; B34 closed with it. **25b:** every dialog builder names its context `dialogContext` (an unused outer one is `_`), so `context` always means the screen: the dialog is closed only if `dialogContext.mounted`, the screen is touched only if `mounted`. Confirmation dialogs close before their request. Deleting an employee pops the details screen with `true` and the list shows "deleted". `flutter analyze` now reports no `use_build_context_synchronously`, but it never sees `setState`, `setDialogState` or `ref` after an `await`, so a clean run is not proof |
 | F26 | MEDIUM | Debug `print`s ship in the app | Done | `fix(frontend): keep debug output out of the device log` | Checked 2026-10-01: 11 `print`s, not the audit's 10 (line numbers had moved). The six traces are deleted, including the inbox response body. The five in `catch` blocks that swallow their error (`getInbox`, `getSent`, `markAsRead`, the chat and login screens) became `developer.log` with a `name` and `error:`, which only reaches a debugger and so is silent in release. `api_service_test.dart` fails if `ApiService` prints anything, on success or without a network. The swallowed errors themselves are B44 |
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
-| F28 | LOW | Chat polls every 3 s | Partial | `feat(backend): mark a whole chat read in one request` | Planned in three steps (2026-10-13). **28a done:** `PUT /api/v1/messages/chat/{otherUserId}/read` marks every unread message the other person sent to the caller with one JPQL `UPDATE` and answers 204; the receiver comes from the token, so it needs no `@PreAuthorize`. Covered by V3's `idx_messages_chat`, so no migration. **Left:** 28b, the chat calls it once instead of one `PUT` per message (closes B27); 28c, poll every 5 s instead of 3, never two loads at once, paused while the app is in the background |
+| F28 | LOW | Chat polls every 3 s | Partial | `feat(backend): mark a whole chat read in one request`, `fix(frontend): mark a chat read with one request` | Planned in three steps (2026-10-13). **28a done:** `PUT /api/v1/messages/chat/{otherUserId}/read` marks every unread message the other person sent to the caller with one JPQL `UPDATE` and answers 204; the receiver comes from the token, so it needs no `@PreAuthorize`. Covered by V3's `idx_messages_chat`, so no migration. **28b done:** the chat shows the messages, then sends that one request only if something to the caller is unread (closes B27). **Left:** 28c, poll every 5 s instead of 3, never two loads at once, paused while the app is in the background |
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
@@ -266,16 +266,6 @@ Fix idea: a "load more" at the end of the list (or infinite scroll with a
 `ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and
 appends.
 
-**B27 · MEDIUM · The chat marks messages read one HTTP request at a time, every 3 s** — found 2026-09-19
-Where: `chat_screen.dart` `_loadMessages()` loops over the history and calls
-`markAsRead` once per unread message it received, awaiting each.
-Why it matters: opening a chat with 50 unread messages sends 50 sequential
-PUTs before the screen updates; with the 3 s poll (F28) a slow round can
-overlap the next one and send the same PUTs again.
-Relates to: F28, F9 (once paged, only the loaded page gets marked).
-Fix idea: one endpoint, e.g. `PUT /messages/chat/{otherUserId}/read`, that
-marks the whole conversation read in a single UPDATE.
-
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
 Spring Boot's default `true` applies (it logs a warning about it at startup).
@@ -426,13 +416,13 @@ shows a small progress indicator until the reply arrives.
 **B44 · LOW · A failed inbox, sent list or chat load looks like an empty one** — found 2026-10-01
 Where: `api_service.dart` `getInbox` and `getSent` catch every error and
 return `[]`, and also return `[]` for any status other than 200.
-`markAsRead` catches every error and never looks at the status code.
+(`markAsRead`, which caught every error and never looked at the status, was
+replaced in F28 step 28b by `markChatAsRead`, which throws.)
 `chat_screen.dart` `_loadMessages` catches every error and shows nothing.
 Why it matters: the user sees "no messages" when the network or the server
 failed, and has no reason to retry. The chat polls every 3 s (F28), so it
-fails silently over and over. A read receipt that failed is simply not
-counted. Since F26 the only trace is a `developer.log`, which only a
-developer with a debugger attached sees.
+fails silently over and over. Since F26 the only trace is a
+`developer.log`, which only a developer with a debugger attached sees.
 Relates to: F26 (the logs these catch blocks were left with), B42 and B19
 (the same ignored-status pattern), B41 (how to show the error once it is
 raised).
@@ -819,3 +809,21 @@ offered and declined. It holds by review.
 Not chosen: a separate controller for the user-scoped shift routes, mapped at
 `/api/v1/users/{userId}`. Every class path would then name one resource, but
 shifts would be split across two classes.
+
+**B27 · MEDIUM · The chat marks messages read one HTTP request at a time, every 3 s** — found 2026-09-19
+Where: `chat_screen.dart` `_loadMessages()` loops over the history and calls
+`markAsRead` once per unread message it received, awaiting each.
+Why it matters: opening a chat with 50 unread messages sends 50 sequential
+PUTs before the screen updates; with the 3 s poll (F28) a slow round can
+overlap the next one and send the same PUTs again.
+Relates to: F28, F9 (once paged, only the loaded page gets marked).
+Fix idea: one endpoint, e.g. `PUT /messages/chat/{otherUserId}/read`, that
+marks the whole conversation read in a single UPDATE.
+Fixed by: `feat(backend): mark a whole chat read in one request` and
+`fix(frontend): mark a chat read with one request`, F28 steps 28a and 28b.
+`PUT /api/v1/messages/chat/{otherUserId}/read` marks the whole conversation
+read in one `UPDATE`. The chat shows the messages first, then sends that one
+request only if a message to the caller is still unread, so an idle open chat
+sends none. `ApiService.markAsRead` is deleted; `markChatAsRead` throws on
+failure instead of hiding it. The backend's single-message
+`PUT /messages/{id}/read` stays, unused by the app.

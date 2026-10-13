@@ -311,13 +311,16 @@ class ApiService {
     return response.statusCode == 201;
   }
 
-  Future<void> markAsRead(int messageId) async {
-    try {
-      await _client.put(
-        Uri.parse("$baseUrl/messages/$messageId/read"),
-      );
-    } catch (e) {
-      developer.log("markAsRead failed", name: "ApiService", error: e);
+  // Everything otherUserId sent us, marked read with one request (B27). No
+  // receiver id: the server takes it from the token. Throws on failure, so
+  // the caller can tell (not markAsRead's old silence, B44).
+  Future<void> markChatAsRead(int otherUserId) async {
+    final response = await _client.put(
+      Uri.parse("$baseUrl/messages/chat/$otherUserId/read"),
+    );
+
+    if (response.statusCode != 204) {
+      throw Exception("Marking the chat read failed: ${response.statusCode}");
     }
   }
 
