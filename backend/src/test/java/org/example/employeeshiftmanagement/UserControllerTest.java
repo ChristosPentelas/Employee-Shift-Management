@@ -4,6 +4,7 @@ import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
 import org.example.employeeshiftmanagement.service.UserService;
@@ -153,6 +154,97 @@ class UserControllerTest {
                         .value("Phone number must be at most 255 characters"));
 
         verify(userService, never()).updateUser(anyInt(), any());
+    }
+
+    // --- PUT /users/me/password (B8) ---
+
+    private static final String PASSWORD_CHANGE = """
+            {"currentPassword":"secret123","newPassword":"newSecret456"}
+            """;
+
+    @Test
+    void aUserChangesTheirOwnPasswordAndGetsNoContent() throws Exception {
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PASSWORD_CHANGE))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        // The id is the token's subject: there is no id in the URL or body.
+        verify(userService).changePassword(TestTokens.EMPLOYEE_ID, "secret123", "newSecret456");
+    }
+
+    @Test
+    void changingAPasswordWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PASSWORD_CHANGE))
+                .andExpect(status().isUnauthorized());
+
+        verify(userService, never()).changePassword(any(), any(), any());
+    }
+
+    @Test
+    void aWrongCurrentPasswordIsABadRequestNotUnauthorized() throws Exception {
+        // doThrow().when() rather than when().thenThrow(): it works whether
+        // changePassword returns a value or is void.
+        doThrow(new WrongPasswordException())
+                .when(userService).changePassword(anyInt(), anyString(), anyString());
+
+        // 401 would make the app log the user out (auth_client.dart).
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PASSWORD_CHANGE))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("Current password is incorrect"));
+    }
+
+    @Test
+    void aNewPasswordShorterThanFourCharactersIsRejected() throws Exception {
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"secret123","newPassword":"abc"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.newPassword")
+                        .value("New password must be at least 4 characters"));
+
+        verify(userService, never()).changePassword(any(), any(), any());
+    }
+
+    @Test
+    void aShortCurrentPasswordIsNotAValidationError() throws Exception {
+        // Only newPassword has a length rule. A user whose password predates
+        // the 4-character minimum must still be able to change it.
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"abc","newPassword":"newSecret456"}
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(userService).changePassword(TestTokens.EMPLOYEE_ID, "abc", "newSecret456");
+    }
+
+    @Test
+    void aMissingCurrentPasswordIsRejected() throws Exception {
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"newPassword":"newSecret456"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.currentPassword").value("Current password is required"));
+
+        verify(userService, never()).changePassword(any(), any(), any());
     }
 
     @Test

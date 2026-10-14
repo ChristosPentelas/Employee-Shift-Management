@@ -1,12 +1,9 @@
 package org.example.employeeshiftmanagement.controller;
 
 import jakarta.validation.Valid;
-import org.example.employeeshiftmanagement.dto.LoginRequest;
-import org.example.employeeshiftmanagement.dto.LoginResponse;
-import org.example.employeeshiftmanagement.dto.PageResponse;
-import org.example.employeeshiftmanagement.dto.RegisterRequest;
-import org.example.employeeshiftmanagement.dto.UpdateUserRequest;
-import org.example.employeeshiftmanagement.dto.UserResponse;
+import org.springframework.security.core.Authentication;
+import org.example.employeeshiftmanagement.config.CurrentUser;
+import org.example.employeeshiftmanagement.dto.*;
 import org.example.employeeshiftmanagement.exception.InvalidCredentialsException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
@@ -65,6 +62,25 @@ public class UserController {
                                                    @Valid @RequestBody UpdateUserRequest request) {
         User updatedUser = userService.updateUser(id, toUserDetails(request));
         return ResponseEntity.ok(UserResponse.from(updatedUser));
+    }
+
+    /**
+     * Changes the caller's own password (B8). Answers 204: there is nothing
+     * new to show, and the password must never be echoed back.
+     *
+     * No @PreAuthorize, like MessageController.markChatRead: the user comes
+     * from the token, so there is nobody else's password this request could
+     * reach. The current password is still required, so a phone left
+     * unlocked (a valid token) is not enough to take the account over.
+     *
+     * Tokens issued before the change stay valid until they expire (F1).
+     */
+    @PutMapping("/me/password")
+    public ResponseEntity<Void> changePassword(Authentication authentication,
+                                               @Valid @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(
+                CurrentUser.id(authentication), request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{userId}")

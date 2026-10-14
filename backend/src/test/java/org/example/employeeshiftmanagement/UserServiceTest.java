@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement;
 
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.Test;
@@ -255,5 +256,69 @@ public class UserServiceTest {
                 .filter(name -> name.endsWith("Paging")).toList();
 
         assertEquals(List.of("Adam Paging", "Zoe Paging"), names);
+    }
+
+    // --- changing your own password (B8) ---
+    // Checked through authenticate, the way a real login checks it: comparing
+    // hashes directly would not work, since every hash gets a new salt.
+
+    @Test
+    void afterAPasswordChangeOnlyTheNewPasswordLogsIn() {
+        User saved = registerLoginUser();
+
+        userService.changePassword(saved.getId(), "secret123", "newSecret456");
+
+        assertTrue(userService.authenticate("login@example.com", "newSecret456").isPresent(),
+                "the new password must log in");
+        assertTrue(userService.authenticate("login@example.com", "secret123").isEmpty(),
+                "the old password must stop working");
+    }
+
+    @Test
+    void aChangedPasswordIsStoredAsAHash() {
+        User saved = registerLoginUser();
+
+        userService.changePassword(saved.getId(), "secret123", "newSecret456");
+
+        String stored = userService.findUserById(saved.getId()).getPassword();
+        assertNotEquals("newSecret456", stored, "The plaintext password must never be stored (F2)");
+        assertTrue(stored.startsWith("$2"), "Expected a BCrypt hash, got: " + stored);
+    }
+
+    @Test
+    void aWrongCurrentPasswordChangesNothing() {
+        User saved = registerLoginUser();
+
+        assertThrows(WrongPasswordException.class,
+                () -> userService.changePassword(saved.getId(), "wrong", "newSecret456"));
+
+        assertTrue(userService.authenticate("login@example.com", "secret123").isPresent(),
+                "the old password must still work");
+    }
+
+    @Test
+    void aNewPasswordOverTheByteLimitIsRefusedLikeAtRegistration() {
+        User saved = registerLoginUser();
+
+        // 37 Greek letters = 74 bytes: over the limit at only 37 characters.
+        // The current password is right, so the error must be about the new
+        // one - not "wrong password", which would send the user looking for
+        // a mistake they did not make.
+        assertThrows(IllegalStateException.class,
+                () -> userService.changePassword(saved.getId(), "secret123", "κ".repeat(37)));
+
+        assertTrue(userService.authenticate("login@example.com", "secret123").isPresent(),
+                "the old password must still work");
+    }
+
+    @Test
+    void aNewPasswordOfExactlyTheByteLimitIsAccepted() {
+        User saved = registerLoginUser();
+        String seventyTwoBytes = "κ".repeat(36);
+
+        userService.changePassword(saved.getId(), "secret123", seventyTwoBytes);
+
+        // The limit is "at most 72", as at registration: 72 itself is allowed.
+        assertTrue(userService.authenticate("login@example.com", seventyTwoBytes).isPresent());
     }
 }

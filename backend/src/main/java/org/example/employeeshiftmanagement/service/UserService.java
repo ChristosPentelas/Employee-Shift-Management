@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
@@ -111,10 +112,7 @@ public class UserService {
             throw new IllegalStateException("User already exists");
         }
 
-        if (user.getPassword().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw new IllegalStateException(
-                    "Password must be at most " + MAX_PASSWORD_BYTES + " bytes");
-        }
+        checkPasswordLength(user.getPassword());
 
         //Default role assignment
         if(user.getRole()==null || user.getRole().isEmpty()){
@@ -174,6 +172,41 @@ public class UserService {
 
     }
 
+    /**
+     * Replaces the user's password, if the current one is right (B8).
+     *
+     * Wrong current password: WrongPasswordException. New one over
+     * MAX_PASSWORD_BYTES: the same IllegalStateException as registration, so
+     * the caller is told which of the two passwords is the problem.
+     *
+     * Like registration, only the hash of the new password is stored (F2).
+     */
+    @Transactional
+    public void changePassword(Integer userId, String current, String newPassword) {
+        User user = findUserById(userId);
+
+        // Guard clauses: each check throws on its own, so the error names the
+        // password that is actually wrong, and the happy path ends unindented.
+        if (!passwordEncoder.matches(current, user.getPassword())) {
+            throw new WrongPasswordException();
+        }
+        checkPasswordLength(newPassword);
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
+    /**
+     * BCrypt's limit, shared by registration and password changes so the two
+     * cannot drift apart: at most MAX_PASSWORD_BYTES, so exactly 72 is allowed.
+     * An IllegalStateException (400) until B20 moves this into validation.
+     */
+    private static void checkPasswordLength(String rawPassword) {
+        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new IllegalStateException(
+                    "Password must be at most " + MAX_PASSWORD_BYTES + " bytes");
+        }
+    }
 
     /**
      * Deletes the user; the database deletes or detaches everything that

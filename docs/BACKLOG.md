@@ -105,6 +105,18 @@ Relates to: F1.
 Fix idea: `PUT /api/v1/users/me/password` taking the current and the new
 password, checked with `PasswordEncoder.matches`. Needs F1 step 7 (identity
 from the token) so a user can only change their own.
+Progress (2026-10-14): two steps. **8a (backend), done in
+`feat(backend): let a user change their own password`:**
+`PUT /api/v1/users/me/password` with `ChangePasswordRequest`
+(`currentPassword`, `newPassword`), answering 204. The user comes from the
+token, so no `@PreAuthorize`. A wrong current password is
+`WrongPasswordException` → 400, deliberately not 401: the app logs out on a
+401 to a request that carried a token. `newPassword` follows registration's
+rules (4 characters minimum, at most 72 bytes, the same `IllegalStateException`
+until B20); `currentPassword` is only required, like login. Tokens issued
+before the change stay valid until they expire (F1's accepted limit), so
+changing a password does not lock out someone who already holds a token.
+**8b (app), left:** a "change password" dialog on the profile screen.
 
 **B9 · LOW · Future milestone: several companies in one app** — found 2026-09-14
 Where: the whole data model; nothing records which company a user, shift,
@@ -592,6 +604,34 @@ Fix idea: push instead of poll. A WebSocket (Spring's STOMP support and a
 Dart STOMP client) for an open chat, and Firebase Cloud Messaging for a
 notification when the app is closed. Both are new dependencies on both
 sides, so decide first.
+
+**B56 · MEDIUM · Nothing limits how many passwords can be tried** — found 2026-10-14
+Where: `POST /users/login`, and since B8 `PUT /users/me/password`, which
+also checks a password.
+Why it matters: a script can try passwords against one email as fast as
+the server answers. BCrypt slows each try to about 100 ms, but that still
+allows hundreds of thousands of guesses a day, and passwords here can be
+as short as 4 characters. The password-change endpoint needs a valid
+token, so it only matters to someone who already has one, e.g. from a
+phone left unlocked.
+Relates to: F1, B8.
+Fix idea: count failed attempts per email (and per IP) and refuse with
+429 Too Many Requests for a while after, say, 5 in a row. An in-memory
+counter is enough for one server; a library like Bucket4j would be a new
+dependency, so decide first. Lock for a short time rather than for good,
+or anyone can lock a colleague out on purpose.
+
+**B57 · LOW · A request record's `toString()` prints its password** — found 2026-10-14
+Where: `LoginRequest`, `RegisterRequest`, `ChangePasswordRequest`. A record
+generates `toString()` from every field, so it gives e.g.
+`ChangePasswordRequest[currentPassword=secret123, newPassword=...]`.
+Why it matters: nothing logs these today. But one `log.info("{}", request)`
+added while debugging, or a library that logs request objects, would write
+plaintext passwords to the log, which more people can read than the
+database.
+Fix idea: override `toString()` in those three records to mask the
+password fields, and add one test that the masked text does not contain
+the password.
 
 ---
 

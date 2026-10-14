@@ -61,6 +61,15 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * A password change with the wrong current password (B8). 400, not 401:
+     * the token was accepted, so the app must not treat this as a logout.
+     */
+    @ExceptionHandler(WrongPasswordException.class)
+    public ProblemDetail handleWrongPassword(WrongPasswordException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
      * The request was understood but conflicts with what is already stored -
      * today only "email already taken" and the BCrypt byte limit, both thrown
      * by UserService. 400 is what the controller returned before this class, so
