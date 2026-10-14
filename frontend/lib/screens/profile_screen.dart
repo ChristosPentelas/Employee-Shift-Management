@@ -4,6 +4,7 @@ import '../state/auth_session.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../screens/login_screen.dart';
+import '../widgets/change_password_dialog.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
@@ -88,6 +89,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Future<void> _showChangePasswordDialog() async {
+    // null when the dialog was cancelled, tapped away or closed with back.
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ChangePasswordDialog(apiService: _apiService),
+    );
+
+    // The session needs no change: the token stays valid and the user is the
+    // same. Only the message is the screen's job, since the dialog is gone.
+    if (changed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Ο κωδικός άλλαξε επιτυχώς!")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider)?.user;
@@ -140,6 +157,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _buildInfoTile(Icons.email, "Email", user.email),
                 _buildInfoTile(Icons.phone, "Τηλέφωνο", user.phoneNumber ?? "Δεν έχει καταχωρηθεί"),
                 _buildInfoTile(Icons.badge, "ID Υπαλλήλου", "#${user.id}"),
+                SizedBox(height: 20),
+                OutlinedButton.icon(
+                  icon: Icon(Icons.lock_outline),
+                  label: Text("Αλλαγή κωδικού"),
+                  onPressed: _showChangePasswordDialog,
+                ),
 
 
               ],

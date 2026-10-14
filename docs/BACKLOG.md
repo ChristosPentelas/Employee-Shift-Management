@@ -94,30 +94,6 @@ Fix idea: a `.gitattributes` with `* text=auto eol=lf`, plus exceptions
 `*.cmd`/`*.bat text eol=crlf` for the Windows wrappers (`mvnw.cmd`). Then run
 `git add --renormalize .` and check the diff comes out empty.
 
-**B8 · MEDIUM · Nobody can change their own password** — found 2026-09-14
-Where: `UserController` has no password endpoint; `UpdateUserRequest` carries
-only name, email and phone.
-Why it matters: the first supervisor keeps the password from
-`application-local.properties` forever, and once supervisors create accounts
-(F1 step 5) every employee keeps the password a supervisor typed for them.
-Someone else knowing your password defeats the point of logging in.
-Relates to: F1.
-Fix idea: `PUT /api/v1/users/me/password` taking the current and the new
-password, checked with `PasswordEncoder.matches`. Needs F1 step 7 (identity
-from the token) so a user can only change their own.
-Progress (2026-10-14): two steps. **8a (backend), done in
-`feat(backend): let a user change their own password`:**
-`PUT /api/v1/users/me/password` with `ChangePasswordRequest`
-(`currentPassword`, `newPassword`), answering 204. The user comes from the
-token, so no `@PreAuthorize`. A wrong current password is
-`WrongPasswordException` → 400, deliberately not 401: the app logs out on a
-401 to a request that carried a token. `newPassword` follows registration's
-rules (4 characters minimum, at most 72 bytes, the same `IllegalStateException`
-until B20); `currentPassword` is only required, like login. Tokens issued
-before the change stay valid until they expire (F1's accepted limit), so
-changing a password does not lock out someone who already holds a token.
-**8b (app), left:** a "change password" dialog on the profile screen.
-
 **B9 · LOW · Future milestone: several companies in one app** — found 2026-09-14
 Where: the whole data model; nothing records which company a user, shift,
 leave request, message or news item belongs to.
@@ -347,6 +323,11 @@ start with `_`, which the analyzer flags - `_` means "private to the
 library", and a local variable is already private.
 Fix idea: move the dialog into its own `StatefulWidget` that creates the
 controllers in `initState` and disposes them in `dispose`.
+Model (2026-10-14): the change-password dialog (B8),
+`widgets/change_password_dialog.dart`, was built this way from the start -
+its own `State` with `dispose()`, `mounted` and `context`, popping with
+`true` for the screen to show the message. The four dialogs above are
+unchanged.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
@@ -424,6 +405,9 @@ although the delete worked.
 Relates to: F25 (why the dialog closes first).
 Fix idea: a "deleting" flag in the screen's state that disables the button and
 shows a small progress indicator until the reply arrives.
+Model (2026-10-14): the change-password dialog (B8) disables its save
+button with a `_saving` flag while the request runs, and a widget test taps
+it twice to check only one request goes out.
 
 **B44 · LOW · A failed inbox, sent list or chat load looks like an empty one** — found 2026-10-01
 Where: `api_service.dart` `getInbox` and `getSent` catch every error and
@@ -632,6 +616,22 @@ database.
 Fix idea: override `toString()` in those three records to mask the
 password fields, and add one test that the masked text does not contain
 the password.
+
+**B58 · LOW · Error answers carry no code the app can act on** — found 2026-10-14
+Where: every error body is a ProblemDetail with `"type":"about:blank"`. Two
+different 400s can only be told apart by their English `detail` text:
+`ApiService.changePassword` compares it with `"Current password is
+incorrect"` to tell a wrong current password from a refused new one (B8).
+Why it matters: `detail` is written for a person to read. Rewording it on
+the server silently changes what the app shows - here it falls back to the
+general "not accepted" message, but a future comparison may not fail as
+gently. The backend's `UserControllerTest` pins the text, which only makes
+the coupling visible. Same smell as comparing Greek labels (B53).
+Relates to: F14, B2, B20.
+Fix idea: RFC 9457 gives ProblemDetail a `type` URI for exactly this, e.g.
+`ProblemDetail.setType(URI.create("urn:problem:wrong-current-password"))`
+in `ApiExceptionHandler`, and the app switches on `type`. One type per error
+the app must react to, not one per exception.
 
 ---
 
@@ -880,3 +880,39 @@ request only if a message to the caller is still unread, so an idle open chat
 sends none. `ApiService.markAsRead` is deleted; `markChatAsRead` throws on
 failure instead of hiding it. The backend's single-message
 `PUT /messages/{id}/read` stays, unused by the app.
+
+**B8 · MEDIUM · Nobody can change their own password** — found 2026-09-14
+Where: `UserController` has no password endpoint; `UpdateUserRequest` carries
+only name, email and phone.
+Why it matters: the first supervisor keeps the password from
+`application-local.properties` forever, and once supervisors create accounts
+(F1 step 5) every employee keeps the password a supervisor typed for them.
+Someone else knowing your password defeats the point of logging in.
+Relates to: F1.
+Fix idea: `PUT /api/v1/users/me/password` taking the current and the new
+password, checked with `PasswordEncoder.matches`. Needs F1 step 7 (identity
+from the token) so a user can only change their own.
+Fixed by: `dc8e187` (step 8a, backend) and
+`feat(frontend): let a user change their password from the profile` (step
+8b, app), 2026-10-14.
+**8a:** `PUT /api/v1/users/me/password` with `ChangePasswordRequest`
+(`currentPassword`, `newPassword`), answering 204. The user comes from the
+token, so no `@PreAuthorize`. A wrong current password is
+`WrongPasswordException` → 400 `"Current password is incorrect"`,
+deliberately not 401: the app logs out on a 401 to a request that carried a
+token. `newPassword` follows registration's rules (4 characters minimum, at
+most 72 bytes - the byte check is now one `checkPasswordLength` shared with
+registration, still an `IllegalStateException` until B20); `currentPassword`
+is only required, like login.
+**8b:** a "Αλλαγή κωδικού" button on the profile opens
+`widgets/change_password_dialog.dart`: current password, new, and new again
+(there is no "forgot password", so a typo must not lock anyone out). The
+dialog checks the server's rules first, so a mistake is shown at its field
+and nothing is sent; the save button is disabled while the request runs. A
+refusal keeps the dialog open with the reason; success closes it and the
+profile shows a snackbar. `ApiService.changePassword` returns a
+`ChangePasswordResult` and tells a wrong current password from other 400s by
+the `detail` text (B58).
+Left: tokens issued before the change stay valid until they expire (F1's
+accepted limit), so a new password does not lock out someone who already
+holds a token. Nothing limits guesses at the current password (B56).

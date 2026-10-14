@@ -18,6 +18,19 @@ enum AssignShiftResult {
   failed,
 }
 
+/// The outcome of ApiService.changePassword (B8).
+enum ChangePasswordResult {
+  /// 204: the new password is stored. The login token stays valid.
+  changed,
+  /// 400 saying the current password is wrong.
+  wrongCurrentPassword,
+  /// Any other 400: the server refused the new password, e.g. too short.
+  /// The dialog checks the same rules first, so this means they drifted apart.
+  invalid,
+  /// Anything else, including no network.
+  failed,
+}
+
 class ApiService {
   // Where the backend lives, chosen when the app is built (F27):
   //   flutter run --dart-define=API_BASE_URL=http://192.168.1.50:8080/api/v1
@@ -217,6 +230,45 @@ class ApiService {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  // The server's `detail` for a wrong current password. A 400 carries no
+  // machine-readable code (B58), so this English text is the only way to tell
+  // it from other 400s; the backend's UserControllerTest pins it. If it ever
+  // changes, the app falls back to `invalid`, never to a false "wrong password".
+  static const String _wrongCurrentPasswordDetail = "Current password is incorrect";
+
+  // Changes the logged-in user's own password (B8). There is no user id to
+  // send: the server takes it from the token.
+  //
+  // Neither the request nor the response body is ever logged - both
+  // passwords are in the request (F26).
+  Future<ChangePasswordResult> changePassword(String currentPassword, String newPassword) async {
+    try {
+      final response = await _client.put(
+        Uri.parse("$baseUrl/users/me/password"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "currentPassword": currentPassword,
+          "newPassword": newPassword,
+        }),
+      );
+      switch (response.statusCode) {
+        case 204:
+          return ChangePasswordResult.changed;
+        case 400:
+          // Decoded only here: a 204 has an empty body, and jsonDecode('')
+          // throws.
+          final detail = (jsonDecode(response.body) as Map<String, dynamic>)['detail'];
+          return detail == _wrongCurrentPasswordDetail
+              ? ChangePasswordResult.wrongCurrentPassword
+              : ChangePasswordResult.invalid;
+        default:
+          return ChangePasswordResult.failed;
+      }
+    } catch (e) {
+      return ChangePasswordResult.failed;
     }
   }
 

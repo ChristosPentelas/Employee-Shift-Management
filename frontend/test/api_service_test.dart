@@ -3,6 +3,7 @@
 // silently be missing from that one request.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:employee_shift_management_ui/models/leave_request_model.dart';
 import 'package:employee_shift_management_ui/models/shift_model.dart';
@@ -208,6 +209,57 @@ void main() {
     expect(result, AssignShiftResult.failed);
   });
 
+  test('a password change names no user: the server takes it from the token (B8)',
+      () async {
+    late http.Request sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response('', 204);
+    }));
+
+    await api.changePassword('old-secret', 'new-secret');
+
+    expect(sent.method, 'PUT');
+    expect(sent.url.path, endsWith('/users/me/password'));
+    expect(jsonDecode(sent.body),
+        {'currentPassword': 'old-secret', 'newPassword': 'new-secret'});
+  });
+
+  test('a password change reports why the server refused it', () async {
+    Future<ChangePasswordResult> changeAnswered(int status, [String body = '']) {
+      final api = ApiService(
+          client: MockClient((_) async => http.Response(body, status)));
+      return api.changePassword('old-secret', 'new-secret');
+    }
+
+    // 204 has an empty body: reading it as JSON would throw.
+    expect(await changeAnswered(204), ChangePasswordResult.changed);
+    expect(
+        await changeAnswered(400,
+            '{"status":400,"detail":"Current password is incorrect"}'),
+        ChangePasswordResult.wrongCurrentPassword);
+    // Any other 400 - a broken field rule, or the 72-byte limit - must not be
+    // reported as a wrong current password.
+    expect(
+        await changeAnswered(400,
+            '{"status":400,"detail":"Validation failed","errors":{"newPassword":"..."}}'),
+        ChangePasswordResult.invalid);
+    expect(
+        await changeAnswered(400,
+            '{"status":400,"detail":"Password must be at most 72 bytes"}'),
+        ChangePasswordResult.invalid);
+    expect(await changeAnswered(500), ChangePasswordResult.failed);
+  });
+
+  test('a password change without a network is a failure, not a crash', () async {
+    final api = ApiService(client: MockClient((_) async {
+      throw http.ClientException('no network');
+    }));
+
+    expect(await api.changePassword('old-secret', 'new-secret'),
+        ChangePasswordResult.failed);
+  });
+
   // F26: print() goes to the device log in release builds too, so nothing the
   // service does may reach it, whether the call works or fails.
   group('nothing is printed to the device log', () {
@@ -224,6 +276,8 @@ void main() {
         await api.markChatAsRead(9);
         await api.deleteUser(7);
         await api.getNews();
+        // Its request carries both passwords (B8).
+        await api.changePassword('old-secret', 'new-secret');
       });
 
       expect(printed, isEmpty);
@@ -239,6 +293,7 @@ void main() {
         await api.getSent(7);
         await expectLater(api.markChatAsRead(9), throwsException);
         await expectLater(api.getNews(), throwsException);
+        await api.changePassword('old-secret', 'new-secret');
       });
 
       expect(printed, isEmpty);
