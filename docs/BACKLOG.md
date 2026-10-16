@@ -158,6 +158,18 @@ Left: HTTPS on the backend itself. Wait for a hosting target: TLS normally
 ends at a reverse proxy or the host, with a Let's Encrypt certificate. A
 self-signed certificate in Spring would push the app towards
 `badCertificateCallback: (...) => true`, which switches the protection off.
+**Blocked on hosting** (decided 2026-10-16): the repo still has no server,
+domain or deploy config, so nothing is left to code. Do it before the backend
+is reachable from any network other than the developer's own, whether or not
+the app is in a store: hosted for a few test users, or a phone on shared Wi-Fi.
+The release check does not cover that last case, since debug builds may use
+`http://`. Expected backend work then: `server.address=127.0.0.1` so only the
+proxy reaches port 8080, `server.forward-headers-strategy` so Spring sees the
+original `https`, and HSTS.
+Same problem one hop further: `spring.datasource.url` in
+`application.properties` has `useSSL=false`, so the MySQL password and data
+travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
+(`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
 **B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
 Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
