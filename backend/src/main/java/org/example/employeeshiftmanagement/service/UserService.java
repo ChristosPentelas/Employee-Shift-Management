@@ -13,6 +13,7 @@ import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -30,6 +31,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttempts;
 
     /** Hash of a password nobody has; see authenticate. */
     private final String dummyHash;
@@ -41,9 +43,11 @@ public class UserService {
      * automatically; no @Autowired needed.
      */
     public UserService(UserRepository userRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       LoginAttemptService loginAttempts) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttempts = loginAttempts;
         this.dummyHash = passwordEncoder.encode("no-user-has-this-password");
     }
 
@@ -86,9 +90,23 @@ public class UserService {
      * Returns the user when the email exists and the password matches, empty
      * otherwise. The two failure cases are deliberately indistinguishable to the
      * caller: telling them apart would reveal which emails are registered.
+     *
+     * Throws TooManyAttemptsException after LoginAttemptService.MAX_FAILURES
+     * failures in a row (B56) - even for the right password, or the change of
+     * answer would tell a script it had found it.
      */
     public Optional<User> authenticate(String email, String rawPassword) {
         Optional<User> user = userRepository.findByEmail(email);
+
+        // Counted per user, not per typed email: the tables' collation ignores
+        // case and accents, so "Nikos@x.gr" and "nïkos@x.gr" both find
+        // nikos@x.gr, and each spelling would otherwise get its own 5 tries.
+        // An unknown email is counted too, so a 429 does not mean "registered".
+        String key = user.map(found -> "login-user:" + found.getId())
+                .orElse("login-email:" + email.toLowerCase(Locale.ROOT));
+        // Before any BCrypt, the dummy hash included: a locked key gets no
+        // answer about the password at all.
+        loginAttempts.startAttempt(key);
 
         if (user.isEmpty()) {
             // Hash against a throwaway value anyway. Without it an unknown email
@@ -100,7 +118,12 @@ public class UserService {
 
         // matches() re-hashes the typed password with the salt stored inside the
         // hash and compares in constant time, unlike String.equals.
-        return user.filter(found -> passwordEncoder.matches(rawPassword, found.getPassword()));
+        Optional<User> authenticated =
+                user.filter(found -> passwordEncoder.matches(rawPassword, found.getPassword()));
+        if (authenticated.isPresent()) {
+            loginAttempts.succeeded(key);
+        }
+        return authenticated;
     }
 
     @Transactional

@@ -28,6 +28,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -276,6 +277,42 @@ class SecurityIntegrationTest {
         // what keeps this header: it tells the client how to authenticate.
         assertTrue(answer.headers().containsHeader(HttpHeaders.WWW_AUTHENTICATE),
                 "a 401 must still say how to authenticate");
+    }
+
+    // --- limiting password guesses (B56) ---
+
+    private Answer loginAnswer(String email, String password) {
+        return client().post().uri("/users/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"email":"%s","password":"%s"}
+                        """.formatted(email, password))
+                .exchange((req, response) -> new Answer(
+                        response.getStatusCode(),
+                        response.getHeaders(),
+                        new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void afterFiveWrongPasswordsEvenTheRightOneIsTooManyRequests() {
+        registeredUser("it-lockout@example.com", null);
+        for (int i = 0; i < 5; i++) {
+            assertEquals(401, loginAnswer("it-lockout@example.com", "wrong").status().value(),
+                    "attempt " + (i + 1) + " of 5 must still be an ordinary failed login");
+        }
+
+        Answer answer = loginAnswer("it-lockout@example.com", "secret123");
+
+        assertEquals(429, answer.status().value());
+        assertEquals(MediaType.APPLICATION_PROBLEM_JSON, answer.headers().getContentType());
+        Map<?, ?> problem = objectMapper.readValue(answer.body(), Map.class);
+        assertEquals(429, problem.get("status"));
+        assertNull(problem.get("token"), "a locked account must get no token");
+
+        // A few milliseconds have passed since the 5th try, so not exactly 900;
+        // rounded up, it is still 900 at most and never 0.
+        int retryAfter = Integer.parseInt(answer.headers().getFirst(HttpHeaders.RETRY_AFTER));
+        assertTrue(retryAfter > 0 && retryAfter <= 900, "Retry-After was " + retryAfter);
     }
 
     @Test

@@ -70,6 +70,23 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * A locked account (B56). A ResponseEntity rather than a bare ProblemDetail,
+     * since only it can carry the Retry-After header; Spring still fills in the
+     * body's "instance".
+     *
+     * Retry-After is a whole number of seconds (RFC 9110), rounded up and at
+     * least 1: rounding 90.4 s down, or 0.4 s to "0", would send the client
+     * back while the lock is still on.
+     */
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<ProblemDetail> handleTooManyAttempts(TooManyAttemptsException e) {
+        long seconds = Math.max(1, Math.ceilDiv(e.getRetryAfter().toMillis(), 1000));
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(seconds))
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, e.getMessage()));
+    }
+
+    /**
      * The request was understood but conflicts with what is already stored -
      * today only "email already taken" and the BCrypt byte limit, both thrown
      * by UserService. 400 is what the controller returned before this class, so

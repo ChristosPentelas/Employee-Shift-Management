@@ -1,6 +1,7 @@
 package org.example.employeeshiftmanagement;
 
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.exception.TooManyAttemptsException;
 import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.UserService;
@@ -174,6 +175,116 @@ public class UserServiceTest {
         registerLoginUser();
 
         assertTrue(userService.authenticate("nobody@example.com", "secret123").isEmpty());
+    }
+
+    // --- limiting password guesses (B56) ---
+    // The lockout rule itself (5 tries, 15 minutes, expiry) is checked in
+    // LoginAttemptServiceTest. These check how authenticate uses it.
+    //
+    // The counters live in a Spring bean, so they are NOT rolled back with the
+    // test transaction, and Spring reuses this context for other test classes.
+    // Each test therefore uses an email no other test uses.
+
+    private void registerWithPassword(String email) {
+        User user = new User();
+        user.setName("Lockout User");
+        user.setEmail(email);
+        user.setPassword("secret123");
+        userService.registerNewEmployee(user);
+    }
+
+    @Test
+    void emailLookupIgnoresCaseAndAccents() {
+        // Not new behaviour: this pins the reason the lockout counts per user,
+        // not per typed email. The tables use utf8mb4_0900_ai_ci ("accent and
+        // case insensitive"), so every spelling below logs in as the same
+        // user, and a counter keyed on the typed text would give each
+        // spelling its own 5 tries.
+        registerWithPassword("lookup@example.com");
+
+        assertTrue(userService.findUserByEmail("LOOKUP@example.com").isPresent());
+        assertTrue(userService.findUserByEmail("Lookup@Example.COM").isPresent());
+        assertTrue(userService.findUserByEmail("lööküp@example.com").isPresent());
+    }
+
+    @Test
+    void fiveWrongPasswordsLockTheAccountEvenForTheRightPassword() {
+        registerWithPassword("lock@example.com");
+        for (int i = 0; i < 5; i++) {
+            assertTrue(userService.authenticate("lock@example.com", "wrong").isEmpty(),
+                    "attempt " + (i + 1) + " of 5 must still get an answer");
+        }
+
+        // If the right password still worked here, the lock would tell a
+        // script "that was it" - it could keep guessing and only stop when
+        // the answer changes.
+        assertThrows(TooManyAttemptsException.class,
+                () -> userService.authenticate("lock@example.com", "secret123"));
+    }
+
+    @Test
+    void theRightPasswordResetsTheCount() {
+        registerWithPassword("reset@example.com");
+        for (int i = 0; i < 4; i++) {
+            userService.authenticate("reset@example.com", "wrong");
+        }
+        assertTrue(userService.authenticate("reset@example.com", "secret123").isPresent());
+
+        for (int i = 0; i < 4; i++) {
+            userService.authenticate("reset@example.com", "wrong");
+        }
+
+        // 9 wrong in total, but never 5 in a row.
+        assertTrue(userService.authenticate("reset@example.com", "secret123").isPresent());
+    }
+
+    @Test
+    void anUnknownEmailIsLockedLikeAKnownOne() {
+        // If only real accounts were locked, "the 6th try answers 429" would
+        // mean "this email is registered" - the leak the dummy hash in
+        // authenticate exists to prevent.
+        for (int i = 0; i < 5; i++) {
+            assertTrue(userService.authenticate("ghost@example.com", "wrong").isEmpty());
+        }
+
+        assertThrows(TooManyAttemptsException.class,
+                () -> userService.authenticate("ghost@example.com", "wrong"));
+    }
+
+    @Test
+    void everySpellingOfAKnownEmailCountsTowardsOneLock() {
+        registerWithPassword("spelling@example.com");
+        userService.authenticate("SPELLING@example.com", "wrong");
+        userService.authenticate("Spelling@Example.com", "wrong");
+        userService.authenticate("spëlling@example.com", "wrong");
+        userService.authenticate("spelling@EXAMPLE.COM", "wrong");
+        userService.authenticate("spélling@example.com", "wrong");
+
+        assertThrows(TooManyAttemptsException.class,
+                () -> userService.authenticate("spelling@example.com", "secret123"));
+    }
+
+    @Test
+    void anUnknownEmailInAnotherCaseCountsTowardsOneLock() {
+        userService.authenticate("PHANTOM@example.com", "wrong");
+        userService.authenticate("Phantom@example.com", "wrong");
+        userService.authenticate("phantom@EXAMPLE.com", "wrong");
+        userService.authenticate("phantom@example.com", "wrong");
+        userService.authenticate("pHaNtOm@example.com", "wrong");
+
+        assertThrows(TooManyAttemptsException.class,
+                () -> userService.authenticate("phantom@example.com", "wrong"));
+    }
+
+    @Test
+    void lockingOneAccountLeavesTheOthersAlone() {
+        registerWithPassword("locked-out@example.com");
+        registerWithPassword("bystander@example.com");
+        for (int i = 0; i < 5; i++) {
+            userService.authenticate("locked-out@example.com", "wrong");
+        }
+
+        assertTrue(userService.authenticate("bystander@example.com", "secret123").isPresent());
     }
 
     @Test

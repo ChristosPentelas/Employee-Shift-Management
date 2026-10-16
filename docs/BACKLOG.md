@@ -616,6 +616,28 @@ Fix idea: count failed attempts per email (and per IP) and refuse with
 counter is enough for one server; a library like Bucket4j would be a new
 dependency, so decide first. Lock for a short time rather than for good,
 or anyone can lock a colleague out on purpose.
+Plan (decided 2026-10-16): no new dependency; 5 failures in a row lock for
+15 minutes. Three steps: **56a** login, **56b** password change, **56c** the
+app explains a 429.
+Since `feat(backend): lock an account for 15 minutes after 5 wrong passwords`
+(56a): `LoginAttemptService` counts each login attempt as a failure *before*
+BCrypt runs, inside a `synchronized` method, and `succeeded()` takes it
+back - so 200 requests sent at once get 5 guesses, not 200. Failures count
+"in a row" while each is less than 15 minutes after the last. A locked
+account answers 429 with `Retry-After` (seconds, rounded up, at least 1),
+even for the right password, and a refused try does not extend the lock.
+Counted per user id, not per typed email: the `utf8mb4_0900_ai_ci`
+collation finds `Nikos@x.gr` and `nïkos@x.gr` as the same user (checked on
+MySQL 8.0.44), so a key on the typed text would give every spelling 5 new
+tries. Unknown emails are counted too, by their lower-cased text, so a 429
+does not mean "registered". Accepted: once a real account is locked, a
+*differently spelled* email for it also answers 429, while a new spelling
+of an unknown email answers 401 - telling the two apart costs 5 guesses and
+locks the account. Anyone can lock a colleague out for 15 minutes on
+purpose. Counters are lost on restart and not shared between servers. Not
+per IP (B59); old counters are never removed (B60). The app shows
+"Σφάλμα συστήματος: 429" until 56c.
+Left: 56b, 56c.
 
 **B57 · LOW · A request record's `toString()` prints its password** — found 2026-10-14
 Where: `LoginRequest`, `RegisterRequest`, `ChangePasswordRequest`. A record
@@ -644,6 +666,34 @@ Fix idea: RFC 9457 gives ProblemDetail a `type` URI for exactly this, e.g.
 `ProblemDetail.setType(URI.create("urn:problem:wrong-current-password"))`
 in `ApiExceptionHandler`, and the app switches on `type`. One type per error
 the app must react to, not one per exception.
+
+**B59 · LOW · One machine can still try one password against every account** — found 2026-10-16
+Where: `LoginAttemptService` (B56) counts failures per account only.
+Why it matters: "password spraying" - trying `1234` against each email once
+- never reaches 5 failures on any one account. With a small staff and a
+4-character minimum, a few common passwords against every colleague is a
+realistic attack.
+Relates to: B56, B14.
+Fix idea: a second, much higher limit per IP address. Two traps: every
+employee on the office Wi-Fi shares one public IP, so the limit must allow
+a whole office's typos; and behind the reverse proxy B14 expects, every
+request comes from `127.0.0.1` until `server.forward-headers-strategy` is
+set, and trusting `X-Forwarded-For` without a proxy lets a client pick its
+own IP. Best done together with B14's hosting. A longer minimum password
+length would help as much, but locks no one out.
+
+**B60 · LOW · Failed-login counters are never removed** — found 2026-10-16
+Where: `LoginAttemptService.failures` (B56) keeps one entry per account or
+unknown email that failed, until the server restarts. `LoginRequest.email`
+has no maximum length either.
+Why it matters: a script that tries a new random email each time - or one
+huge email - makes the map grow without end. Each request costs it ~100 ms
+of BCrypt, so this is slow, not urgent.
+Relates to: B56.
+Fix idea: cap `LoginRequest.email` at `FieldLimits.TEXT`, like
+`RegisterRequest`; and remove expired entries now and then, e.g. a
+`@Scheduled` method (Spring's own, needs `@EnableScheduling`, no new
+dependency) that drops entries whose last failure is over 15 minutes old.
 
 ---
 

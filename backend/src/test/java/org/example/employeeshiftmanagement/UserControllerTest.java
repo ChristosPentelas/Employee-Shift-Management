@@ -4,6 +4,7 @@ import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.exception.TooManyAttemptsException;
 import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.service.TokenService;
@@ -14,11 +15,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultMatcher;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -35,6 +38,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -361,6 +365,59 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.token").doesNotExist());
 
         verify(tokenService, never()).issueToken(any());
+    }
+
+    // --- a locked account (B56) ---
+
+    private static final String RIGHT_LOGIN = """
+            {"email":"test@example.com","password":"secret123"}
+            """;
+
+    @Test
+    void aLockedAccountIsTooManyRequestsAndGetsNoToken() throws Exception {
+        when(userService.authenticate(anyString(), anyString()))
+                .thenThrow(new TooManyAttemptsException(Duration.ofMinutes(15)));
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(RIGHT_LOGIN))
+                // 429, not 401: the app ends the session on a 401 to a request
+                // with a token, and must be able to say "wait" rather than
+                // "wrong password".
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "900"))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.detail").value("Too many failed attempts, try again later"))
+                .andExpect(jsonPath("$.instance").value("/api/v1/users/login"))
+                .andExpect(jsonPath("$.token").doesNotExist());
+
+        verify(tokenService, never()).issueToken(any());
+    }
+
+    @Test
+    void retryAfterRoundsUpToAWholeSecond() throws Exception {
+        // Retry-After is a whole number of seconds (RFC 9110). Rounding 90.4 s
+        // down would send the client back 0.4 s too early, into the lock again.
+        when(userService.authenticate(anyString(), anyString()))
+                .thenThrow(new TooManyAttemptsException(Duration.ofSeconds(90).plusMillis(400)));
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(RIGHT_LOGIN))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "91"));
+    }
+
+    @Test
+    void lessThanASecondLeftIsStillRetryAfterOneNotZero() throws Exception {
+        // "0" means "try again now", which would hit the lock again.
+        when(userService.authenticate(anyString(), anyString()))
+                .thenThrow(new TooManyAttemptsException(Duration.ofMillis(400)));
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(RIGHT_LOGIN))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"));
     }
 
     @Test
