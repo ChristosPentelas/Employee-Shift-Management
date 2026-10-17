@@ -248,7 +248,32 @@ void main() {
         await changeAnswered(400,
             '{"status":400,"detail":"Password must be at most 72 bytes"}'),
         ChangePasswordResult.invalid);
+    // Five wrong current passwords lock the change for 15 minutes (B56).
+    expect(
+        await changeAnswered(429,
+            '{"status":429,"detail":"Too many failed attempts, try again later"}'),
+        ChangePasswordResult.tooManyAttempts);
     expect(await changeAnswered(500), ChangePasswordResult.failed);
+  });
+
+  test('a 429 says how long to wait in its Retry-After header (B56)', () {
+    // Lower-case, as in a real response: the http package's client
+    // lower-cases header names, and a fake response keeps what it is given.
+    http.Response locked(Map<String, String> headers) =>
+        http.Response('', 429, headers: headers);
+
+    expect(ApiService.retryAfter(locked({'retry-after': '120'})),
+        const Duration(seconds: 120));
+    expect(ApiService.retryAfter(locked({})), isNull);
+    // "Wait 0 seconds" while locked makes no sense; the server sends at least 1.
+    expect(ApiService.retryAfter(locked({'retry-after': '0'})), isNull);
+    expect(ApiService.retryAfter(locked({'retry-after': '-5'})), isNull);
+    // RFC 9110 also allows a date here. Our server never sends one, but the
+    // app must not crash if a proxy in between does.
+    expect(
+        ApiService.retryAfter(
+            locked({'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'})),
+        isNull);
   });
 
   test('a password change without a network is a failure, not a crash', () async {

@@ -155,6 +155,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SnackBar(content: Text("Λάθος email ή κωδικός"), backgroundColor: Colors.red),
         );
 
+      }else if (response.statusCode == 429){
+        // Locked after 5 wrong passwords (B56). Not "your account is locked":
+        // the server locks unknown emails too, so a 429 says nothing about
+        // who is registered, and the message must not either.
+        final wait = ApiService.retryAfter(response);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_tooManyAttemptsText(wait)), backgroundColor: Colors.red),
+        );
+
       }else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Σφάλμα συστήματος: ${response.statusCode}")),
@@ -174,5 +183,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         });
       }
     }
+  }
+
+  // The wait in whole minutes, rounded up. Duration.inMinutes rounds down, so
+  // 59 seconds would read "0 minutes" while the lock is still on.
+  String _tooManyAttemptsText(Duration? wait) {
+    const tooMany = "Πολλές αποτυχημένες προσπάθειες.";
+    if (wait == null) return "$tooMany Δοκιμάστε ξανά αργότερα.";
+    final minutes = (wait.inSeconds / 60).ceil();
+    return "$tooMany Δοκιμάστε ξανά σε $minutes ${minutes == 1 ? "λεπτό" : "λεπτά"}.";
   }
 }

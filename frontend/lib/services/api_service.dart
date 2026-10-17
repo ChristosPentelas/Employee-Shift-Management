@@ -27,6 +27,9 @@ enum ChangePasswordResult {
   /// Any other 400: the server refused the new password, e.g. too short.
   /// The dialog checks the same rules first, so this means they drifted apart.
   invalid,
+  /// 429: too many wrong current passwords, so changing is locked for a while
+  /// (B56). Logging in is counted separately and still works.
+  tooManyAttempts,
   /// Anything else, including no network.
   failed,
 }
@@ -71,6 +74,18 @@ class ApiService {
         "password" : password,
       }),
     );
+  }
+
+  // How long a 429 says to wait (B56), or null if it does not say so in a form
+  // the app can use. The server sends whole seconds; RFC 9110 also allows a
+  // date, which is treated as "unknown" rather than parsed. The http package
+  // lower-cases header names, so 'Retry-After' would never be found.
+  static Duration? retryAfter(http.Response response) {
+    // tryParse, not parse: parse throws on a date, and the caller's catch
+    // would then tell the user the server cannot be reached.
+    final seconds = int.tryParse(response.headers['retry-after'] ?? '');
+    if (seconds == null || seconds <= 0) return null;
+    return Duration(seconds: seconds);
   }
 
   // The staff list feeds pickers (assign a shift, start a chat), so it asks
@@ -264,6 +279,8 @@ class ApiService {
           return detail == _wrongCurrentPasswordDetail
               ? ChangePasswordResult.wrongCurrentPassword
               : ChangePasswordResult.invalid;
+        case 429:
+          return ChangePasswordResult.tooManyAttempts;
         default:
           return ChangePasswordResult.failed;
       }

@@ -132,6 +132,27 @@ void main() {
       expect(tester.widget<ElevatedButton>(save).onPressed, isNotNull);
     });
 
+    testWidgets('a locked password change keeps the dialog open and the login (B56)',
+        (WidgetTester tester) async {
+      final container = testContainer(user: worker());
+      final api = ApiService(client: MockClient((_) async => http.Response(
+          '{"status":429,"detail":"Too many failed attempts, try again later"}',
+          429,
+          headers: {'retry-after': '900'})));
+
+      await openDialog(tester, container, api);
+      await fillIn(tester);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ChangePasswordDialog), findsOneWidget);
+      expect(find.textContaining('Πολλές αποτυχημένες προσπάθειες'), findsOneWidget);
+      // Not the general message: "try again" now would only be refused.
+      expect(find.text('Η αλλαγή απέτυχε. Δοκιμάστε ξανά.'), findsNothing);
+      // A 429 is not a rejected token: the user stays logged in.
+      expect(container.read(authProvider)?.token, 'test-token');
+    });
+
     // Each mistake the phone can see is shown at its field, and no request
     // is sent for it.
     final mistakes = {

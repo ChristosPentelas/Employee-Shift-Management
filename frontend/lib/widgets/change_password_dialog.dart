@@ -84,6 +84,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
         return "Ο τρέχων κωδικός είναι λάθος.";
       case ChangePasswordResult.invalid:
         return "Ο νέος κωδικός δεν έγινε δεκτός.";
+      case ChangePasswordResult.tooManyAttempts:
+        // No wait shown: the user is not locked out of the app, only out of
+        // this dialog, and the enum carries no Retry-After.
+        return "Πολλές αποτυχημένες προσπάθειες. Δοκιμάστε ξανά αργότερα.";
       case ChangePasswordResult.failed:
       // Never shown - changed closes the dialog - but Dart wants every case
       // named, so a value added to the enum later cannot be forgotten here.

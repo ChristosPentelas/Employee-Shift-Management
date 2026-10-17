@@ -601,53 +601,6 @@ Dart STOMP client) for an open chat, and Firebase Cloud Messaging for a
 notification when the app is closed. Both are new dependencies on both
 sides, so decide first.
 
-**B56 · MEDIUM · Nothing limits how many passwords can be tried** — found 2026-10-14
-Where: `POST /users/login`, and since B8 `PUT /users/me/password`, which
-also checks a password.
-Why it matters: a script can try passwords against one email as fast as
-the server answers. BCrypt slows each try to about 100 ms, but that still
-allows hundreds of thousands of guesses a day, and passwords here can be
-as short as 4 characters. The password-change endpoint needs a valid
-token, so it only matters to someone who already has one, e.g. from a
-phone left unlocked.
-Relates to: F1, B8.
-Fix idea: count failed attempts per email (and per IP) and refuse with
-429 Too Many Requests for a while after, say, 5 in a row. An in-memory
-counter is enough for one server; a library like Bucket4j would be a new
-dependency, so decide first. Lock for a short time rather than for good,
-or anyone can lock a colleague out on purpose.
-Plan (decided 2026-10-16): no new dependency; 5 failures in a row lock for
-15 minutes. Three steps: **56a** login, **56b** password change, **56c** the
-app explains a 429.
-Since `feat(backend): lock an account for 15 minutes after 5 wrong passwords`
-(56a): `LoginAttemptService` counts each login attempt as a failure *before*
-BCrypt runs, inside a `synchronized` method, and `succeeded()` takes it
-back - so 200 requests sent at once get 5 guesses, not 200. Failures count
-"in a row" while each is less than 15 minutes after the last. A locked
-account answers 429 with `Retry-After` (seconds, rounded up, at least 1),
-even for the right password, and a refused try does not extend the lock.
-Counted per user id, not per typed email: the `utf8mb4_0900_ai_ci`
-collation finds `Nikos@x.gr` and `nïkos@x.gr` as the same user (checked on
-MySQL 8.0.44), so a key on the typed text would give every spelling 5 new
-tries. Unknown emails are counted too, by their lower-cased text, so a 429
-does not mean "registered". Accepted: once a real account is locked, a
-*differently spelled* email for it also answers 429, while a new spelling
-of an unknown email answers 401 - telling the two apart costs 5 guesses and
-locks the account. Anyone can lock a colleague out for 15 minutes on
-purpose. Counters are lost on restart and not shared between servers. Not
-per IP (B59); old counters are never removed (B60). The app shows
-"Σφάλμα συστήματος: 429" until 56c.
-Since `feat(backend): lock password changes after 5 wrong current passwords`
-(56b): `changePassword` uses the same rule under its own key,
-`password-change-user:<id>`, so a stolen token's guessing cannot lock the
-real user out of logging in, and a locked login does not stop the user
-changing the password. The count is cleared as soon as the current password
-is proven right, before the new one is checked: a too-long new password is
-not a guess. The in-memory count is not rolled back with the transaction
-when `WrongPasswordException` undoes the change - which is the point. The
-app shows its general "failed" message for this 429 until 56c.
-Left: 56c.
-
 **B57 · LOW · A request record's `toString()` prints its password** — found 2026-10-14
 Where: `LoginRequest`, `RegisterRequest`, `ChangePasswordRequest`. A record
 generates `toString()` from every field, so it gives e.g.
@@ -986,4 +939,65 @@ profile shows a snackbar. `ApiService.changePassword` returns a
 the `detail` text (B58).
 Left: tokens issued before the change stay valid until they expire (F1's
 accepted limit), so a new password does not lock out someone who already
-holds a token. Nothing limits guesses at the current password (B56).
+holds a token. Nothing limited guesses at the current password until B56b.
+
+**B56 · MEDIUM · Nothing limits how many passwords can be tried** — found 2026-10-14
+Where: `POST /users/login`, and since B8 `PUT /users/me/password`, which
+also checks a password.
+Why it matters: a script can try passwords against one email as fast as
+the server answers. BCrypt slows each try to about 100 ms, but that still
+allows hundreds of thousands of guesses a day, and passwords here can be
+as short as 4 characters. The password-change endpoint needs a valid
+token, so it only matters to someone who already has one, e.g. from a
+phone left unlocked.
+Relates to: F1, B8.
+Fix idea: count failed attempts per email (and per IP) and refuse with
+429 Too Many Requests for a while after, say, 5 in a row. An in-memory
+counter is enough for one server; a library like Bucket4j would be a new
+dependency, so decide first. Lock for a short time rather than for good,
+or anyone can lock a colleague out on purpose.
+Plan (decided 2026-10-16): no new dependency; 5 failures in a row lock for
+15 minutes. Three steps: **56a** login, **56b** password change, **56c** the
+app explains a 429.
+Since `feat(backend): lock an account for 15 minutes after 5 wrong passwords`
+(56a): `LoginAttemptService` counts each login attempt as a failure *before*
+BCrypt runs, inside a `synchronized` method, and `succeeded()` takes it
+back - so 200 requests sent at once get 5 guesses, not 200. Failures count
+"in a row" while each is less than 15 minutes after the last. A locked
+account answers 429 with `Retry-After` (seconds, rounded up, at least 1),
+even for the right password, and a refused try does not extend the lock.
+Counted per user id, not per typed email: the `utf8mb4_0900_ai_ci`
+collation finds `Nikos@x.gr` and `nïkos@x.gr` as the same user (checked on
+MySQL 8.0.44), so a key on the typed text would give every spelling 5 new
+tries. Unknown emails are counted too, by their lower-cased text, so a 429
+does not mean "registered". Accepted: once a real account is locked, a
+*differently spelled* email for it also answers 429, while a new spelling
+of an unknown email answers 401 - telling the two apart costs 5 guesses and
+locks the account. Anyone can lock a colleague out for 15 minutes on
+purpose. Counters are lost on restart and not shared between servers. Not
+per IP (B59); old counters are never removed (B60). The app shows
+"Σφάλμα συστήματος: 429" until 56c.
+Since `feat(backend): lock password changes after 5 wrong current passwords`
+(56b): `changePassword` uses the same rule under its own key,
+`password-change-user:<id>`, so a stolen token's guessing cannot lock the
+real user out of logging in, and a locked login does not stop the user
+changing the password. The count is cleared as soon as the current password
+is proven right, before the new one is checked: a too-long new password is
+not a guess. The in-memory count is not rolled back with the transaction
+when `WrongPasswordException` undoes the change - which is the point. The
+app shows its general "failed" message for this 429 until 56c.
+Fixed by: `1dfe1c3` (56a), `b5255d1` (56b) and
+`feat(frontend): explain a locked login or password change` (56c),
+2026-10-17.
+**56c:** `ApiService.retryAfter` reads the `retry-after` header (the http
+package lower-cases names) with `int.tryParse`, so a missing header, a date
+form or a value under 1 gives `null` instead of an exception that would end
+in "cannot reach the server". The login screen shows "Πολλές αποτυχημένες
+προσπάθειες. Δοκιμάστε ξανά σε N λεπτά." - minutes rounded up, since
+`Duration.inMinutes` rounds down and 59 s would read "0" - or "αργότερα"
+without a usable header. It never says "account": unknown emails are locked
+too. `ChangePasswordResult.tooManyAttempts` gives the dialog the same
+sentence without a wait; a record carrying the Duration was the alternative,
+not worth changing every caller for a user who can still use the app. A 429
+is not a 401, so `AuthClient` logs no one out.
+Left: B59 (per IP), B60 (old counters).
