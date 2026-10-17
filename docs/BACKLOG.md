@@ -657,6 +657,36 @@ Fix idea: cap `LoginRequest.email` at `FieldLimits.TEXT`, like
 `@Scheduled` method (Spring's own, needs `@EnableScheduling`, no new
 dependency) that drops entries whose last failure is over 15 minutes old.
 
+**B61 · LOW · The Flutter app still describes itself as "A new Flutter project"** — found 2026-10-17
+Where: `frontend/README.md` starts with the template heading
+`employee_shift_management_ui` / "A new Flutter project." and ends with the
+template's "Getting Started" links; `frontend/pubspec.yaml` has
+`description: "A new Flutter project."`.
+Why it matters: the root `README.md` links to `frontend/README.md` for the
+backend-address commands, so GitHub visitors land on template text that says
+nothing about this app. Leftover boilerplate makes a project look unfinished.
+Fix idea: give `frontend/README.md` a real title and one line on what it is,
+keep the "Pointing the app at the backend" section, delete "Getting Started".
+Change the `pubspec.yaml` description to match. Docs only, no code change.
+
+**B62 · LOW · A user's role is a free-text `String`, not an enum** — found 2026-10-17
+Where: `User.role` is a `String` with the comment `//("EMPLOYEE,SUPERVISOR)`;
+`UserService` writes `"EMPLOYEE"` / `"SUPERVISOR"` and
+`existsByRole("SUPERVISOR")` as string literals; on the app side,
+`auth_session.dart` compares `role.toUpperCase() == 'SUPERVISOR'`.
+`LeaveStatus` and `NewsType` are already enums, so this one is the odd one out.
+Why it matters: a typo like `"SUPERVISER"` compiles, and the user then fails
+every `hasRole('SUPERVISOR')` check without any error. The database column
+accepts any text too. Clients cannot set the role (`RegisterRequest` and
+`UpdateUserRequest` have no role field), so today only our own code can get it
+wrong.
+Relates to: B53 (comparing labels instead of values).
+Fix idea: a `Role` enum with `@Enumerated(EnumType.STRING)` on `User.role`, so
+the stored values stay `EMPLOYEE` / `SUPERVISOR` and no data migration is
+needed. The JWT `role` claim must still carry the plain name
+(`role.name()`), which `JwtConfig` turns into `ROLE_SUPERVISOR`. Optionally a
+Flyway migration adding a `CHECK (role IN ('EMPLOYEE','SUPERVISOR'))`.
+
 ---
 
 ## Done
