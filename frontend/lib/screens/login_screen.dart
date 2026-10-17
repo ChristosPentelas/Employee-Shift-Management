@@ -118,7 +118,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   // Login logic
-  void _handleLogin() async {
+  // Future<void>, not `void ... async`: a void async method hands its Future to
+  // nobody, so no caller can await it and an error thrown outside the try below
+  // is lost. onPressed still accepts it - it ignores what the function returns.
+  Future<void> _handleLogin() async {
     //if form is not valid,stop here
     if(!_formKey.currentState!.validate()) return;
 
