@@ -188,19 +188,6 @@ so a conversation older than both pages is missing. Grouping on the phone
 cannot fix that; a server endpoint that returns the latest message per
 conversation can.
 
-**B19 · MEDIUM · A leave request with no reason silently fails** — found 2026-09-15
-Where: `leave_requests_screen.dart` labels the field "Λόγος (Προαιρετικά" —
-optional, and missing its closing bracket — but `CreateLeaveRequest.reason` is
-`@NotBlank` on the server. `ApiService.submitLeaveRequest` never looks at the
-response.
-Why it matters: an employee who leaves the reason empty gets a 400 they never
-see. The dialog closes as if the request was filed, and nothing was saved — they
-may simply not show up for work believing their leave is pending.
-Relates to: B1 (validation messages never reach the client), F15.
-Fix idea: decide whether a reason is required. Then make the label and the
-server agree, and have `submitLeaveRequest` check the status and tell the user
-when it failed.
-
 **B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
 Where: `UserService.registerNewEmployee` and `updateUser` throw
 `IllegalStateException`; `ApiExceptionHandler` maps that type to 400.
@@ -310,7 +297,10 @@ Why it matters: a double tap sends two POSTs. Since F30 the second one usually
 gets a 409 and the supervisor may see "overlaps" for a shift that was in fact
 saved by the first tap; if both arrive at the same instant, both are saved
 (B30). A classic beginner pitfall in any form that submits over the network.
-Relates to: B30, F30.
+Seen again in B19 (2026-10-17): the leave dialog in `leave_requests_screen.dart`
+`_showAddLeaveDialog` does the same with `submitLeaveRequest`, and a double tap
+files the same leave twice - leave has no overlap check to refuse the second.
+Relates to: B30, F30, B19.
 Fix idea: a `saving` flag in the dialog state; `onPressed: null` and a small
 spinner while it is true.
 
@@ -1031,3 +1021,27 @@ sentence without a wait; a record carrying the Duration was the alternative,
 not worth changing every caller for a user who can still use the app. A 429
 is not a 401, so `AuthClient` logs no one out.
 Left: B59 (per IP), B60 (old counters).
+
+**B19 · MEDIUM · A leave request with no reason silently fails** — found 2026-09-15
+Where: `leave_requests_screen.dart` labels the field "Λόγος (Προαιρετικά" —
+optional, and missing its closing bracket — but `CreateLeaveRequest.reason` is
+`@NotBlank` on the server. `ApiService.submitLeaveRequest` never looks at the
+response.
+Why it matters: an employee who leaves the reason empty gets a 400 they never
+see. The dialog closes as if the request was filed, and nothing was saved — they
+may simply not show up for work believing their leave is pending.
+Relates to: B1 (validation messages never reach the client), F15.
+Fix idea: decide whether a reason is required. Then make the label and the
+server agree, and have `submitLeaveRequest` check the status and tell the user
+when it failed.
+Fixed by: `fix(frontend): say when a leave request was not filed`, 2026-10-17.
+Decided: the reason stays **required** - the supervisor decides by it, and
+the server already said so. Making it optional (privacy: reasons are health
+and family information) would have changed the server too; not chosen.
+The label is now "Λόγος" with `maxLength: 255` (`FieldLimits.TEXT`), and
+Submit stays disabled until the reason has something besides spaces (`trim()`:
+`@NotBlank` refuses spaces only). `submitLeaveRequest` returns a
+`SubmitLeaveResult` - the same shape as `AssignShiftResult` - and the dialog
+closes only on `created`; otherwise it stays open with a Greek message.
+Left: the dialog can still be submitted twice (B32), and approve / reject
+still ignores its status (B42).

@@ -18,6 +18,17 @@ enum AssignShiftResult {
   failed,
 }
 
+/// The outcome of ApiService.submitLeaveRequest (B19).
+enum SubmitLeaveResult {
+  /// 201: the request is filed, as PENDING.
+  created,
+  /// 400: the server refused a field, e.g. a blank or too long reason. The
+  /// dialog checks those first, so this means the two rules drifted apart.
+  invalid,
+  /// Anything else, including no network.
+  failed,
+}
+
 /// The outcome of ApiService.changePassword (B8).
 enum ChangePasswordResult {
   /// 204: the new password is stored. The login token stays valid.
@@ -205,17 +216,31 @@ class ApiService {
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }
 
-  Future<void> submitLeaveRequest(LeaveRequest leave) async {
-    await _client.post(
-      Uri.parse("$baseUrl/leaves"),
-      headers: {"Content-Type" : "application/json"},
-      body: jsonEncode({
-        // No userId: the server files it for whoever the token says we are.
-        "startDate": leave.startDate.toIso8601String(),
-        "endDate": leave.endDate.toIso8601String(),
-        "reason": leave.reason
-      }),
-    );
+  /// Files a leave request and says whether the server took it. It used to
+  /// ignore the reply, so a refused request looked filed (B19).
+  Future<SubmitLeaveResult> submitLeaveRequest(LeaveRequest leave) async {
+    try {
+      final response = await _client.post(
+        Uri.parse("$baseUrl/leaves"),
+        headers: {"Content-Type" : "application/json"},
+        body: jsonEncode({
+          // No userId: the server files it for whoever the token says we are.
+          "startDate": leave.startDate.toIso8601String(),
+          "endDate": leave.endDate.toIso8601String(),
+          "reason": leave.reason
+        }),
+      );
+      switch (response.statusCode) {
+        case 201:
+          return SubmitLeaveResult.created;
+        case 400:
+          return SubmitLeaveResult.invalid;
+        default:
+          return SubmitLeaveResult.failed;
+      }
+    } catch (e) {
+      return SubmitLeaveResult.failed;
+    }
   }
 
   Future<void> updateLeaveStatus(int leaveId, String newStatus) async {

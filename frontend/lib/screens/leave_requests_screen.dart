@@ -154,6 +154,9 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   void _showAddLeaveDialog() {
     DateTimeRange? selectedRange;
     final _reasonController = TextEditingController();
+    // Why the server refused, shown under the reason. The dialog stays open
+    // so nothing typed is lost (B19).
+    String? saveError;
 
     showDialog(
       context: context,
@@ -161,7 +164,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
       // screen's, and every `context` below would quietly mean the dialog (F25).
       builder: (_) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text("Αίτηση Αδειας"),
+          title: Text("Αίτηση Αδείας"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -186,14 +189,29 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
               SizedBox(height: 10),
               TextField(
                 controller: _reasonController,
-                decoration: InputDecoration(labelText: "Λόγος (Προαιρετικά"),
+                // Required: the server's CreateLeaveRequest.reason is
+                // @NotBlank, and the supervisor decides by it (B19).
+                decoration: InputDecoration(labelText: "Λόγος"),
+                // FieldLimits.TEXT on the server.
+                maxLength: 255,
+                // Typing does not rebuild a StatefulBuilder by itself; without
+                // this the submit button would not notice the reason.
+                onChanged: (_) => setDialogState(() {}),
               ),
+              if (saveError != null)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(saveError!, style: TextStyle(color: Colors.red)),
+                ),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
-              onPressed: (selectedRange == null) ? null : () async {
+              // trim(): spaces only is not empty, but @NotBlank refuses it.
+              onPressed: (selectedRange == null || _reasonController.text.trim().isEmpty)
+                  ? null
+                  : () async {
                 // Read before the await: the session can end while the
                 // request is on its way (B16).
                 final me = ref.read(authProvider);
@@ -208,14 +226,18 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                   reason: _reasonController.text,
                 );
 
-                await _apiService.submitLeaveRequest(newRequest);
+                final result = await _apiService.submitLeaveRequest(newRequest);
                 // The dialog and the screen are checked separately: the dialog
                 // can be closed (tap outside) while the screen stays (F25).
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (!mounted) return;
-                setState(() {
-                  _leavesFuture = _loadLeaves();
-                });
+                if (result == SubmitLeaveResult.created) {
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (!mounted) return;
+                  setState(() {
+                    _leavesFuture = _loadLeaves();
+                  });
+                } else if (dialogContext.mounted) {
+                  setDialogState(() => saveError = _submitErrorText(result));
+                }
             },
               child: Text("Υποβολή"),
             ),
@@ -223,5 +245,17 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
         ),
       ),
     );
+  }
+
+  String _submitErrorText(SubmitLeaveResult result) {
+    switch (result) {
+      case SubmitLeaveResult.invalid:
+        return "Ελέγξτε τις ημερομηνίες και τον λόγο.";
+      case SubmitLeaveResult.failed:
+      // Never shown - created closes the dialog - but Dart wants every case
+      // named, so a value added to the enum later cannot be forgotten here.
+      case SubmitLeaveResult.created:
+        return "Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.";
+    }
   }
 }

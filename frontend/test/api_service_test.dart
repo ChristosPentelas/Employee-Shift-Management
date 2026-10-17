@@ -22,6 +22,15 @@ Shift aShift() => Shift(
       position: 'Ταμείο',
     );
 
+LeaveRequest aLeave() => LeaveRequest(
+      id: 0,
+      employee: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+      startDate: DateTime(2026, 10, 1),
+      endDate: DateTime(2026, 10, 5),
+      status: 'PENDING',
+      reason: 'Surgery',
+    );
+
 void main() {
   test('requests go through the auth client and carry the token', () async {
     http.BaseRequest? sent;
@@ -207,6 +216,29 @@ void main() {
     final result = await api.assignShift(aShift(), 7);
 
     expect(result, AssignShiftResult.failed);
+  });
+
+  // B19: the reply used to be ignored, so a refused request looked filed.
+  test('filing leave reports whether the server took it', () async {
+    Future<SubmitLeaveResult> submitAnswered(int status) {
+      final api = ApiService(
+          client: MockClient((_) async => http.Response('{}', status)));
+      return api.submitLeaveRequest(aLeave());
+    }
+
+    expect(await submitAnswered(201), SubmitLeaveResult.created);
+    expect(await submitAnswered(400), SubmitLeaveResult.invalid);
+    expect(await submitAnswered(500), SubmitLeaveResult.failed);
+  });
+
+  test('filing leave without a network is a failure, not a crash', () async {
+    final api = ApiService(client: MockClient((_) async {
+      throw http.ClientException('no network');
+    }));
+
+    final result = await api.submitLeaveRequest(aLeave());
+
+    expect(result, SubmitLeaveResult.failed);
   });
 
   test('a password change names no user: the server takes it from the token (B8)',
