@@ -14,7 +14,9 @@ import java.util.Map;
  * (B56), so a script cannot try passwords as fast as the server answers.
  *
  * A key is whatever the caller counts by - for a login, the user (see
- * UserService.authenticate). Failures count "in a row" while each comes less
+ * UserService.authenticate); a password change counts the same user under a
+ * key of its own (UserService.changePassword), so one never locks the other.
+ * Failures count "in a row" while each comes less
  * than LOCK_DURATION after the one before; a longer gap starts again from
  * zero. The lock is short rather than permanent, because anyone who knows a
  * colleague's email can lock them out on purpose.

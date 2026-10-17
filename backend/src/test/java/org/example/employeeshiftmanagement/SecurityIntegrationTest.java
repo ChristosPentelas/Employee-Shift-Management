@@ -315,6 +315,32 @@ class SecurityIntegrationTest {
         assertTrue(retryAfter > 0 && retryAfter <= 900, "Retry-After was " + retryAfter);
     }
 
+    private HttpStatusCode changePassword(String token, String current) {
+        return client().put().uri("/users/me/password")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"currentPassword":"%s","newPassword":"newSecret456"}
+                        """.formatted(current))
+                .exchange((req, response) -> response.getStatusCode());
+    }
+
+    @Test
+    void afterFiveWrongCurrentPasswordsAPasswordChangeIsTooManyRequests() {
+        registeredUser("it-change-lockout@example.com", null);
+        String token = login("it-change-lockout@example.com");
+        for (int i = 0; i < 5; i++) {
+            assertEquals(400, changePassword(token, "wrong").value(),
+                    "attempt " + (i + 1) + " of 5 must still be an ordinary wrong password");
+        }
+
+        // 429, not 401: the token is still good, so the app must not log out.
+        assertEquals(429, changePassword(token, "secret123").value());
+
+        // Its own counter: the user can still log in with the unchanged password.
+        assertNotNull(login("it-change-lockout@example.com"));
+    }
+
     @Test
     void aForbiddenAnswerCarriesTheStandardErrorBody() {
         registeredUser("it-403-body@example.com", null);

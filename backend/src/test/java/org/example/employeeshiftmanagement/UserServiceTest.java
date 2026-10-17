@@ -185,12 +185,12 @@ public class UserServiceTest {
     // test transaction, and Spring reuses this context for other test classes.
     // Each test therefore uses an email no other test uses.
 
-    private void registerWithPassword(String email) {
+    private User registerWithPassword(String email) {
         User user = new User();
         user.setName("Lockout User");
         user.setEmail(email);
         user.setPassword("secret123");
-        userService.registerNewEmployee(user);
+        return userService.registerNewEmployee(user);
     }
 
     @Test
@@ -431,5 +431,86 @@ public class UserServiceTest {
 
         // The limit is "at most 72", as at registration: 72 itself is allowed.
         assertTrue(userService.authenticate("login@example.com", seventyTwoBytes).isPresent());
+    }
+
+    // --- limiting current-password guesses on a password change (B56 step 56b) ---
+    // Same rule as login, but its own counter per user: someone holding a
+    // stolen token must not get unlimited tries at the current password, and
+    // their guessing must not lock the real user out of logging in.
+
+    private void failPasswordChange(Integer userId, int times) {
+        for (int i = 0; i < times; i++) {
+            assertThrows(WrongPasswordException.class,
+                    () -> userService.changePassword(userId, "wrong", "newSecret456"),
+                    "attempt " + (i + 1) + " must still be told the password is wrong");
+        }
+    }
+
+    @Test
+    void fiveWrongCurrentPasswordsLockPasswordChangesEvenForTheRightOne() {
+        User saved = registerWithPassword("change-lock@example.com");
+        failPasswordChange(saved.getId(), 5);
+
+        assertThrows(TooManyAttemptsException.class,
+                () -> userService.changePassword(saved.getId(), "secret123", "newSecret456"));
+
+        assertTrue(userService.authenticate("change-lock@example.com", "secret123").isPresent(),
+                "the refused change must not have changed the password");
+    }
+
+    @Test
+    void theRightCurrentPasswordResetsThePasswordChangeCount() {
+        User saved = registerWithPassword("change-reset@example.com");
+        failPasswordChange(saved.getId(), 4);
+        userService.changePassword(saved.getId(), "secret123", "newSecret456");
+
+        failPasswordChange(saved.getId(), 4);
+
+        // 8 wrong in total, but never 5 in a row.
+        assertDoesNotThrow(() -> userService.changePassword(saved.getId(), "newSecret456", "third789"));
+    }
+
+    @Test
+    void aRightCurrentPasswordWithARefusedNewOneIsNotAGuess() {
+        // The caller proved they know the password; only the new one is too
+        // long. Counting that as a failure would lock out a user who knows
+        // their password, after five tries at a new one.
+        User saved = registerWithPassword("change-too-long@example.com");
+        for (int i = 0; i < 5; i++) {
+            assertThrows(IllegalStateException.class,
+                    () -> userService.changePassword(saved.getId(), "secret123", "κ".repeat(37)));
+        }
+
+        assertDoesNotThrow(() -> userService.changePassword(saved.getId(), "secret123", "newSecret456"));
+    }
+
+    @Test
+    void aLockedPasswordChangeDoesNotLockLogin() {
+        User saved = registerWithPassword("change-not-login@example.com");
+        failPasswordChange(saved.getId(), 5);
+
+        assertTrue(userService.authenticate("change-not-login@example.com", "secret123").isPresent());
+    }
+
+    @Test
+    void aLockedLoginDoesNotLockPasswordChange() {
+        User saved = registerWithPassword("login-not-change@example.com");
+        for (int i = 0; i < 5; i++) {
+            userService.authenticate("login-not-change@example.com", "wrong");
+        }
+
+        // Someone typing wrong passwords at the login screen must not stop
+        // the logged-in user from changing theirs - which is what they would
+        // want to do after seeing that.
+        assertDoesNotThrow(() -> userService.changePassword(saved.getId(), "secret123", "newSecret456"));
+    }
+
+    @Test
+    void lockingOneUsersPasswordChangeLeavesTheOthersAlone() {
+        User locked = registerWithPassword("change-locked-out@example.com");
+        User bystander = registerWithPassword("change-bystander@example.com");
+        failPasswordChange(locked.getId(), 5);
+
+        assertDoesNotThrow(() -> userService.changePassword(bystander.getId(), "secret123", "newSecret456"));
     }
 }

@@ -208,6 +208,24 @@ class UserControllerTest {
     }
 
     @Test
+    void aLockedPasswordChangeIsTooManyRequestsNotUnauthorized() throws Exception {
+        doThrow(new TooManyAttemptsException(Duration.ofMinutes(15)))
+                .when(userService).changePassword(anyInt(), anyString(), anyString());
+
+        // 401 would log the user out (auth_client.dart); their token is fine.
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PASSWORD_CHANGE))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "900"))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.detail").value("Too many failed attempts, try again later"))
+                .andExpect(jsonPath("$.instance").value("/api/v1/users/me/password"));
+    }
+
+    @Test
     void aNewPasswordShorterThanFourCharactersIsRejected() throws Exception {
         mockMvc.perform(put("/api/v1/users/me/password")
                         .with(TestTokens.employee())

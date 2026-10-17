@@ -637,7 +637,16 @@ locks the account. Anyone can lock a colleague out for 15 minutes on
 purpose. Counters are lost on restart and not shared between servers. Not
 per IP (B59); old counters are never removed (B60). The app shows
 "Σφάλμα συστήματος: 429" until 56c.
-Left: 56b, 56c.
+Since `feat(backend): lock password changes after 5 wrong current passwords`
+(56b): `changePassword` uses the same rule under its own key,
+`password-change-user:<id>`, so a stolen token's guessing cannot lock the
+real user out of logging in, and a locked login does not stop the user
+changing the password. The count is cleared as soon as the current password
+is proven right, before the new one is checked: a too-long new password is
+not a guess. The in-memory count is not rolled back with the transaction
+when `WrongPasswordException` undoes the change - which is the point. The
+app shows its general "failed" message for this 429 until 56c.
+Left: 56c.
 
 **B57 · LOW · A request record's `toString()` prints its password** — found 2026-10-14
 Where: `LoginRequest`, `RegisterRequest`, `ChangePasswordRequest`. A record

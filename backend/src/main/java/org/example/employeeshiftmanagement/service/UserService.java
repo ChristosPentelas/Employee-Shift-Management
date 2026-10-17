@@ -201,6 +201,8 @@ public class UserService {
      * Wrong current password: WrongPasswordException. New one over
      * MAX_PASSWORD_BYTES: the same IllegalStateException as registration, so
      * the caller is told which of the two passwords is the problem.
+     * After LoginAttemptService.MAX_FAILURES wrong current passwords in a row:
+     * TooManyAttemptsException (429), even for the right one (B56).
      *
      * Like registration, only the hash of the new password is stored (F2).
      */
@@ -208,11 +210,22 @@ public class UserService {
     public void changePassword(Integer userId, String current, String newPassword) {
         User user = findUserById(userId);
 
+        // Its own counter, not the login one (B56 step 56b): someone holding a
+        // stolen token must not get unlimited guesses at the current password,
+        // but their guessing must not lock the real user out of logging in -
+        // nor someone at the login screen stop the user changing it here.
+        String key = "password-change-user:" + userId;
+        loginAttempts.startAttempt(key);
+
         // Guard clauses: each check throws on its own, so the error names the
         // password that is actually wrong, and the happy path ends unindented.
         if (!passwordEncoder.matches(current, user.getPassword())) {
             throw new WrongPasswordException();
         }
+        // Right after the current password is proven, before the new one is
+        // checked: a new password that is too long is not a guess, and must
+        // not lock out a user who knows their password.
+        loginAttempts.succeeded(key);
         checkPasswordLength(newPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));
