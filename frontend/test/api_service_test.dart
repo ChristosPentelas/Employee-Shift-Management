@@ -241,6 +241,46 @@ void main() {
     expect(result, SubmitLeaveResult.failed);
   });
 
+  // B42: the reply used to be ignored, so a refused answer looked like it worked.
+  test('answering leave reports whether the server took it', () async {
+    Future<UpdateLeaveStatusResult> answerAnswered(int status) {
+      final api = ApiService(
+          client: MockClient((_) async => http.Response('{}', status)));
+      return api.updateLeaveStatus(5, 'APPROVED');
+    }
+
+    expect(await answerAnswered(200), UpdateLeaveStatusResult.updated);
+    // 409: someone answered it first (B63).
+    expect(await answerAnswered(409), UpdateLeaveStatusResult.alreadyAnswered);
+    expect(await answerAnswered(404), UpdateLeaveStatusResult.notFound);
+    expect(await answerAnswered(403), UpdateLeaveStatusResult.failed);
+    expect(await answerAnswered(500), UpdateLeaveStatusResult.failed);
+  });
+
+  test('answering leave sends the answer to that request', () async {
+    http.Request? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response('{}', 200);
+    }));
+
+    await api.updateLeaveStatus(5, 'REJECTED');
+
+    expect(sent!.method, 'PUT');
+    expect(sent!.url.path, '/api/v1/leaves/5/status');
+    expect(sent!.url.queryParameters, {'status': 'REJECTED'});
+  });
+
+  test('answering leave without a network is a failure, not a crash', () async {
+    final api = ApiService(client: MockClient((_) async {
+      throw http.ClientException('no network');
+    }));
+
+    final result = await api.updateLeaveStatus(5, 'APPROVED');
+
+    expect(result, UpdateLeaveStatusResult.failed);
+  });
+
   test('a password change names no user: the server takes it from the token (B8)',
       () async {
     late http.Request sent;

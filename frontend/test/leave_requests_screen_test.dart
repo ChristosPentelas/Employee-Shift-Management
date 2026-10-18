@@ -135,4 +135,67 @@ void main() {
       expect(listLoads, hasLength(2));
     });
   });
+
+  // B42: the reply to approve or reject used to be ignored, so a refused
+  // answer looked like it worked; B63 added the 409.
+  group('a supervisor answering a request', () {
+    final boss =
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    const pendingList = '{"content":[{"id":5,"startDate":"2026-10-01",'
+        '"endDate":"2026-10-05","status":"PENDING","reason":"Surgery",'
+        '"user":{"id":7,"name":"Worker","email":"worker@example.com",'
+        '"role":"EMPLOYEE"}}]}';
+
+    /// Opens the screen as [boss] against a fake server that answers the PUT
+    /// with [putStatus], and taps approve. Returns how many times the list
+    /// was loaded.
+    Future<List<String>> approveAnswered(WidgetTester tester, int putStatus) async {
+      final listLoads = <String>[];
+      final api = ApiService(client: MockClient((request) async {
+        if (request.method == 'PUT') return http.Response('{}', putStatus);
+        listLoads.add(request.url.path);
+        return http.Response(pendingList, 200);
+      }));
+      await tester.pumpWidget(withAppState(testContainer(user: boss),
+          MaterialApp(home: LeaveRequestsScreen(apiService: api))));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.check_circle));
+      await tester.pumpAndSettle();
+      return listLoads;
+    }
+
+    testWidgets('an answer that worked reloads the list',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, 200);
+
+      expect(listLoads, hasLength(2));
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('an answer the server refused says so and keeps the list',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, 500);
+
+      expect(find.text('Η αλλαγή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(listLoads, hasLength(1)); // nothing changed, so no reload
+    });
+
+    testWidgets('a request someone else answered first says so and reloads',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, 409);
+
+      expect(find.text('Η αίτηση έχει ήδη απαντηθεί.'), findsOneWidget);
+      // The list is out of date: reloading shows the other supervisor's answer.
+      expect(listLoads, hasLength(2));
+    });
+
+    testWidgets('a request that no longer exists says so and reloads',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, 404);
+
+      expect(find.text('Η αίτηση δεν υπάρχει πια.'), findsOneWidget);
+      expect(listLoads, hasLength(2));
+    });
+  });
 }

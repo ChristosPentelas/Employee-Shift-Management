@@ -385,18 +385,6 @@ Relates to: F29 (the audit's example), F26 (the same failures are also
 Fix idea: show a short Greek message and a "retry" button, and keep the
 technical detail for the debug log.
 
-**B42 · LOW · A failed approve or reject looks like it worked** — found 2026-09-26
-Where: `api_service.dart` `updateLeaveStatus` sends the `PUT` and never looks
-at the status code; `leave_requests_screen.dart` `_updateStatus` then reloads
-the list as if it had worked.
-Why it matters: a 403 or 500 raises nothing, so the error snackbar in
-`_updateStatus` only ever shows for a network failure. The supervisor taps
-"approve", sees no message, and has to notice that the status did not change.
-Relates to: B19 (`submitLeaveRequest` ignores its status code the same way).
-Fix idea: throw when the status is not 200, as `getAllShifts` does, and let
-`_updateStatus`'s existing `catch` show it (in Greek, not the raw exception:
-B41).
-
 **B43 · LOW · A delete can be started twice** — found 2026-09-29
 Where: `employee_details_screen.dart`, `news_screen.dart` and
 `shifts_screen.dart` close their confirmation dialog before the delete request
@@ -437,7 +425,9 @@ nobody is told. This is the scenario the audit gave for F11, but a
 transaction cannot prevent it: the two edits are separate HTTP requests,
 minutes apart, and even two overlapping transactions both read without a
 lock under MySQL's REPEATABLE READ, so the last write wins. Approving and
-rejecting the same leave request at once ends the same way.
+rejecting the same leave request at once ended the same way, until B63:
+a leave request can now be answered only once, and its row is locked
+while it is answered. The other three are still open.
 Relates to: F11 (the audit expected `@Transactional` to fix this).
 Fix idea: optimistic locking. A `version` column (new migration) mapped with
 `@Version`, sent in each response DTO and back in each update request; the
@@ -1045,3 +1035,48 @@ Submit stays disabled until the reason has something besides spaces (`trim()`:
 closes only on `created`; otherwise it stays open with a Greek message.
 Left: the dialog can still be submitted twice (B32), and approve / reject
 still ignores its status (B42).
+
+**B42 · LOW · A failed approve or reject looks like it worked** — found 2026-09-26
+Where: `api_service.dart` `updateLeaveStatus` sends the `PUT` and never looks
+at the status code; `leave_requests_screen.dart` `_updateStatus` then reloads
+the list as if it had worked.
+Why it matters: a 403 or 500 raises nothing, so the error snackbar in
+`_updateStatus` only ever shows for a network failure. The supervisor taps
+"approve", sees no message, and has to notice that the status did not change.
+Relates to: B19 (`submitLeaveRequest` ignores its status code the same way).
+Fix idea: throw when the status is not 200, as `getAllShifts` does, and let
+`_updateStatus`'s existing `catch` show it (in Greek, not the raw exception:
+B41).
+Fixed by: `fix(frontend): say when approving or rejecting leave failed`, 2026-10-18.
+Decided: an enum result, `UpdateLeaveStatusResult`, not the fix idea's
+"throw on non-200". It is what `submitLeaveRequest` (B19) next to it already
+does, and the screen needs to tell "already answered" and "gone" (reload the
+list) apart from "failed" (try again), which an exception would only carry as
+text. 200 reloads the list; 409 (B63) and 404 show a Greek snackbar and
+reload, since the list on screen is out of date; anything else shows "Η
+αλλαγή απέτυχε. Δοκιμάστε ξανά." and leaves the list as it is. The raw
+`Σφάλμα: $e` snackbar is gone from this screen.
+
+**B63 · MEDIUM · A leave request can be answered again, or set back to pending** — found 2026-10-18
+Where: `LeaveRequestService.updateLeaveRequest` set whatever status it was
+sent, at any time; `PUT /leaves/{id}/status` took any `LeaveStatus`,
+`PENDING` included.
+Why it matters: the rule "a request is answered once" lived only in the app,
+which hides the buttons once a request is decided. A direct API call could
+approve a rejected request, or quietly put an approved one back to pending.
+Two supervisors answering at the same moment could both see `PENDING`, and
+the last write won (B45).
+Relates to: B42 (found while fixing it), B45 (the same-moment case), F30 /
+B30 (the same lock pattern for shifts).
+Fixed by: `fix(backend): answer a leave request only once`, 2026-10-18.
+- The endpoint's parameter is a new `LeaveDecision` enum (`APPROVED`,
+  `REJECTED`), so `?status=PENDING` cannot be bound and Spring answers 400 by
+  itself. The URL and the app's request do not change.
+- The service throws `ConflictException` (409) unless the stored status is
+  `PENDING`. Sending the same answer twice is a 409 too.
+- The row is read with `findLockedById` (`SELECT ... FOR UPDATE`), as
+  `UserRepository` does for shifts, so a second answer waits for the first
+  and then sees it.
+Not tested: that the lock really blocks. `LeaveRequestServiceTest` checks the
+locking lookup is the one used; `ShiftConcurrencyIntegrationTest` already
+proves the same `@Lock` blocks on MySQL.

@@ -139,15 +139,33 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   }
 
   Future<void> _updateStatus(int id,String status) async {
-    try{
-      await _apiService.updateLeaveStatus(id, status);
-      if (!mounted) return;
+    final result = await _apiService.updateLeaveStatus(id, status);
+    if (!mounted) return;
+
+    final message = _updateErrorText(result);
+    if (message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+    // Reload unless nothing changed: after a 409 or 404 the list on screen is
+    // out of date, and the reload shows what is really stored (B42).
+    if (result != UpdateLeaveStatusResult.failed) {
       setState(() {
         _leavesFuture = _loadLeaves();
       });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
+    }
+  }
+
+  /// What to tell the supervisor, or null when the answer was saved.
+  String? _updateErrorText(UpdateLeaveStatusResult result) {
+    switch (result) {
+      case UpdateLeaveStatusResult.updated:
+        return null;
+      case UpdateLeaveStatusResult.alreadyAnswered:
+        return "Η αίτηση έχει ήδη απαντηθεί.";
+      case UpdateLeaveStatusResult.notFound:
+        return "Η αίτηση δεν υπάρχει πια.";
+      case UpdateLeaveStatusResult.failed:
+        return "Η αλλαγή απέτυχε. Δοκιμάστε ξανά.";
     }
   }
 

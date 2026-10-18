@@ -29,6 +29,18 @@ enum SubmitLeaveResult {
   failed,
 }
 
+/// The outcome of ApiService.updateLeaveStatus (B42).
+enum UpdateLeaveStatusResult {
+  /// 200: the request is approved or rejected.
+  updated,
+  /// 409: it was already answered, e.g. by another supervisor (B63).
+  alreadyAnswered,
+  /// 404: it no longer exists, e.g. its employee was deleted.
+  notFound,
+  /// Anything else, including no network.
+  failed,
+}
+
 /// The outcome of ApiService.changePassword (B8).
 enum ChangePasswordResult {
   /// 204: the new password is stored. The login token stays valid.
@@ -243,10 +255,27 @@ class ApiService {
     }
   }
 
-  Future<void> updateLeaveStatus(int leaveId, String newStatus) async {
-    await _client.put(
-      Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
-    );
+  /// Approves or rejects a leave request and says whether the server took it.
+  /// It used to ignore the reply, so a refused answer looked like it worked
+  /// (B42).
+  Future<UpdateLeaveStatusResult> updateLeaveStatus(int leaveId, String newStatus) async {
+    try {
+      final response = await _client.put(
+        Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
+      );
+      switch (response.statusCode) {
+        case 200:
+          return UpdateLeaveStatusResult.updated;
+        case 409:
+          return UpdateLeaveStatusResult.alreadyAnswered;
+        case 404:
+          return UpdateLeaveStatusResult.notFound;
+        default:
+          return UpdateLeaveStatusResult.failed;
+      }
+    } catch (e) {
+      return UpdateLeaveStatusResult.failed;
+    }
   }
 
   /// Saves your own profile and returns it as the server stored it, or null
