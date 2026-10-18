@@ -1,8 +1,8 @@
 package org.example.employeeshiftmanagement;
 
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
-import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.Message;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
@@ -165,7 +165,7 @@ class TransactionBoundaryIntegrationTest {
         leaveRequestRepository.save(leave);
 
         assertOneTransaction("LeaveRequestService.updateLeaveRequest",
-                () -> leaveRequestService.updateLeaveRequest(leave.getId(), LeaveStatus.APPROVED));
+                () -> leaveRequestService.updateLeaveRequest(leave.getId(), LeaveDecision.APPROVED));
     }
 
     // --- MessageService ---

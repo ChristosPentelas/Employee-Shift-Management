@@ -1,6 +1,8 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ConflictException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.User;
@@ -55,11 +57,25 @@ public class LeaveRequestService {
         return leaveRequestRepository.findByUserIdAndStatus(userId, status, Paging.withSort(pageable, LATEST_FIRST));
     }
 
+    /**
+     * A request is answered once (B63): approving a rejected one, or answering
+     * it a second time, is a ConflictException (409). Before, any status could
+     * be set at any time; only the app's hidden buttons stood in the way.
+     *
+     * The row is locked first, so two supervisors answering at the same moment
+     * cannot both see PENDING. The lock is the transaction's first statement,
+     * and a locking read always sees the latest committed row, so MySQL's
+     * REPEATABLE READ needs no change here (compare ShiftService).
+     */
     @Transactional
-    public LeaveRequest updateLeaveRequest(Integer requestId, LeaveStatus newStatus) {
-        LeaveRequest request = leaveRequestRepository.findById(requestId)
+    public LeaveRequest updateLeaveRequest(Integer requestId, LeaveDecision decision) {
+        LeaveRequest request = leaveRequestRepository.findLockedById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Leave Request Not Found with Id: " + requestId));
-        request.setStatus(newStatus);
+        if (request.getStatus() != LeaveStatus.PENDING) {
+            throw new ConflictException(
+                    "Leave request " + requestId + " is already " + request.getStatus());
+        }
+        request.setStatus(decision.toStatus());
         return leaveRequestRepository.save(request);
     }
 }

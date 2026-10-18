@@ -1,12 +1,16 @@
 package org.example.employeeshiftmanagement.repository;
 
+import jakarta.persistence.LockModeType;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
 
 @Repository
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Integer> {
@@ -30,4 +34,10 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
 
     @EntityGraph(attributePaths = "user")
     Page<LeaveRequest> findByUserIdAndStatus(Integer userId, LeaveStatus status, Pageable pageable);
+
+    // "select ... from leave_requests where id = ? for update", as
+    // UserRepository.findLockedById: two supervisors deciding the same request
+    // at once take turns, so the second sees the first's answer (B63).
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<LeaveRequest> findLockedById(Integer id);
 }

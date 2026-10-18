@@ -3,7 +3,9 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.LeaveRequestController;
+import org.example.employeeshiftmanagement.exception.ConflictException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
@@ -164,7 +166,7 @@ class LeaveRequestControllerTest {
     void aSupervisorCanApproveALeave() throws Exception {
         LeaveRequest approved = leaveRequest();
         approved.setStatus(LeaveStatus.APPROVED);
-        when(leaveRequestService.updateLeaveRequest(1, LeaveStatus.APPROVED)).thenReturn(approved);
+        when(leaveRequestService.updateLeaveRequest(1, LeaveDecision.APPROVED)).thenReturn(approved);
 
         mockMvc.perform(put("/api/v1/leaves/1/status")
                         .param("status", "APPROVED")
@@ -275,7 +277,7 @@ class LeaveRequestControllerTest {
 
     @Test
     void approvingAMissingLeaveIsNotFound() throws Exception {
-        when(leaveRequestService.updateLeaveRequest(99, LeaveStatus.APPROVED))
+        when(leaveRequestService.updateLeaveRequest(99, LeaveDecision.APPROVED))
                 .thenThrow(new ResourceNotFoundException("Leave Request Not Found with Id: 99"));
 
         mockMvc.perform(put("/api/v1/leaves/99/status")
@@ -284,5 +286,28 @@ class LeaveRequestControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.detail").value("Leave Request Not Found with Id: 99"));
+    }
+
+    @Test
+    void aLeaveCannotBeSetBackToPending() throws Exception {
+        // PENDING is not a LeaveDecision, so Spring refuses to bind it (B63).
+        mockMvc.perform(put("/api/v1/leaves/1/status")
+                        .param("status", "PENDING")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isBadRequest());
+
+        verify(leaveRequestService, never()).updateLeaveRequest(anyInt(), any());
+    }
+
+    @Test
+    void answeringAnAlreadyAnsweredLeaveIsAConflict() throws Exception {
+        when(leaveRequestService.updateLeaveRequest(1, LeaveDecision.REJECTED))
+                .thenThrow(new ConflictException("Leave request 1 is already APPROVED"));
+
+        mockMvc.perform(put("/api/v1/leaves/1/status")
+                        .param("status", "REJECTED")
+                        .with(TestTokens.supervisor()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Leave request 1 is already APPROVED"));
     }
 }
