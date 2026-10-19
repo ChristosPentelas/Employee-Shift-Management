@@ -1,0 +1,13 @@
+# Line endings are decided here, not by each machine's core.autocrlf.
+# The last matching line wins, so the catch-all comes first.
+
+# Text files are stored and checked out with LF on every OS.
+* text=auto eol=lf
+
+# Windows scripts need CRLF (cmd.exe can misread labels in LF files).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never convert these, whatever text=auto would guess.
+*.png binary
+*.ico binary
