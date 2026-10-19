@@ -658,6 +658,29 @@ needed. The JWT `role` claim must still carry the plain name
 (`role.name()`), which `JwtConfig` turns into `ROLE_SUPERVISOR`. Optionally a
 Flyway migration adding a `CHECK (role IN ('EMPLOYEE','SUPERVISOR'))`.
 
+**B64 · LOW · `mvnw test` in the terminal runs on JDK 25, not the JDK 21 the project targets** — found 2026-10-19
+Where: `JAVA_HOME` is `C:\Program Files\Java\jdk-25`, so the Maven wrapper
+builds and tests on Java 25. IntelliJ's backend project uses `ms-21`
+(`backend/.idea/misc.xml`), and the README asks for JDK 21. Nothing in the
+build checks which JDK it is running on.
+Why it matters: `<java.version>21</java.version>` makes the compiler use
+`--release 21`, so the code cannot call Java 22+ APIs and the jar runs on 21.
+But the tests run on a different JVM than the one the app is meant for, so a
+behaviour change between 21 and 25 (garbage collector, default settings,
+library code that checks the Java version) would pass here and show up only on
+21. It also means the IDE and the terminal can disagree about the same test.
+Relates to: B3 (found while checking its test output).
+Fix idea: two parts, either one helps.
+- On this machine: point `JAVA_HOME` at a JDK 21 that is already installed
+  (`~/.jdks/temurin-21.0.8` or `ms-21.0.9`), then open a new terminal and
+  check `./mvnw -v`.
+- In the build: `maven-enforcer-plugin` with a `requireJavaVersion` rule of
+  `[21,22)`, so a wrong JDK fails the build at once with a clear message,
+  on any machine. The Boot parent manages its version, so it is not a new
+  dependency. Do the first part before it, or the build stops working here.
+  Maven toolchains (pick the JDK per project in `~/.m2/toolchains.xml`) is the
+  heavier alternative, worth it only with several JDK versions in use.
+
 ---
 
 ## Done

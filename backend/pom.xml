@@ -13,6 +13,9 @@
     <version>0.0.1-SNAPSHOT</version>
     <name>EmployeeShiftManagement</name>
     <description>EmployeeShiftManagement</description>
+    <!-- Empty on purpose: spring-boot-starter-parent sets url, licenses,
+         developers and scm to Spring Boot's own, and Maven copies those into
+         this pom unless it sets its own. Fill in real values or leave empty. -->
     <url/>
     <licenses>
         <license/>
