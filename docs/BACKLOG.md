@@ -625,6 +625,32 @@ Fix idea: two parts, either one helps.
   Maven toolchains (pick the JDK per project in `~/.m2/toolchains.xml`) is the
   heavier alternative, worth it only with several JDK versions in use.
 
+**B65 · LOW · The messages list misses conversations older than page 0** — found 2026-10-19
+Where: `MessagesListScreen._loadInbox` merges page 0 of the inbox with page 0
+of sent (50 messages each, F9) and groups them by person on the phone (B18).
+Why it matters: a conversation whose newest message is older than the 50th
+message in both lists does not appear at all, so a chat the user still has is
+missing from the list. It is also two requests and up to 100 messages to show
+a list that needs one message per person.
+Relates to: B18 (split out of its "Since F9" paragraph when its display part
+was fixed), B48 (a new endpoint would decide the URL shape B48 asks about), F9.
+Fix idea: a server endpoint that returns one row per conversation - the other
+person and the latest message - paged like every other list. In SQL that is a
+"latest row per group" query (a window function, or a join on `MAX(id)` per
+pair). Then the app calls it instead of inbox + sent and stops grouping.
+
+**B66 · LOW · A user can send a message to themselves** — found 2026-10-19
+Where: `MessageService.sendMessage` never compares `receiverId` with the
+sender's id (which comes from the token).
+Why it matters: whether it should be allowed is a product decision nobody has
+made, so today it works by accident. The message is in both the inbox and
+sent, so before B18's fix the list showed it twice. Nothing in the app offers
+it, but the API accepts it.
+Relates to: B18 (found while fixing it).
+Fix idea: decide first. If it is not allowed, `sendMessage` rejects equal ids
+with a 400, with a service test. If it is allowed ("notes to self"), say so in
+a comment; the list's grouping test already covers it.
+
 ---
 
 ## Done
@@ -1149,3 +1175,39 @@ Notes:
   `app.first-supervisor.*` set as environment variables. A
   `SPRING_PROFILES_ACTIVE=local` environment variable would bring the leak
   back; the new test fails with a message naming it.
+
+**B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
+Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
+tap builds the chat partner as `User(name: msg.senderName, role: "EMPLOYEE")`.
+Why it matters: for a message you sent, the sender is you, so the row and the
+chat screen's title show your own name instead of the person you wrote to. The
+role is hard-coded, so a supervisor you chat with is labelled an employee.
+Messages also appear once per message, not once per conversation.
+Relates to: F16 (inconsistent API shapes) — the message response has sender
+and receiver, but the client only reads the sender's name.
+Fix idea: pick the other person (`senderId == me ? receiver : sender`) for both
+name and id, take the role from the response instead of hard-coding it, and
+group rows by that person.
+Since F9: the list merges page 0 of the inbox with page 0 of sent (50 each),
+so a conversation older than both pages is missing. Grouping on the phone
+cannot fix that; a server endpoint that returns the latest message per
+conversation can.
+
+Fixed by: `fix(frontend): list messages by conversation, named after the other person`,
+2026-10-19. `Message` keeps both people as `User` (`sender`, `receiver`)
+instead of only the sender's name; `senderId`/`receiverId` are getters on
+them, and `otherPerson(myId)` decides who a message is with. The list screen
+sorts newest first, keeps the first message per other person's id, and opens
+the chat with that `User` - real role, email and phone - instead of one built
+by hand. The unread dot looks at the newest message only, and only when the
+other person sent it: replying happens in the chat, which marks it read (F28).
+Five new tests in `messages_list_screen_test.dart`, all red before the fix.
+Notes:
+- Not done: the "Since F9" part. Grouping on the phone cannot find a
+  conversation older than page 0 of both lists; that is B65 now.
+- The fakes in `chat_screen_test.dart` and `api_service_test.dart` sent only
+  `{id, name}` for each person. They now send the full `UserResponse`, as the
+  server does, since `User.fromJson` needs email and role.
+- A message that fails to parse makes `getInbox`/`getSent` return an empty
+  list (their `catch`), so a broken response shows "no messages", not an
+  error.
