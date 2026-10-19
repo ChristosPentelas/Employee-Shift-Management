@@ -132,6 +132,13 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                    <!-- spring-boot:run starts the app with the "local" profile,
+                         which is what loads application-local.properties.
+                         Only this goal reads it: "mvnw test" and "java -jar"
+                         do not (B13). -->
+                    <profiles>
+                        <profile>local</profile>
+                    </profiles>
                 </configuration>
             </plugin>
 

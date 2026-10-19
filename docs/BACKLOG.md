@@ -91,22 +91,6 @@ Fix idea: a one-time, expiring invitation token stored server-side; the
 employee sets a password with it. Needs an email or SMS sender, which is a new
 dependency.
 
-**B13 · MEDIUM · Tests read the developer's `application-local.properties`** — found 2026-09-14
-Where: `application.properties` imports `optional:file:./application-local.properties`,
-and Maven runs the tests from `backend/`, so every `@SpringBootTest` loads the
-developer's personal settings.
-Why it matters: a test's result depends on whose machine runs it. It already
-happened: once the local file had `app.first-supervisor.*`, the seeder created a
-real supervisor at test startup, outside any transaction, and
-`UserServiceTest.createsTheFirstSupervisorWhenNoneExists` failed on that machine
-only. Stopgap in place: `TestProperties` overrides the JWT secret and blanks the
-seeder, but any setting added to the local file later leaks in the same way.
-Relates to: F23 (tests used to run against the developer's MySQL).
-Fix idea: import the local file only under a `local` Spring profile
-(`spring.config.activate.on-profile=local` document, or
-`application-local.properties` loaded by profile name), and start the app with
-that profile. Tests then never see it.
-
 **B14 · MEDIUM · The app talks to the API over plain HTTP, and now sends a token** — found 2026-09-14
 Where: `ApiService.baseUrl` is `http://10.0.2.2:8080/api/v1`.
 Why it matters: since F1 step 3 every request carries `Authorization: Bearer …`.
@@ -1145,3 +1129,40 @@ Notes:
 - The role is still a `String`, so `"SUPERVISER"` compiles (B62). The enum
   there now changes this parameter's type and nothing else in the call sites'
   shape.
+
+**B13 · MEDIUM · Tests read the developer's `application-local.properties`** — found 2026-09-14
+Where: `application.properties` imported `optional:file:./application-local.properties`,
+and Maven runs the tests from `backend/`, so every `@SpringBootTest` loaded the
+developer's personal settings.
+Why it mattered: a test's result depended on whose machine ran it. It already
+happened: once the local file had `app.first-supervisor.*`, the seeder created a
+real supervisor at test startup, outside any transaction, and
+`UserServiceTest.createsTheFirstSupervisorWhenNoneExists` failed on that machine
+only. The stopgap, `TestProperties` overriding the JWT secret and blanking the
+seeder, covered only those two settings.
+Relates to: F23 (tests used to run against the developer's MySQL).
+Fixed by: `fix(backend): read application-local.properties only under the local profile`,
+2026-10-19. The `spring.config.import` line is deleted. Spring Boot loads
+`application-<profile>.properties` from the working directory by itself, so
+the file is read only while the `local` profile is active. `pom.xml` gives
+`spring-boot:run` that profile; `mvnw test` and `java -jar` do not get it.
+`JwtConfig`'s "secret is not set" error now asks whether `local` is active,
+and the README and the `.example` file say how to turn it on in an IDE or for
+a jar. New test `EmployeeShiftManagementApplicationTests.doesNotLoadTheDevelopersLocalSettings`
+fails if the profile is active in a test or any property source comes from
+the file; it was red on the owner's machine before the fix.
+Notes:
+- Not done: keeping the import inside a `#---` document with
+  `spring.config.activate.on-profile=local`. It would have kept the
+  `./backend/` path for running from the repo root, but with `local` active
+  Spring also finds the file by name, so it would load twice.
+- Running from the repo root no longer finds the file: an IDE run
+  configuration needs `backend/` as its working directory as well as the
+  profile.
+- The new test can only fail on a machine that has the file. It does not
+  create one, since it would be writing next to the developer's real one.
+- `TestProperties` keeps both constants: the JWT secret is now the only one
+  the tests have, and blanking the seeder still guards against
+  `app.first-supervisor.*` set as environment variables. A
+  `SPRING_PROFILES_ACTIVE=local` environment variable would bring the leak
+  back; the new test fails with a message naming it.

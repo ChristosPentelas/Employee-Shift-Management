@@ -80,7 +80,8 @@ public class JwtConfig {
     public static SecretKey signingKey(String base64Secret) {
         if (base64Secret == null || base64Secret.isBlank()) {
             throw new IllegalStateException(
-                    "app.jwt.secret is not set; see application-local.properties.example");
+                    "app.jwt.secret is not set; is the 'local' profile active?"
+                            + " See application-local.properties.example");
         }
 
         byte[] bytes;

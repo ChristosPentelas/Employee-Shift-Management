@@ -108,6 +108,13 @@ cd backend
 
 The API listens on `http://localhost:8080/api/v1`.
 
+`application-local.properties` is read only under the `local` Spring profile,
+so the tests never see it. `spring-boot:run` turns the profile on for you.
+Started any other way, turn it on yourself and run from `backend/`: in an IDE
+run configuration set *Active profiles* to `local` and the working directory to
+`backend/`; with a jar, pass `--spring.profiles.active=local`. Without it the
+backend stops at startup with "app.jwt.secret is not set".
+
 ### 4. Start the app
 
 ```bash
