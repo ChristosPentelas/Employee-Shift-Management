@@ -118,7 +118,9 @@ void main() {
     http.BaseRequest? sent;
     String message(int id, String time) =>
         '{"id":$id,"content":"m$id","timestamp":"2026-09-19T$time",'
-        '"read":true,"sender":{"id":9,"name":"Boss"},"receiver":{"id":7,"name":"Worker"}}';
+        '"read":true,'
+        '"sender":{"id":9,"name":"Boss","email":"boss@example.com","phoneNumber":null,"role":"SUPERVISOR"},'
+        '"receiver":{"id":7,"name":"Worker","email":"worker@example.com","phoneNumber":null,"role":"EMPLOYEE"}}';
     final api = ApiService(client: MockClient((request) async {
       sent = request;
       return http.Response(

@@ -123,23 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B18 · LOW · The messages list shows your own name for conversations you started** — found 2026-09-15
-Where: `messages_list_screen.dart` shows `msg.senderName` for every row, and on
-tap builds the chat partner as `User(name: msg.senderName, role: "EMPLOYEE")`.
-Why it matters: for a message you sent, the sender is you, so the row and the
-chat screen's title show your own name instead of the person you wrote to. The
-role is hard-coded, so a supervisor you chat with is labelled an employee.
-Messages also appear once per message, not once per conversation.
-Relates to: F16 (inconsistent API shapes) — the message response has sender
-and receiver, but the client only reads the sender's name.
-Fix idea: pick the other person (`senderId == me ? receiver : sender`) for both
-name and id, take the role from the response instead of hard-coding it, and
-group rows by that person.
-Since F9: the list merges page 0 of the inbox with page 0 of sent (50 each),
-so a conversation older than both pages is missing. Grouping on the phone
-cannot fix that; a server endpoint that returns the latest message per
-conversation can.
-
 **B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
 Where: `UserService.registerUser` and `updateUser` throw
 `IllegalStateException`; `ApiExceptionHandler` maps that type to 400.

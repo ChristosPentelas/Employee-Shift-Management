@@ -37,8 +37,9 @@ class StoredMessage {
         'content': content,
         'timestamp': '2026-10-13T09:${id.toString().padLeft(2, '0')}:00',
         'read': read,
-        'sender': {'id': from.id, 'name': from.name},
-        'receiver': {'id': to.id, 'name': to.name},
+        // Both people in full, as the server's UserResponse sends them.
+        'sender': from.toJson(),
+        'receiver': to.toJson(),
       };
 }
 

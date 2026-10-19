@@ -21,7 +21,10 @@ class MessagesListScreen extends ConsumerStatefulWidget {
 class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
   late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
   bool _isLoading = true;
-  List<Message> _inbox = [];
+  // One entry per person, newest conversation first. The other person is
+  // decided here once, while the session is known to exist, so build needs
+  // no user id of its own.
+  List<({User other, Message latest})> _conversations = [];
 
   @override
   void initState() {
@@ -41,9 +44,20 @@ class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
 
       if (!mounted) return;
 
+      // Sorted before de-duplicating, so the message kept for each person is
+      // their newest. Grouped by id, not name: two people can share a name.
+      // A message to myself is in both lists; it collapses into one row too.
+      final messages = [...incoming, ...outgoing]
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      final seen = <int>{};
+      final conversations = [
+        for (final msg in messages)
+          if (seen.add(msg.otherPerson(me.user.id).id))
+            (other: msg.otherPerson(me.user.id), latest: msg),
+      ];
+
       setState(() {
-        _inbox = [...incoming, ...outgoing];
-        _inbox.sort((a,b) => b.timestamp.compareTo(a.timestamp));
+        _conversations = conversations;
         _isLoading = false;
       });
     } catch (e) {
@@ -55,21 +69,22 @@ class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final myId = ref.watch(authProvider)?.user.id;
-
     return Scaffold(
       appBar: AppBar(title: Text("Μηνύματα"), backgroundColor: Colors.teal),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : ListView.builder(
-        itemCount: _inbox.length,
+        itemCount: _conversations.length,
         itemBuilder: (context, index) {
-          final msg = _inbox[index];
+          final (:other, latest: msg) = _conversations[index];
           return ListTile(
-            leading: CircleAvatar(child: Text(msg.senderName[0])),
-            title: Text(msg.senderName),
+            // [0] on an empty string throws a RangeError.
+            leading: CircleAvatar(child: Text(other.name.isEmpty ? "?" : other.name[0])),
+            title: Text(other.name),
             subtitle: Text(msg.content, maxLines: 1, overflow: TextOverflow.ellipsis),
-            trailing: !msg.isRead && msg.receiverId == myId
+            // Only the newest message is checked: replying happens in the
+            // chat, and opening the chat marks it read (F28).
+            trailing: !msg.isRead && msg.senderId == other.id
                 ? Container(
               width: 12,
               height: 12,
@@ -80,17 +95,10 @@ class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {
             )
                 : null,
               onTap: () {
-                User otherUser = User(
-                  id: msg.senderId == myId ? msg.receiverId : msg.senderId,
-                  name: msg.senderName,
-                  email: "",
-                  role: "EMPLOYEE"
-                );
-
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ChatScreen(receiver: otherUser),
+                    builder: (context) => ChatScreen(receiver: other),
                   ),
                 );
               }
