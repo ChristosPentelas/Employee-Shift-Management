@@ -22,10 +22,15 @@ The owner of this repo is a junior developer using this project to learn.
 5. Never introduce a new dependency without asking first.
 6. Never weaken or delete a test to make it pass.
 7. Point out beginner pitfalls in the existing code as you encounter them.
-8. The owner writes the production code. Plan together first: give a todo
-   with every place to edit, the pitfalls, and what to read. Do not write
-   the implementation unless asked to for a specific part. Claude writes
-   the tests and the `docs/BACKLOG.md` changes, and reviews the owner's diff.
+8. Who writes the production code depends on the word `kayak`:
+   - **Without `kayak`** in the owner's message: Claude writes the production
+     code, after the plan from rule 1 is approved.
+   - **With `kayak`**: the owner writes the production code. Plan together
+     first: give a todo with every place to edit, the pitfalls, and what to
+     read. Do not write the implementation unless asked to for a specific
+     part. Claude reviews the owner's diff.
+   The word counts for the whole task it starts, not only for that message.
+   Either way, Claude writes the tests and the `docs/BACKLOG.md` changes.
 
 ## Conventions
 - Controllers never expose JPA entities. DTOs only.
