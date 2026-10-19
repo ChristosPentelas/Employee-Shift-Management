@@ -71,15 +71,6 @@ Totals: 30 done · 0 partial · 0 open.
 
 ## Open
 
-**B3 · LOW · Mockito attaches itself at runtime, which future JDKs will block** — found 2026-09-10
-Where: every `mvnw test` run prints "Mockito is currently self-attaching to
-enable the inline-mock-maker. This will no longer work in future releases of
-the JDK."
-Why it matters: no effect today on Java 21, but a JDK upgrade would break
-every test that mocks, all at once.
-Fix idea: configure Mockito as a `-javaagent` in the Surefire plugin, as the
-warning's linked docs describe. It's only build config, no new dependency.
-
 **B5 · LOW · No `.gitattributes`, so line endings depend on each machine's git settings** — found 2026-09-10
 Where: the repo root has no `.gitattributes`. On this machine git converts
 line endings only because the Git for Windows installer set
@@ -1080,3 +1071,27 @@ Fixed by: `fix(backend): answer a leave request only once`, 2026-10-18.
 Not tested: that the lock really blocks. `LeaveRequestServiceTest` checks the
 locking lookup is the one used; `ShiftConcurrencyIntegrationTest` already
 proves the same `@Lock` blocks on MySQL.
+
+**B3 · LOW · Mockito attaches itself at runtime, which future JDKs will block** — found 2026-09-10
+Where: every `mvnw test` run printed "Mockito is currently self-attaching to
+enable the inline-mock-maker. This will no longer work in future releases of
+the JDK.", followed by the JDK's own "A Java agent has been loaded
+dynamically".
+Why it mattered: the JDK is phasing out agents that attach to a running JVM
+(JEP 451). Once it blocks them, every test that mocks breaks at once.
+Fixed by: `build(backend): load Mockito as a Java agent in tests`, 2026-10-19.
+`pom.xml` runs `maven-dependency-plugin`'s `properties` goal, which exposes the
+jar path as `${org.mockito:mockito-core:jar}`, and Surefire's `argLine` passes
+it as `-javaagent:`. Both plugin versions come from the Boot parent, so no new
+dependency. Same 263 tests before and after, all passing; both warnings gone.
+Notes:
+- No `@{argLine}` prefix, unlike Mockito's docs: nothing else (e.g. JaCoCo)
+  sets `argLine` yet, and an undefined `@{argLine}` reaches the JVM as literal
+  text. Add it back alongside JaCoCo.
+- Still printed, and harmless: "Sharing is only supported for boot loader
+  classes because bootstrap classpath has been appended". The inline mock maker
+  adds a class to the bootstrap classpath, so the JVM turns off class-data
+  sharing for app classes (slightly slower startup). It was there before too.
+- Found while checking: the local `mvnw test` runs on JDK 25, not 21. The code
+  is compiled with `--release 21`, so this works, but the tests do not run on
+  the JDK the project targets.
