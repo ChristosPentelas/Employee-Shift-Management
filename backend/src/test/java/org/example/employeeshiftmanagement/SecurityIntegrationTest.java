@@ -87,14 +87,12 @@ class SecurityIntegrationTest {
                 .exchange((req, response) -> response.getStatusCode());
     }
 
-    /** registerNewEmployee keeps a role that is already set, so this can create a supervisor too. */
     private User registeredUser(String email, String role) {
         User user = new User();
         user.setName("Integration User");
         user.setEmail(email);
         user.setPassword("secret123");
-        user.setRole(role);
-        return userService.registerNewEmployee(user);
+        return userService.registerUser(user, role);
     }
 
     /** Logs in through the real endpoint and returns the token it hands out. */
@@ -143,7 +141,7 @@ class SecurityIntegrationTest {
 
     @Test
     void anEmployeesLoginTokenIsForbiddenFromASupervisorEndpoint() {
-        registeredUser("it-employee-shifts@example.com", null);
+        registeredUser("it-employee-shifts@example.com", "EMPLOYEE");
 
         // 403, not 401: the token is valid, the role is not enough.
         assertEquals(403, getShifts(login("it-employee-shifts@example.com")).value());
@@ -151,7 +149,7 @@ class SecurityIntegrationTest {
 
     @Test
     void onlyASupervisorsRealTokenCanCreateAccounts() {
-        registeredUser("it-employee@example.com", null);
+        registeredUser("it-employee@example.com", "EMPLOYEE");
         registeredUser("it-boss@example.com", "SUPERVISOR");
 
         assertEquals(403, createAccount(login("it-employee@example.com"), "it-by-employee@example.com").value());
@@ -195,8 +193,8 @@ class SecurityIntegrationTest {
 
     @Test
     void aRealTokenOpensOnlyItsOwnInbox() {
-        User alice = registeredUser("it-alice@example.com", null);
-        User bob = registeredUser("it-bob@example.com", null);
+        User alice = registeredUser("it-alice@example.com", "EMPLOYEE");
+        User bob = registeredUser("it-bob@example.com", "EMPLOYEE");
         String aliceToken = login("it-alice@example.com");
 
         HttpStatusCode own = client().get().uri("/messages/inbox/" + alice.getId())
@@ -214,8 +212,8 @@ class SecurityIntegrationTest {
 
     @Test
     void aRealTokenOpensOnlyItsOwnSchedule() {
-        User carol = registeredUser("it-carol@example.com", null);
-        User dave = registeredUser("it-dave@example.com", null);
+        User carol = registeredUser("it-carol@example.com", "EMPLOYEE");
+        User dave = registeredUser("it-dave@example.com", "EMPLOYEE");
         String carolToken = login("it-carol@example.com");
 
         assertEquals(200, schedule(carolToken, carol.getId()).value());
@@ -230,7 +228,7 @@ class SecurityIntegrationTest {
 
     @Test
     void onlyASupervisorsRealTokenReadsEveryonesLeave() {
-        registeredUser("it-leave-employee@example.com", null);
+        registeredUser("it-leave-employee@example.com", "EMPLOYEE");
         registeredUser("it-leave-boss@example.com", "SUPERVISOR");
 
         assertEquals(403, leaves(login("it-leave-employee@example.com")).value());
@@ -295,7 +293,7 @@ class SecurityIntegrationTest {
 
     @Test
     void afterFiveWrongPasswordsEvenTheRightOneIsTooManyRequests() {
-        registeredUser("it-lockout@example.com", null);
+        registeredUser("it-lockout@example.com", "EMPLOYEE");
         for (int i = 0; i < 5; i++) {
             assertEquals(401, loginAnswer("it-lockout@example.com", "wrong").status().value(),
                     "attempt " + (i + 1) + " of 5 must still be an ordinary failed login");
@@ -327,7 +325,7 @@ class SecurityIntegrationTest {
 
     @Test
     void afterFiveWrongCurrentPasswordsAPasswordChangeIsTooManyRequests() {
-        registeredUser("it-change-lockout@example.com", null);
+        registeredUser("it-change-lockout@example.com", "EMPLOYEE");
         String token = login("it-change-lockout@example.com");
         for (int i = 0; i < 5; i++) {
             assertEquals(400, changePassword(token, "wrong").value(),
@@ -343,7 +341,7 @@ class SecurityIntegrationTest {
 
     @Test
     void aForbiddenAnswerCarriesTheStandardErrorBody() {
-        registeredUser("it-403-body@example.com", null);
+        registeredUser("it-403-body@example.com", "EMPLOYEE");
 
         Answer answer = getShiftsAnswer(login("it-403-body@example.com"));
 

@@ -85,7 +85,7 @@ class UserControllerTest {
 
     @Test
     void registrationIgnoresAClientSuppliedRole() throws Exception {
-        when(userService.registerNewEmployee(any(User.class))).thenReturn(existingUser());
+        when(userService.registerUser(any(User.class), anyString())).thenReturn(existingUser());
 
         mockMvc.perform(post("/api/v1/users")
                         .with(TestTokens.supervisor())
@@ -96,8 +96,10 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isCreated());
 
+        // The role the account gets is the one the controller passes (B11),
+        // whatever the body says.
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userService).registerNewEmployee(captor.capture());
+        verify(userService).registerUser(captor.capture(), eq("EMPLOYEE"));
 
         assertNull(captor.getValue().getRole(),
                 "A client must not be able to choose its own role (F5)");
@@ -107,7 +109,7 @@ class UserControllerTest {
 
     @Test
     void registrationResponseDoesNotLeakThePassword() throws Exception {
-        when(userService.registerNewEmployee(any(User.class))).thenReturn(existingUser());
+        when(userService.registerUser(any(User.class), anyString())).thenReturn(existingUser());
 
         mockMvc.perform(post("/api/v1/users")
                         .with(TestTokens.supervisor())
@@ -141,7 +143,7 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.errors.name")
                         .value("Name must be at most 255 characters"));
 
-        verify(userService, never()).registerNewEmployee(any());
+        verify(userService, never()).registerUser(any(), any());
     }
 
     @Test
@@ -287,7 +289,7 @@ class UserControllerTest {
                         .value("Password must be at least 4 characters"))
                 .andExpect(jsonPath("$.status").value(400));
 
-        verify(userService, never()).registerNewEmployee(any());
+        verify(userService, never()).registerUser(any(), any());
     }
 
     @Test
@@ -297,7 +299,7 @@ class UserControllerTest {
                         .content(NEW_ACCOUNT))
                 .andExpect(status().isUnauthorized());
 
-        verify(userService, never()).registerNewEmployee(any());
+        verify(userService, never()).registerUser(any(), any());
     }
 
     @Test
@@ -308,7 +310,7 @@ class UserControllerTest {
                         .content(NEW_ACCOUNT))
                 .andExpect(status().isForbidden());
 
-        verify(userService, never()).registerNewEmployee(any());
+        verify(userService, never()).registerUser(any(), any());
     }
 
     @Test
@@ -604,7 +606,7 @@ class UserControllerTest {
     void registeringATakenEmailIsABadRequestWithTheReason() throws Exception {
         // Today's contract, pinned on purpose. B20 proposes 409 Conflict; when
         // that is decided, this test changes with the contract.
-        when(userService.registerNewEmployee(any(User.class)))
+        when(userService.registerUser(any(User.class), anyString()))
                 .thenThrow(new IllegalStateException("User already exists"));
 
         mockMvc.perform(post("/api/v1/users")

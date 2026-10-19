@@ -228,16 +228,16 @@ class TransactionBoundaryIntegrationTest {
     // --- UserService ---
 
     @Test
-    void registerNewEmployeeIsOneTransaction() {
+    void registerUserIsOneTransaction() {
         User employee = newUser("register");
 
-        assertOneTransaction("UserService.registerNewEmployee",
-                () -> userService.registerNewEmployee(employee));
+        assertOneTransaction("UserService.registerUser",
+                () -> userService.registerUser(employee, "EMPLOYEE"));
     }
 
     /**
-     * It calls registerNewEmployee from inside the same class, which bypasses
-     * the proxy - so registerNewEmployee's annotation does not apply here, and
+     * It calls registerUser from inside the same class, which bypasses
+     * the proxy - so registerUser's annotation does not apply here, and
      * only this method's own annotation gives the call a boundary.
      */
     @Test

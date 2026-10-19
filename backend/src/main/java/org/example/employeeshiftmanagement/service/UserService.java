@@ -126,8 +126,16 @@ public class UserService {
         return authenticated;
     }
 
+    /**
+     * Creates an account with the given role (B11).
+     *
+     * The role is a parameter, not read from the user, so every caller states
+     * which role it creates, and whatever role the user object already carries
+     * is overwritten. A client-supplied role therefore cannot slip through,
+     * even if a controller someday copies one onto the user.
+     */
     @Transactional
-    public User registerNewEmployee(User user) {
+    public User registerUser(User user, String role) {
         //Check if email already exists
         Optional<User> existingUser = userRepository.findByEmail(user.getEmail());
 
@@ -137,10 +145,7 @@ public class UserService {
 
         checkPasswordLength(user.getPassword());
 
-        //Default role assignment
-        if(user.getRole()==null || user.getRole().isEmpty()){
-            user.setRole("EMPLOYEE");
-        }
+        user.setRole(role);
 
         // The plaintext never reaches the database: only this hash is stored.
         user.setPassword(passwordEncoder.encode(user.getPassword()));
@@ -155,8 +160,8 @@ public class UserService {
      * the first one. Calling this on every startup is safe (idempotent): once a
      * supervisor exists it does nothing.
      *
-     * Reuses registerNewEmployee, which keeps a role that is already set, so the
-     * duplicate-email check, the byte limit and the hashing stay in one place.
+     * Reuses registerUser, so the duplicate-email check, the byte limit and the
+     * hashing stay in one place.
      */
     @Transactional
     public boolean createFirstSupervisorIfNone(String name, String email, String rawPassword) {
@@ -168,9 +173,8 @@ public class UserService {
         supervisor.setName(name);
         supervisor.setEmail(email);
         supervisor.setPassword(rawPassword);
-        supervisor.setRole("SUPERVISOR");
 
-        registerNewEmployee(supervisor);
+        registerUser(supervisor, "SUPERVISOR");
         return true;
     }
 

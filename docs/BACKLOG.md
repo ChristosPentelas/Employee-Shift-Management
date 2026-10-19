@@ -91,15 +91,6 @@ Fix idea: a one-time, expiring invitation token stored server-side; the
 employee sets a password with it. Needs an email or SMS sender, which is a new
 dependency.
 
-**B11 · LOW · `registerNewEmployee` also creates supervisors** — found 2026-09-14
-Where: `UserService.createFirstSupervisorIfNone` reuses `registerNewEmployee`,
-which keeps any role already set.
-Why it matters: the name says "employee", so a reader assumes the role is always
-EMPLOYEE. The only thing stopping a client from choosing its role is that
-`UserController.toNewUser` leaves it unset.
-Fix idea: rename to `registerUser` and let the caller pass the role explicitly,
-when F1 step 5 changes who can register.
-
 **B13 · MEDIUM · Tests read the developer's `application-local.properties`** — found 2026-09-14
 Where: `application.properties` imports `optional:file:./application-local.properties`,
 and Maven runs the tests from `backend/`, so every `@SpringBootTest` loads the
@@ -166,7 +157,7 @@ cannot fix that; a server endpoint that returns the latest message per
 conversation can.
 
 **B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
-Where: `UserService.registerNewEmployee` and `updateUser` throw
+Where: `UserService.registerUser` and `updateUser` throw
 `IllegalStateException`; `ApiExceptionHandler` maps that type to 400.
 Why it matters: 400 says "your request was malformed", but the request was
 perfectly well formed - it lost a race with an email that already exists. 409
@@ -413,7 +404,7 @@ app explains ("someone else changed this - reload"). Checking `@Version` only
 inside the server would cover overlapping requests, not the dialog case.
 
 **B46 · LOW · Registering the same email twice at the same moment answers 500** — found 2026-10-01
-Where: `UserService.registerNewEmployee` checks `findByEmail`, then saves.
+Where: `UserService.registerUser` checks `findByEmail`, then saves.
 Why it matters: two requests with the same new email can both pass the
 check (the read takes no lock, F11's transaction or not). The unique key on
 `users.email` then refuses the second insert, which is good - the data stays
@@ -422,7 +413,7 @@ gets a 500 instead of the 400 "User already exists" it gets otherwise. Needs
 two supervisors adding the same employee at the same instant, so rare.
 Relates to: F11, F14 (the error handler), B20 (whether that 400 should be a 409).
 Fix idea: catch `DataIntegrityViolationException` around the save in
-`registerNewEmployee` (and the email change in `updateUser`) and throw the
+`registerUser` (and the email change in `updateUser`) and throw the
 same exception as the normal duplicate check. `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
@@ -1131,3 +1122,26 @@ Notes:
   `mvnw.cmd` was LF despite its rule). Git compares them after converting, so
   `git status` stays clean. `git rm -r --cached -q .` then `git reset --hard`,
   on a clean tree only, rewrites them.
+
+**B11 · LOW · `registerNewEmployee` also creates supervisors** — found 2026-09-14
+Where: `UserService.createFirstSupervisorIfNone` reused `registerNewEmployee`,
+which kept any role already set.
+Why it mattered: the name says "employee", so a reader assumes the role is
+always EMPLOYEE. The only thing stopping a client from choosing its role was
+that `UserController.toNewUser` left it unset - a comment, not a check.
+Fixed by: `refactor(backend): make every account creation state its role`,
+2026-10-19. `registerNewEmployee(User)` became `registerUser(User, String role)`:
+the role is a required parameter and always overwrites the user's, and the
+"empty means EMPLOYEE" default is gone. `UserController` passes `"EMPLOYEE"`,
+`createFirstSupervisorIfNone` passes `"SUPERVISOR"`. New test
+`registerUserUsesTheRoleItIsGivenNotTheOneTheUserCarries`;
+`registrationIgnoresAClientSuppliedRole` now also checks the controller passes
+`"EMPLOYEE"` while the body says `"SUPERVISOR"`.
+Notes:
+- Not done: forcing EMPLOYEE in a public method and hiding the supervisor path
+  in a private one. No public method could then create a supervisor, but the
+  tests that need supervisors would have to hash passwords themselves; the
+  endpoint is already supervisor-only (`@PreAuthorize`).
+- The role is still a `String`, so `"SUPERVISER"` compiles (B62). The enum
+  there now changes this parameter's type and nothing else in the call sites'
+  shape.

@@ -34,7 +34,7 @@ public class UserServiceTest {
         user.setEmail("test@example.com");
         user.setPassword("123456");
 
-        User savedUser = userService.registerNewEmployee(user);
+        User savedUser = userService.registerUser(user, "EMPLOYEE");
         assertNotNull(savedUser.getId(), "Το Id δεν πρέπει να είναι null μετά την αποθήκευση");
 
         User found = userService.findUserById(savedUser.getId());
@@ -43,8 +43,25 @@ public class UserServiceTest {
         List<User> users = userService.findAllUsers(PageRequest.of(0, 20)).getContent();
         assertTrue(users.size() > 0);
 
-        assertEquals("EMPLOYEE", savedUser.getRole(), "Θα έπρεπε να έχει μπεί το default role EMPLOYEE");
+        assertEquals("EMPLOYEE", savedUser.getRole(), "Θα έπρεπε να έχει τον ρόλο που δόθηκε, EMPLOYEE");
         assertEquals("test@example.com", savedUser.getEmail());
+    }
+
+    @Test
+    void registerUserUsesTheRoleItIsGivenNotTheOneTheUserCarries() {
+        // B11: the old registerNewEmployee kept a role already set on the
+        // user, so a SUPERVISOR here came out as a supervisor.
+        User user = new User();
+        user.setName("Would-be Boss");
+        user.setEmail("would-be-boss@example.com");
+        user.setPassword("secret123");
+        user.setRole("SUPERVISOR");
+
+        User saved = userService.registerUser(user, "EMPLOYEE");
+
+        assertEquals("EMPLOYEE", saved.getRole());
+        assertEquals("EMPLOYEE",
+                userService.findUserByEmail("would-be-boss@example.com").orElseThrow().getRole());
     }
 
     @Test
@@ -53,7 +70,7 @@ public class UserServiceTest {
         user.setName("Test User");
         user.setEmail("initial@example.com");
         user.setPassword("123456");
-        User savedUser = userService.registerNewEmployee(user);
+        User savedUser = userService.registerUser(user, "EMPLOYEE");
 
         //Update
         User details = new User();
@@ -75,7 +92,7 @@ public class UserServiceTest {
         user.setName("Test User");
         user.setEmail("delete@example.com");
         user.setPassword("123456");
-        User savedUser = userService.registerNewEmployee(user);
+        User savedUser = userService.registerUser(user, "EMPLOYEE");
 
         assertDoesNotThrow(() -> userService.deleteUser(savedUser.getId()));
 
@@ -90,8 +107,7 @@ public class UserServiceTest {
         user1.setName("Test User1");
         user1.setEmail("same@email.com");
         user1.setPassword("123456");
-        user1.setRole("EMPLOYEE");
-        userService.registerNewEmployee(user1);
+        userService.registerUser(user1, "EMPLOYEE");
 
         User user2 = new User();
         user2.setName("Test User2");
@@ -99,7 +115,7 @@ public class UserServiceTest {
         user2.setPassword("123456");
 
         assertThrows(IllegalStateException.class, () -> {
-            userService.registerNewEmployee(user2);
+            userService.registerUser(user2, "EMPLOYEE");
         });
     }
 
@@ -110,7 +126,7 @@ public class UserServiceTest {
         user1.setName("Test User1");
         user1.setEmail("findme@example.com");
         user1.setPassword("123456");
-        userService.registerNewEmployee(user1);
+        userService.registerUser(user1, "EMPLOYEE");
 
         Optional<User> found = userService.findUserByEmail(user1.getEmail());
 
@@ -128,13 +144,13 @@ public class UserServiceTest {
         userA.setName("User A");
         userA.setEmail("userA@example.com");
         userA.setPassword("password");
-        userService.registerNewEmployee(userA);
+        userService.registerUser(userA, "EMPLOYEE");
 
         User userB = new User();
         userB.setName("User B");
         userB.setEmail("userB@example.com");
         userB.setPassword("password");
-        User savedB = userService.registerNewEmployee(userB);
+        User savedB = userService.registerUser(userB, "EMPLOYEE");
 
         User updateDetails = new User();
         updateDetails.setName("Updated User B");
@@ -150,7 +166,7 @@ public class UserServiceTest {
         user.setName("Login User");
         user.setEmail("login@example.com");
         user.setPassword("secret123");
-        return userService.registerNewEmployee(user);
+        return userService.registerUser(user, "EMPLOYEE");
     }
 
     @Test
@@ -190,7 +206,7 @@ public class UserServiceTest {
         user.setName("Lockout User");
         user.setEmail(email);
         user.setPassword("secret123");
-        return userService.registerNewEmployee(user);
+        return userService.registerUser(user, "EMPLOYEE");
     }
 
     @Test
@@ -305,7 +321,7 @@ public class UserServiceTest {
         second.setName("Second User");
         second.setEmail("second@example.com");
         second.setPassword("secret123");
-        User savedSecond = userService.registerNewEmployee(second);
+        User savedSecond = userService.registerUser(second, "EMPLOYEE");
 
         // Different salts, so identical passwords cannot be spotted by comparing
         // stored values.
@@ -344,7 +360,7 @@ public class UserServiceTest {
         user.setEmail("long@example.com");
         user.setPassword(longPassword);
 
-        assertThrows(IllegalStateException.class, () -> userService.registerNewEmployee(user));
+        assertThrows(IllegalStateException.class, () -> userService.registerUser(user, "EMPLOYEE"));
     }
 
     @Test
@@ -357,8 +373,8 @@ public class UserServiceTest {
         adam.setName("Adam Paging");
         adam.setEmail("adam-paging@example.com");
         adam.setPassword("zzzzzz");
-        userService.registerNewEmployee(zoe);
-        userService.registerNewEmployee(adam);
+        userService.registerUser(zoe, "EMPLOYEE");
+        userService.registerUser(adam, "EMPLOYEE");
 
         // ?sort=password would let a caller learn about the password hashes
         // from the order alone; the service must replace it with its own.

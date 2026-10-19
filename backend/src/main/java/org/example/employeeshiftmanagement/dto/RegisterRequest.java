@@ -10,7 +10,7 @@ import org.example.employeeshiftmanagement.validation.FieldLimits;
  *
  * Deliberately has no {@code id} and no {@code role}: the database assigns the
  * id, and the role is assigned server-side by
- * {@link org.example.employeeshiftmanagement.service.UserService#registerNewEmployee}.
+ * {@link org.example.employeeshiftmanagement.controller.UserController#registerUser}.
  * A client that sends either one is ignored rather than obeyed.
  */
 public record RegisterRequest(

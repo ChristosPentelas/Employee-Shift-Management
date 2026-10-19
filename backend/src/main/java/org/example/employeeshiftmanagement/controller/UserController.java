@@ -30,7 +30,7 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<UserResponse> registerUser(@Valid @RequestBody RegisterRequest request) {
-        User savedUser = userService.registerNewEmployee(toNewUser(request));
+        User savedUser = userService.registerUser(toNewUser(request), "EMPLOYEE");
         return new ResponseEntity<>(UserResponse.from(savedUser), HttpStatus.CREATED);
     }
 
@@ -100,8 +100,8 @@ public class UserController {
     }
 
     /**
-     * The role is left unset on purpose: UserService.registerNewEmployee assigns
-     * EMPLOYEE when none is present, so the client cannot promote itself.
+     * The role is not copied: registerUser above passes EMPLOYEE itself, and
+     * RegisterRequest has no role field, so the client cannot promote itself.
      */
     private User toNewUser(RegisterRequest request) {
         User user = new User();
