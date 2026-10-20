@@ -176,17 +176,23 @@ public class UserService {
         return true;
     }
 
+    /**
+     * A ConflictException (409) if the email belongs to a different user.
+     *
+     * Asks the database who owns the email and compares ids, never the email
+     * text: the column's collation ignores case and accents, String.equals
+     * does not, so "Nikos@x.gr" found the caller's own nikos@x.gr and was
+     * refused as taken (B67). Ids with equals: they are Integer objects, and
+     * != would compare references, which only happens to work up to 127.
+     */
     @Transactional
     public User updateUser(Integer id,User userDetails) {
 
         User user = findUserById(id);
 
-        //Check if the new email is already used by another user
-        if(!user.getEmail().equals(userDetails.getEmail())) {
-            Optional<User> userWithNewEmail = userRepository.findByEmail(userDetails.getEmail());
-            if(userWithNewEmail.isPresent()) {
-                throw new ConflictException("Email "+userDetails.getEmail()+" is already taken by another user");
-            }
+        Optional<User> owner = userRepository.findByEmail(userDetails.getEmail());
+        if (owner.isPresent() && !owner.get().getId().equals(id)) {
+            throw new ConflictException("Email "+userDetails.getEmail()+" is already taken by another user");
         }
         user.setEmail(userDetails.getEmail());
         user.setName(userDetails.getName());

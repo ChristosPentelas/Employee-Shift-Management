@@ -163,6 +163,24 @@ public class UserServiceTest {
         });
     }
 
+    @Test
+    void changingOnlyTheCapitalsOfYourOwnEmailIsNotATakenEmail() {
+        // The column's collation ignores case, so findByEmail("Case@...")
+        // finds this same user. Only a real database shows that (B67).
+        User user = new User();
+        user.setName("Case User");
+        user.setEmail("case@example.com");
+        user.setPassword("password");
+        User saved = userService.registerUser(user, "EMPLOYEE");
+
+        User updateDetails = new User();
+        updateDetails.setName("Case User");
+        updateDetails.setEmail("Case@Example.com");
+
+        User updated = assertDoesNotThrow(() -> userService.updateUser(saved.getId(), updateDetails));
+        assertEquals("Case@Example.com", updated.getEmail());
+    }
+
     private User registerLoginUser() {
         User user = new User();
         user.setName("Login User");

@@ -628,20 +628,6 @@ Fix idea: decide first. If it is not allowed, `sendMessage` rejects equal ids
 with a 400, with a service test. If it is allowed ("notes to self"), say so in
 a comment; the list's grouping test already covers it.
 
-**B67 · LOW · Changing only the capitals of your own email says it is taken** — found 2026-10-20
-Where: `UserService.updateUser` decides whether the email changed with
-`String.equals`, which is case-sensitive, then asks `findByEmail` whether
-anyone uses the new one.
-Why it matters: the `utf8mb4_0900_ai_ci` collation ignores case and accents
-(see B56), so `findByEmail("Nikos@x.gr")` finds the user whose email is
-`nikos@x.gr` - the caller themselves. They are told their own email is
-"already taken by another user", with a 409 since B20 step 20a.
-Relates to: B20 (found while planning it), B46, B56.
-Fix idea: compare ids, not text: refuse only if the user `findByEmail`
-returns is a different user. A service test that changes only the case of
-the caller's own email, run against the database (a mock cannot show the
-collation).
-
 ---
 
 ## Done
@@ -1266,3 +1252,36 @@ Notes:
   400 that is not a wrong current password is `invalid`. The fake 400 in
   `api_service_test.dart` now has the body the server really sends.
 - Not done: the app still cannot say "this email is taken" (see above).
+
+**B67 · LOW · Changing only the capitals of your own email says it is taken** — found 2026-10-20
+Where: `UserService.updateUser` decides whether the email changed with
+`String.equals`, which is case-sensitive, then asks `findByEmail` whether
+anyone uses the new one.
+Why it matters: the `utf8mb4_0900_ai_ci` collation ignores case and accents
+(see B56), so `findByEmail("Nikos@x.gr")` finds the user whose email is
+`nikos@x.gr` - the caller themselves. They are told their own email is
+"already taken by another user", with a 409 since B20 step 20a.
+Relates to: B20 (found while planning it), B46, B56.
+Fix idea: compare ids, not text: refuse only if the user `findByEmail`
+returns is a different user. A service test that changes only the case of
+the caller's own email, run against the database (a mock cannot show the
+collation).
+
+Fixed by: `fix(backend): let a user change the capitals of their own email`,
+2026-10-20. `updateUser` no longer compares the email text at all: it asks
+`findByEmail` who owns the new email and refuses only if that is a different
+user, comparing ids with `equals`. The database alone now decides which
+emails are "the same", accents included. New test
+`changingOnlyTheCapitalsOfYourOwnEmailIsNotATakenEmail` runs on the MySQL
+container (red before: "Email Case@Example.com is already taken by another
+user"); `testUpdateUserWithExistingEmail` still covers a different user's
+email.
+Notes:
+- The chat that found this first suggested `found.getId() != id`. Wrong:
+  the ids are `Integer` objects, so `!=` compares
+  references, which only works because Java caches -128..127. From id 128 on,
+  every user would have been told their own email is taken.
+- `findByEmail` now runs on every profile save, not only when the text
+  changed: one indexed lookup on a rare action.
+- Not done: two users saving the same new email at once can both pass the
+  check (B46).
