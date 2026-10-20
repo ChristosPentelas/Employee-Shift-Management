@@ -2,6 +2,8 @@ package org.example.employeeshiftmanagement.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.example.employeeshiftmanagement.validation.FieldLimits;
+import org.example.employeeshiftmanagement.validation.MaxBytes;
 
 /**
  * Body of PUT /api/v1/users/me/password (B8).
@@ -15,8 +17,8 @@ import jakarta.validation.constraints.Size;
  * password predates a stricter rule - they could never change it to a
  * compliant one. Whether it is right is the service's question, not validation's.
  *
- * BCrypt's 72-byte limit is not here: {@code @Size} counts characters, not
- * bytes (see B20). UserService checks it.
+ * BCrypt's 72-byte limit is {@code @MaxBytes}, not {@code @Size}: {@code @Size}
+ * counts characters, not bytes (B20).
  */
 public record ChangePasswordRequest(
         @NotBlank(message = "Current password is required")
@@ -24,6 +26,7 @@ public record ChangePasswordRequest(
 
         @NotBlank(message = "New password is required")
         @Size(min = 4, message = "New password must be at least 4 characters")
+        @MaxBytes(value = FieldLimits.PASSWORD_BYTES, message = "New password must be at most {value} bytes")
         String newPassword
 ) {
 }

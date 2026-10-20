@@ -16,6 +16,13 @@ public final class FieldLimits {
 
     public static final int TEXT = 255;
 
+    /**
+     * BCrypt hashes at most 72 bytes and Spring Security 7 rejects anything
+     * longer instead of silently truncating it. Counted in bytes, not
+     * characters: a Greek character takes two bytes in UTF-8. See MaxBytes.
+     */
+    public static final int PASSWORD_BYTES = 72;
+
     private FieldLimits() {
     }
 }

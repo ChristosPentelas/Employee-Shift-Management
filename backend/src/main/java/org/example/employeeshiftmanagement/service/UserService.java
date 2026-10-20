@@ -13,19 +13,11 @@ import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.UserRepository;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Optional;
 
 @Service
 public class UserService {
-
-    /**
-     * BCrypt hashes at most 72 bytes and Spring Security 7 rejects anything
-     * longer instead of silently truncating it. Counted in bytes, not
-     * characters: a Greek character takes two bytes in UTF-8.
-     */
-    public static final int MAX_PASSWORD_BYTES = 72;
 
     /** The staff list, alphabetical. */
     private static final Sort BY_NAME = Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id"));
@@ -135,7 +127,10 @@ public class UserService {
      * is overwritten. A client-supplied role therefore cannot slip through,
      * even if a controller someday copies one onto the user.
      *
-     * A taken email is a ConflictException (409, B20).
+     * A taken email is a ConflictException (409, B20). A password over
+     * BCrypt's 72 bytes is refused by validation before this runs (@MaxBytes);
+     * one that gets here anyway makes the encoder throw, so it is never
+     * stored cut short.
      */
     @Transactional
     public User registerUser(User user, String role) {
@@ -145,8 +140,6 @@ public class UserService {
         if (existingUser.isPresent()) {
             throw new ConflictException("User already exists");
         }
-
-        checkPasswordLength(user.getPassword());
 
         user.setRole(role);
 
@@ -163,8 +156,10 @@ public class UserService {
      * the first one. Calling this on every startup is safe (idempotent): once a
      * supervisor exists it does nothing.
      *
-     * Reuses registerUser, so the duplicate-email check, the byte limit and the
-     * hashing stay in one place.
+     * Reuses registerUser, so the duplicate-email check and the hashing stay
+     * in one place. This password comes from configuration, not a request, so
+     * no validation sees it: one over BCrypt's 72 bytes makes the encoder
+     * throw, and startup fails.
      */
     @Transactional
     public boolean createFirstSupervisorIfNone(String name, String email, String rawPassword) {
@@ -205,9 +200,8 @@ public class UserService {
     /**
      * Replaces the user's password, if the current one is right (B8).
      *
-     * Wrong current password: WrongPasswordException. New one over
-     * MAX_PASSWORD_BYTES: the same IllegalStateException as registration, so
-     * the caller is told which of the two passwords is the problem.
+     * Wrong current password: WrongPasswordException. A new one over BCrypt's
+     * 72 bytes is refused by validation before this runs (@MaxBytes).
      * After LoginAttemptService.MAX_FAILURES wrong current passwords in a row:
      * TooManyAttemptsException (429), even for the right one (B56).
      *
@@ -230,25 +224,12 @@ public class UserService {
             throw new WrongPasswordException();
         }
         // Right after the current password is proven, before the new one is
-        // checked: a new password that is too long is not a guess, and must
-        // not lock out a user who knows their password.
+        // hashed: if the encoder refuses it, that is not a guess, and must not
+        // lock out a user who knows their password.
         loginAttempts.succeeded(key);
-        checkPasswordLength(newPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
-    }
-
-    /**
-     * BCrypt's limit, shared by registration and password changes so the two
-     * cannot drift apart: at most MAX_PASSWORD_BYTES, so exactly 72 is allowed.
-     * An IllegalStateException (400) until B20 moves this into validation.
-     */
-    private static void checkPasswordLength(String rawPassword) {
-        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            throw new IllegalStateException(
-                    "Password must be at most " + MAX_PASSWORD_BYTES + " bytes");
-        }
     }
 
     /**

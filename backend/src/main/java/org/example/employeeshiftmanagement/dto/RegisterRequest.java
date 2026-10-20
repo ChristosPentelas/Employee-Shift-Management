@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.example.employeeshiftmanagement.validation.FieldLimits;
+import org.example.employeeshiftmanagement.validation.MaxBytes;
 
 /**
  * Body of POST /api/v1/users.
@@ -28,6 +29,7 @@ public record RegisterRequest(
 
         @NotBlank(message = "Password is required")
         @Size(min = 4, message = "Password must be at least 4 characters")
+        @MaxBytes(value = FieldLimits.PASSWORD_BYTES, message = "Password must be at most {value} bytes")
         String password
 ) {
 }

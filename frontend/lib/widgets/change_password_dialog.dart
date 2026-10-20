@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
-// BCrypt's limit, copied from the backend's UserService.MAX_PASSWORD_BYTES.
+// BCrypt's limit, copied from the backend's FieldLimits.PASSWORD_BYTES.
 // Counted in UTF-8 bytes, not characters: a Greek letter takes two.
 const maxPasswordBytes = 72;
 

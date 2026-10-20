@@ -87,18 +87,6 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Today only the BCrypt byte limit, thrown by UserService. A taken email
-     * used to land here too, until B20 made it a ConflictException (409).
-     * This handler goes once the byte limit moves into validation (B20 step
-     * 20b): mapping a JDK exception type to 400 blames the caller for any
-     * library's IllegalStateException, and sends its text to the client.
-     */
-    @ExceptionHandler(IllegalStateException.class)
-    public ProblemDetail handleIllegalState(IllegalStateException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
-    }
-
-    /**
      * Re-thrown on purpose, so Spring Security keeps deciding 401 vs 403.
      *
      * Without this method the catch-all below would swallow the
@@ -116,6 +104,10 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Anything not named above is a bug or an outage, never the caller's fault.
+     *
+     * IllegalStateException included: until B20 it had its own 400 handler,
+     * which blamed the caller for any library's IllegalStateException and
+     * sent that library's text to the client.
      *
      * The message deliberately does not reach the client: exception text names
      * tables, columns, file paths and library internals. It goes to the log,

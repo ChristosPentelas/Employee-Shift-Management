@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.ResultMatcher;
 import java.time.Duration;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -130,6 +131,47 @@ class UserControllerTest {
                                 {"name":"Test User","email":"","password":"secret123"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    // --- BCrypt's 72-byte limit (B20 step 20b) ---
+    // 36 Greek letters are exactly 72 bytes in UTF-8, 37 are 74: over the
+    // limit at only 37 characters, which @Size(max = 72) would let through.
+
+    private static final String SEVENTY_TWO_BYTES = "κ".repeat(36);
+    private static final String SEVENTY_FOUR_BYTES = "κ".repeat(37);
+
+    @Test
+    void registrationRejectsAPasswordOverTheByteLimit() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Test User","email":"test@example.com","password":"%s"}
+                                """.formatted(SEVENTY_FOUR_BYTES)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password")
+                        .value("Password must be at most 72 bytes"));
+
+        verify(userService, never()).registerUser(any(), any());
+    }
+
+    @Test
+    void registrationAcceptsAPasswordOfExactlyTheByteLimit() throws Exception {
+        when(userService.registerUser(any(User.class), anyString())).thenReturn(existingUser());
+
+        mockMvc.perform(post("/api/v1/users")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Test User","email":"test@example.com","password":"%s"}
+                                """.formatted(SEVENTY_TWO_BYTES)))
+                .andExpect(status().isCreated());
+
+        // The exact text, so a body garbled on the way (one byte per letter)
+        // cannot make this pass by accident.
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userService).registerUser(captor.capture(), eq("EMPLOYEE"));
+        assertEquals(SEVENTY_TWO_BYTES, captor.getValue().getPassword());
     }
 
     @Test
@@ -241,6 +283,69 @@ class UserControllerTest {
                         .value("New password must be at least 4 characters"));
 
         verify(userService, never()).changePassword(any(), any(), any());
+    }
+
+    @Test
+    void aNewPasswordOverTheByteLimitIsRejectedBeforeTheService() throws Exception {
+        // Refused by validation, so the service never runs: it is not counted
+        // as a guess at the current password either (B56 step 56b).
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"secret123","newPassword":"%s"}
+                                """.formatted(SEVENTY_FOUR_BYTES)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.newPassword")
+                        .value("New password must be at most 72 bytes"));
+
+        verify(userService, never()).changePassword(any(), any(), any());
+    }
+
+    @Test
+    void aNewPasswordOfExactlyTheByteLimitIsAccepted() throws Exception {
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"secret123","newPassword":"%s"}
+                                """.formatted(SEVENTY_TWO_BYTES)))
+                .andExpect(status().isNoContent());
+
+        verify(userService).changePassword(TestTokens.EMPLOYEE_ID, "secret123", SEVENTY_TWO_BYTES);
+    }
+
+    @Test
+    void aMissingNewPasswordIsOnlyRequired() throws Exception {
+        // The byte rule leaves a missing value to @NotBlank. If it read a null
+        // itself, this would be a 500 instead of one clear field error.
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"secret123"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.newPassword").value("New password is required"));
+
+        verify(userService, never()).changePassword(any(), any(), any());
+    }
+
+    @Test
+    void anUnexpectedIllegalStateExceptionIsAServerErrorThatHidesItsText() throws Exception {
+        // Until B20 every IllegalStateException answered 400 with its own
+        // message as the detail - a library's internals sent to the phone, and
+        // blamed on the caller. Now nothing throws it on purpose, so one that
+        // escapes is a bug: 500, and the text stays in the server log.
+        doThrow(new IllegalStateException("HikariPool-1 - Connection is not available"))
+                .when(userService).changePassword(anyInt(), anyString(), anyString());
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PASSWORD_CHANGE))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.detail").value("Something went wrong"));
     }
 
     @Test

@@ -318,9 +318,11 @@ void main() {
         await changeAnswered(400,
             '{"status":400,"detail":"Validation failed","errors":{"newPassword":"..."}}'),
         ChangePasswordResult.invalid);
+    // The 72-byte limit, as the server sends it since B20 step 20b.
     expect(
         await changeAnswered(400,
-            '{"status":400,"detail":"Password must be at most 72 bytes"}'),
+            '{"status":400,"detail":"Validation failed",'
+            '"errors":{"newPassword":"New password must be at most 72 bytes"}}'),
         ChangePasswordResult.invalid);
     // Five wrong current passwords lock the change for 15 minutes (B56).
     expect(

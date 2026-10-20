@@ -123,43 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
-Where: `UserService.registerUser` and `updateUser` throw
-`IllegalStateException`; `ApiExceptionHandler` maps that type to 400.
-Why it matters: 400 says "your request was malformed", but the request was
-perfectly well formed - it lost a race with an email that already exists. 409
-is the code a client can act on differently (offer to log in instead of
-re-typing the form). Mapping a JDK exception type to a status is also loose:
-any `IllegalStateException` from a library would be reported as the caller's
-fault.
-Relates to: F14 (decided during it, deliberately out of scope), F16.
-Fix idea: a `DuplicateEmailException` mapped to 409, and move the BCrypt
-72-byte limit into validation (F15) rather than an `IllegalStateException`.
-Then `IllegalStateException` can be dropped from the advice entirely and fall
-into the 500 catch-all, where it belongs. Since F30 a general
-`ConflictException` → 409 exists; it can be used here instead of a new type.
-Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
-BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
-password passes `@Size` at 100 bytes. It needs a small custom constraint that
-counts bytes, like `@ValidLeaveDates` does for its rule.
-Also (found 2026-10-07, F22): the 400 sends the exception's message to the
-client as `detail`. A library's `IllegalStateException` would put its internal
-text on the phone, which is the leak `handleAnythingElse` exists to prevent.
-Same fix.
-Plan (decided 2026-10-20): two steps. **20a** a taken email is a
-`ConflictException`; **20b** a `@MaxBytes` constraint on the two new-password
-fields replaces `checkPasswordLength`, and the `IllegalStateException`
-handler is deleted.
-Since `fix(backend): answer 409 when an email is already taken` (20a):
-`registerUser` and `updateUser` throw `ConflictException`, so `POST /users`
-and `PUT /users/{id}` answer 409 with the same `detail` text as before. The
-controller test that F22 pinned at 400 now expects 409, and `PUT /users/{id}`
-has a 409 test of its own. The app needed no change: `registerUser` and
-`updateUser` in `api_service.dart` treat any status but success as failure,
-so they still show their general error, not "this email is taken" (that needs
-the app to read the 409, ideally with a code from B58). Left: 20b. Until then
-the byte limit is still an `IllegalStateException` answered 400.
-
 **B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
 Where: the `ResourceNotFoundException` messages - `"User not found"`,
 `"News item not found"`, `"Message not found"`, `"Shift not found with id 3"`,
@@ -1239,3 +1202,67 @@ Notes:
 - A message that fails to parse makes `getInbox`/`getSent` return an empty
   list (their `catch`), so a broken response shows "no messages", not an
   error.
+
+**B20 · LOW · "Email already taken" answers 400 where 409 Conflict belongs** — found 2026-09-16
+Where: `UserService.registerUser` and `updateUser` throw
+`IllegalStateException`; `ApiExceptionHandler` maps that type to 400.
+Why it matters: 400 says "your request was malformed", but the request was
+perfectly well formed - it lost a race with an email that already exists. 409
+is the code a client can act on differently (offer to log in instead of
+re-typing the form). Mapping a JDK exception type to a status is also loose:
+any `IllegalStateException` from a library would be reported as the caller's
+fault.
+Relates to: F14 (decided during it, deliberately out of scope), F16.
+Fix idea: a `DuplicateEmailException` mapped to 409, and move the BCrypt
+72-byte limit into validation (F15) rather than an `IllegalStateException`.
+Then `IllegalStateException` can be dropped from the advice entirely and fall
+into the 500 catch-all, where it belongs. Since F30 a general
+`ConflictException` → 409 exists; it can be used here instead of a new type.
+Not with `@Size(max = 72)` (corrected 2026-09-18): `@Size` counts characters,
+BCrypt counts UTF-8 bytes, and a Greek letter is two bytes - a 50-letter Greek
+password passes `@Size` at 100 bytes. It needs a small custom constraint that
+counts bytes, like `@ValidLeaveDates` does for its rule.
+Also (found 2026-10-07, F22): the 400 sends the exception's message to the
+client as `detail`. A library's `IllegalStateException` would put its internal
+text on the phone, which is the leak `handleAnythingElse` exists to prevent.
+Same fix.
+Plan (decided 2026-10-20): two steps. **20a** a taken email is a
+`ConflictException`; **20b** a `@MaxBytes` constraint on the two new-password
+fields replaces `checkPasswordLength`, and the `IllegalStateException`
+handler is deleted.
+Since `fix(backend): answer 409 when an email is already taken` (20a):
+`registerUser` and `updateUser` throw `ConflictException`, so `POST /users`
+and `PUT /users/{id}` answer 409 with the same `detail` text as before. The
+controller test that F22 pinned at 400 now expects 409, and `PUT /users/{id}`
+has a 409 test of its own. The app needed no change: `registerUser` and
+`updateUser` in `api_service.dart` treat any status but success as failure,
+so they still show their general error, not "this email is taken" (that needs
+the app to read the 409, ideally with a code from B58).
+
+Fixed by: `fix(backend): answer 409 when an email is already taken` (`766e688`)
+and `fix(backend): check BCrypt's byte limit during validation`, 2026-10-20.
+**20b:** `@MaxBytes` (`validation/MaxBytes.java` and its validator) counts
+UTF-8 bytes and sits on `RegisterRequest.password` and
+`ChangePasswordRequest.newPassword`, with the limit in
+`FieldLimits.PASSWORD_BYTES` (moved from `UserService.MAX_PASSWORD_BYTES`,
+since an annotation needs a constant and a DTO should not depend on a
+service). Too long is now a validation 400 that names the field, e.g.
+`errors.newPassword: "New password must be at most 72 bytes"`, and the
+service is never called. `checkPasswordLength` and the
+`IllegalStateException` handler are deleted, so an `IllegalStateException`
+that escapes is a 500 with "Something went wrong" and its text only in the
+log (pinned by a controller test).
+Notes:
+- No check is left in the service: Spring Security 7's `BCryptPasswordEncoder`
+  throws `IllegalArgumentException` itself for more than 72 bytes (checked on
+  spring-security-crypto 7.0.0) and never stores a cut-short hash. That covers
+  the one caller without a request, the first-supervisor seed: a seed password
+  that is too long stops startup. Login is unaffected: `matches` with a
+  too-long password just answers false, so a 401.
+- The three service tests that expected the old `IllegalStateException` now
+  expect the encoder's `IllegalArgumentException`; what they check (refused,
+  nothing stored, not counted as a guess) is unchanged.
+- The app needed no change: it already checks 72 bytes in the dialog, and any
+  400 that is not a wrong current password is `invalid`. The fake 400 in
+  `api_service_test.dart` now has the body the server really sends.
+- Not done: the app still cannot say "this email is taken" (see above).

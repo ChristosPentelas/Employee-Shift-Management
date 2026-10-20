@@ -362,7 +362,13 @@ public class UserServiceTest {
         user.setEmail("long@example.com");
         user.setPassword(longPassword);
 
-        assertThrows(IllegalStateException.class, () -> userService.registerUser(user, "EMPLOYEE"));
+        // Requests are stopped earlier by @MaxBytes (UserControllerTest). This
+        // is the last line behind it, for callers with no request, like the
+        // first-supervisor seed: Spring Security's encoder refuses to hash it,
+        // rather than store a hash of only the first 72 bytes (B20 step 20b).
+        assertThrows(IllegalArgumentException.class, () -> userService.registerUser(user, "EMPLOYEE"));
+        assertTrue(userService.findUserByEmail("long@example.com").isEmpty(),
+                "nothing must be stored");
     }
 
     @Test
@@ -432,8 +438,9 @@ public class UserServiceTest {
         // 37 Greek letters = 74 bytes: over the limit at only 37 characters.
         // The current password is right, so the error must be about the new
         // one - not "wrong password", which would send the user looking for
-        // a mistake they did not make.
-        assertThrows(IllegalStateException.class,
+        // a mistake they did not make. Validation stops this before the
+        // service (@MaxBytes); here the encoder refuses it (B20 step 20b).
+        assertThrows(IllegalArgumentException.class,
                 () -> userService.changePassword(saved.getId(), "secret123", "κ".repeat(37)));
 
         assertTrue(userService.authenticate("login@example.com", "secret123").isPresent(),
@@ -492,10 +499,11 @@ public class UserServiceTest {
     void aRightCurrentPasswordWithARefusedNewOneIsNotAGuess() {
         // The caller proved they know the password; only the new one is too
         // long. Counting that as a failure would lock out a user who knows
-        // their password, after five tries at a new one.
+        // their password, after five tries at a new one. Through the API
+        // validation refuses it first; this covers the service on its own.
         User saved = registerWithPassword("change-too-long@example.com");
         for (int i = 0; i < 5; i++) {
-            assertThrows(IllegalStateException.class,
+            assertThrows(IllegalArgumentException.class,
                     () -> userService.changePassword(saved.getId(), "secret123", "κ".repeat(37)));
         }
 
