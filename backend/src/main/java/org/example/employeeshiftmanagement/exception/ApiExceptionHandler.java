@@ -87,10 +87,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * The request was understood but conflicts with what is already stored -
-     * today only "email already taken" and the BCrypt byte limit, both thrown
-     * by UserService. 400 is what the controller returned before this class, so
-     * the contract does not change here (see B20 for the 409 question).
+     * Today only the BCrypt byte limit, thrown by UserService. A taken email
+     * used to land here too, until B20 made it a ConflictException (409).
+     * This handler goes once the byte limit moves into validation (B20 step
+     * 20b): mapping a JDK exception type to 400 blames the caller for any
+     * library's IllegalStateException, and sends its text to the client.
      */
     @ExceptionHandler(IllegalStateException.class)
     public ProblemDetail handleIllegalState(IllegalStateException e) {

@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.ConflictException;
 import org.example.employeeshiftmanagement.exception.WrongPasswordException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -133,6 +134,8 @@ public class UserService {
      * which role it creates, and whatever role the user object already carries
      * is overwritten. A client-supplied role therefore cannot slip through,
      * even if a controller someday copies one onto the user.
+     *
+     * A taken email is a ConflictException (409, B20).
      */
     @Transactional
     public User registerUser(User user, String role) {
@@ -140,7 +143,7 @@ public class UserService {
         Optional<User> existingUser = userRepository.findByEmail(user.getEmail());
 
         if (existingUser.isPresent()) {
-            throw new IllegalStateException("User already exists");
+            throw new ConflictException("User already exists");
         }
 
         checkPasswordLength(user.getPassword());
@@ -187,7 +190,7 @@ public class UserService {
         if(!user.getEmail().equals(userDetails.getEmail())) {
             Optional<User> userWithNewEmail = userRepository.findByEmail(userDetails.getEmail());
             if(userWithNewEmail.isPresent()) {
-                throw new IllegalStateException("Email "+userDetails.getEmail()+" is already taken by another user");
+                throw new ConflictException("Email "+userDetails.getEmail()+" is already taken by another user");
             }
         }
         user.setEmail(userDetails.getEmail());

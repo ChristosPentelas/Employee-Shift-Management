@@ -1,5 +1,6 @@
 package org.example.employeeshiftmanagement;
 
+import org.example.employeeshiftmanagement.exception.ConflictException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.exception.TooManyAttemptsException;
 import org.example.employeeshiftmanagement.exception.WrongPasswordException;
@@ -114,7 +115,8 @@ public class UserServiceTest {
         user2.setEmail("same@email.com");
         user2.setPassword("123456");
 
-        assertThrows(IllegalStateException.class, () -> {
+        // 409, not 400 (B20): the request is well formed, the email is taken.
+        assertThrows(ConflictException.class, () -> {
             userService.registerUser(user2, "EMPLOYEE");
         });
     }
@@ -156,7 +158,7 @@ public class UserServiceTest {
         updateDetails.setName("Updated User B");
         updateDetails.setEmail("userA@example.com");
 
-        assertThrows(IllegalStateException.class, () -> {
+        assertThrows(ConflictException.class, () -> {
             userService.updateUser(savedB.getId(), updateDetails);
         });
     }

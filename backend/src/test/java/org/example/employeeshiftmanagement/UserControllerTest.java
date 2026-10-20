@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.UserController;
+import org.example.employeeshiftmanagement.exception.ConflictException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.exception.TooManyAttemptsException;
 import org.example.employeeshiftmanagement.exception.WrongPasswordException;
@@ -603,19 +604,35 @@ class UserControllerTest {
     }
 
     @Test
-    void registeringATakenEmailIsABadRequestWithTheReason() throws Exception {
-        // Today's contract, pinned on purpose. B20 proposes 409 Conflict; when
-        // that is decided, this test changes with the contract.
+    void registeringATakenEmailIsAConflictWithTheReason() throws Exception {
+        // 409 since B20 (400 before): the request is well formed, it clashes
+        // with an account that already exists.
         when(userService.registerUser(any(User.class), anyString()))
-                .thenThrow(new IllegalStateException("User already exists"));
+                .thenThrow(new ConflictException("User already exists"));
 
         mockMvc.perform(post("/api/v1/users")
                         .with(TestTokens.supervisor())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(NEW_ACCOUNT))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.detail").value("User already exists"));
+    }
+
+    @Test
+    void changingYourEmailToATakenOneIsAConflictWithTheReason() throws Exception {
+        when(userService.updateUser(eq(7), any(User.class)))
+                .thenThrow(new ConflictException(
+                        "Email test@example.com is already taken by another user"));
+
+        mockMvc.perform(put("/api/v1/users/7")
+                        .with(TestTokens.employee())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(PROFILE_EDIT))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.detail")
+                        .value("Email test@example.com is already taken by another user"));
     }
 
     /**

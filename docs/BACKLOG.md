@@ -146,6 +146,19 @@ Also (found 2026-10-07, F22): the 400 sends the exception's message to the
 client as `detail`. A library's `IllegalStateException` would put its internal
 text on the phone, which is the leak `handleAnythingElse` exists to prevent.
 Same fix.
+Plan (decided 2026-10-20): two steps. **20a** a taken email is a
+`ConflictException`; **20b** a `@MaxBytes` constraint on the two new-password
+fields replaces `checkPasswordLength`, and the `IllegalStateException`
+handler is deleted.
+Since `fix(backend): answer 409 when an email is already taken` (20a):
+`registerUser` and `updateUser` throw `ConflictException`, so `POST /users`
+and `PUT /users/{id}` answer 409 with the same `detail` text as before. The
+controller test that F22 pinned at 400 now expects 409, and `PUT /users/{id}`
+has a 409 test of its own. The app needed no change: `registerUser` and
+`updateUser` in `api_service.dart` treat any status but success as failure,
+so they still show their general error, not "this email is taken" (that needs
+the app to read the 409, ideally with a code from B58). Left: 20b. Until then
+the byte limit is still an `IllegalStateException` answered 400.
 
 **B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
 Where: the `ResourceNotFoundException` messages - `"User not found"`,
@@ -381,7 +394,8 @@ two supervisors adding the same employee at the same instant, so rare.
 Relates to: F11, F14 (the error handler), B20 (whether that 400 should be a 409).
 Fix idea: catch `DataIntegrityViolationException` around the save in
 `registerUser` (and the email change in `updateUser`) and throw the
-same exception as the normal duplicate check. `saveAndFlush` is needed there,
+same exception as the normal duplicate check (a `ConflictException` since
+B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
 **B47 · LOW · Deleting a user also deletes the messages they sent to others** — found 2026-10-04
@@ -650,6 +664,20 @@ Relates to: B18 (found while fixing it).
 Fix idea: decide first. If it is not allowed, `sendMessage` rejects equal ids
 with a 400, with a service test. If it is allowed ("notes to self"), say so in
 a comment; the list's grouping test already covers it.
+
+**B67 · LOW · Changing only the capitals of your own email says it is taken** — found 2026-10-20
+Where: `UserService.updateUser` decides whether the email changed with
+`String.equals`, which is case-sensitive, then asks `findByEmail` whether
+anyone uses the new one.
+Why it matters: the `utf8mb4_0900_ai_ci` collation ignores case and accents
+(see B56), so `findByEmail("Nikos@x.gr")` finds the user whose email is
+`nikos@x.gr` - the caller themselves. They are told their own email is
+"already taken by another user", with a 409 since B20 step 20a.
+Relates to: B20 (found while planning it), B46, B56.
+Fix idea: compare ids, not text: refuse only if the user `findByEmail`
+returns is a different user. A service test that changes only the case of
+the caller's own email, run against the database (a mock cannot show the
+collation).
 
 ---
 
