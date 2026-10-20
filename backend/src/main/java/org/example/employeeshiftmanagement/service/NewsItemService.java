@@ -54,13 +54,13 @@ public class NewsItemService {
 
     public NewsItem getNewsItemById(Integer id) {
         return newsItemRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("News item", id));
     }
 
     @Transactional
     public NewsItem updateNewsItem(NewsItem details,Integer id) {
         NewsItem newsItem = newsItemRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("News item not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("News item", id));
         newsItem.setTitle(details.getTitle());
         newsItem.setDescription(details.getDescription());
         newsItem.setDeadline(details.getDeadline());
@@ -72,7 +72,7 @@ public class NewsItemService {
     @Transactional
     public void deleteNewsItem(Integer id) {
         if(!newsItemRepository.existsById(id)) {
-            throw new ResourceNotFoundException("News item not found");
+            throw new ResourceNotFoundException("News item", id);
         }
         newsItemRepository.deleteById(id);
     }

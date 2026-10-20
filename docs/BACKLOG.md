@@ -123,18 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
-Where: the `ResourceNotFoundException` messages - `"User not found"`,
-`"News item not found"`, `"Message not found"`, `"Shift not found with id 3"`,
-`"Leave Request Not Found with Id: 3"`.
-Why it matters: since F14 these are the `detail` field of the error body, so
-they are part of the API, not internal text. Three casings, two formats, and
-only some include the id.
-Relates to: F14.
-Fix idea: settle on one shape - `"<Resource> not found: <id>"` - and apply it
-at all eight throw sites. Cosmetic, so it was kept out of the F14 commits to
-leave those mechanical.
-
 **B24 · MEDIUM · Assigning a shift with a mistyped time fails without a word** — found 2026-09-18
 Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
 "HH:mm"; `ApiService.assignShift` returns `false` on any non-2xx and the dialog
@@ -1285,3 +1273,32 @@ Notes:
   changed: one indexed lookup on a rare action.
 - Not done: two users saving the same new email at once can both pass the
   check (B46).
+
+**B22 · LOW · "Not found" messages are worded four different ways** — found 2026-09-16
+Where: the `ResourceNotFoundException` messages - `"User not found"`,
+`"News item not found"`, `"Message not found"`, `"Shift not found with id 3"`,
+`"Leave Request Not Found with Id: 3"`.
+Why it matters: since F14 these are the `detail` field of the error body, so
+they are part of the API, not internal text. Three casings, two formats, and
+only some include the id.
+Relates to: F14.
+Fix idea: settle on one shape - `"<Resource> not found: <id>"` - and apply it
+at all eight throw sites (ten by the time it was fixed). Cosmetic, so it was
+kept out of the F14 commits to leave those mechanical.
+
+Fixed by: `fix(backend): word every "not found" the same way`, 2026-10-20.
+`ResourceNotFoundException` now takes `(resource, id)` and builds
+`"<Resource> not found: <id>"` itself; its free-text constructor is gone, so
+the compiler pointed at all ten throw sites and a new one cannot pick its own
+wording. `/users/search` passes the email it was asked for: `"User not found:
+nobody@example.com"` (supervisor-only, and it is the caller's own input).
+The `detail` of every 404 changed, e.g. `"Leave Request Not Found with Id: 3"`
+is now `"Leave request not found: 3"`; the app reads no 404 text, so nothing
+changed for it.
+Tests: new `ResourceNotFoundExceptionTest` pins the format;
+`LeaveRequestServiceTest.aMissingRequestIsNotFound` and
+`UserServiceTest.testDeleteUser` now also check the message at a real site.
+All four went red with the format broken. The five controller tests build
+their stub exception with the new constructor and expect the new text - they
+mock the service, so they never saw the server's real wording. Suite: 276
+tests, all green.

@@ -68,7 +68,7 @@ public class ShiftService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Shift updateShift(Integer shiftId,Shift shiftDetails){
         Shift existingShift = shiftRepository.findById(shiftId)
-                .orElseThrow(()-> new ResourceNotFoundException("Shift not found with id "+shiftId));
+                .orElseThrow(()-> new ResourceNotFoundException("Shift", shiftId));
 
         Integer existingUserId = existingShift.getUser().getId();
         userService.findLockedUserById(existingUserId);
@@ -89,7 +89,7 @@ public class ShiftService {
     @Transactional
     public void deleteShift(Integer shiftId){
         if(!shiftRepository.existsById(shiftId)){
-            throw new ResourceNotFoundException("Shift not found with id "+shiftId);
+            throw new ResourceNotFoundException("Shift", shiftId);
         }
         shiftRepository.deleteById(shiftId);
     }

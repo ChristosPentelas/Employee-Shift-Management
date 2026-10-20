@@ -50,7 +50,7 @@ public class UserController {
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<UserResponse> getUserByEmail(@RequestParam String email) {
         User user = userService.findUserByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
         return ResponseEntity.ok(UserResponse.from(user));
     }
 

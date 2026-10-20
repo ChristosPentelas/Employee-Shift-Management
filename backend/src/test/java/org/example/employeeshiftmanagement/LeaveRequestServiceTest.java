@@ -101,8 +101,9 @@ class LeaveRequestServiceTest {
     void aMissingRequestIsNotFound() {
         when(leaveRequestRepository.findLockedById(anyInt())).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class,
+        ResourceNotFoundException e = assertThrows(ResourceNotFoundException.class,
                 () -> leaveRequestService.updateLeaveRequest(99, LeaveDecision.APPROVED));
+        assertEquals("Leave request not found: 99", e.getMessage());
     }
 
     @Test

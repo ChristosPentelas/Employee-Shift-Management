@@ -104,6 +104,6 @@ public class MessageService {
 
     private Message findMessage(Integer messageId) {
         return messageRepository.findById(messageId)
-                .orElseThrow(() -> new ResourceNotFoundException("Message not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Message", messageId));
     }
 }

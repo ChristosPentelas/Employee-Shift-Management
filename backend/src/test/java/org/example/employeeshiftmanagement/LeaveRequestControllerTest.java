@@ -278,14 +278,14 @@ class LeaveRequestControllerTest {
     @Test
     void approvingAMissingLeaveIsNotFound() throws Exception {
         when(leaveRequestService.updateLeaveRequest(99, LeaveDecision.APPROVED))
-                .thenThrow(new ResourceNotFoundException("Leave Request Not Found with Id: 99"));
+                .thenThrow(new ResourceNotFoundException("Leave request", 99));
 
         mockMvc.perform(put("/api/v1/leaves/99/status")
                         .param("status", "APPROVED")
                         .with(TestTokens.supervisor()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("Leave Request Not Found with Id: 99"));
+                .andExpect(jsonPath("$.detail").value("Leave request not found: 99"));
     }
 
     @Test

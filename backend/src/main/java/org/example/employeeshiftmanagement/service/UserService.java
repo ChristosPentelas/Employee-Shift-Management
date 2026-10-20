@@ -51,7 +51,7 @@ public class UserService {
 
     public User findUserById(Integer id) {
         return userRepository.findById(id).
-                orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                orElseThrow(() -> new ResourceNotFoundException("User", id));
     }
 
     /**
@@ -67,7 +67,7 @@ public class UserService {
     @Transactional(propagation = Propagation.MANDATORY)
     public User findLockedUserById(Integer id) {
         return userRepository.findLockedById(id).
-                orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                orElseThrow(() -> new ResourceNotFoundException("User", id));
     }
 
     /**

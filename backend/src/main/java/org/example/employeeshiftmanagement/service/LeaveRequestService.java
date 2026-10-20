@@ -70,7 +70,7 @@ public class LeaveRequestService {
     @Transactional
     public LeaveRequest updateLeaveRequest(Integer requestId, LeaveDecision decision) {
         LeaveRequest request = leaveRequestRepository.findLockedById(requestId)
-                .orElseThrow(() -> new ResourceNotFoundException("Leave Request Not Found with Id: " + requestId));
+                .orElseThrow(() -> new ResourceNotFoundException("Leave request", requestId));
         if (request.getStatus() != LeaveStatus.PENDING) {
             throw new ConflictException(
                     "Leave request " + requestId + " is already " + request.getStatus());

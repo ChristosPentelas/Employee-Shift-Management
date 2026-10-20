@@ -232,12 +232,12 @@ class NewsItemControllerTest {
     @Test
     void aMissingNewsItemIsNotFound() throws Exception {
         when(newsItemService.getNewsItemById(99))
-                .thenThrow(new ResourceNotFoundException("News item not found"));
+                .thenThrow(new ResourceNotFoundException("News item", 99));
 
         mockMvc.perform(get("/api/v1/news/99").with(TestTokens.employee()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("News item not found"));
+                .andExpect(jsonPath("$.detail").value("News item not found: 99"));
     }
 
     @Test

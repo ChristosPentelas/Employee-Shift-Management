@@ -98,8 +98,9 @@ public class UserServiceTest {
         assertDoesNotThrow(() -> userService.deleteUser(savedUser.getId()));
 
         //Verify deletion
-        assertThrows(ResourceNotFoundException.class,
+        ResourceNotFoundException e = assertThrows(ResourceNotFoundException.class,
                 () -> userService.findUserById(savedUser.getId()));
+        assertEquals("User not found: " + savedUser.getId(), e.getMessage());
     }
 
     @Test

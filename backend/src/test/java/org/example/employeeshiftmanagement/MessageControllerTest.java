@@ -286,11 +286,11 @@ class MessageControllerTest {
     void markingAMissingMessageReadIsNotFound() throws Exception {
         // The service looks the message up before checking who is asking, so a
         // message that does not exist is 404 for everyone, never 403.
-        when(messageService.markAsRead(99, 7)).thenThrow(new ResourceNotFoundException("Message not found"));
+        when(messageService.markAsRead(99, 7)).thenThrow(new ResourceNotFoundException("Message", 99));
 
         mockMvc.perform(put("/api/v1/messages/99/read").with(TestTokens.employee()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("Message not found"));
+                .andExpect(jsonPath("$.detail").value("Message not found: 99"));
     }
 }

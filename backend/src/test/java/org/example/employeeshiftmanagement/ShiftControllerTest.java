@@ -432,7 +432,7 @@ class ShiftControllerTest {
     @Test
     void editingAMissingShiftIsNotFound() throws Exception {
         when(shiftService.updateShift(eq(99), any(Shift.class)))
-                .thenThrow(new ResourceNotFoundException("Shift not found with id 99"));
+                .thenThrow(new ResourceNotFoundException("Shift", 99));
 
         mockMvc.perform(put("/api/v1/shifts/99")
                         .with(TestTokens.supervisor())
@@ -443,6 +443,6 @@ class ShiftControllerTest {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("Shift not found with id 99"));
+                .andExpect(jsonPath("$.detail").value("Shift not found: 99"));
     }
 }

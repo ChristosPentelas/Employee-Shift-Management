@@ -623,18 +623,18 @@ class UserControllerTest {
 
     @Test
     void aMissingUserIsNotFoundOnGet() throws Exception {
-        when(userService.findUserById(99)).thenThrow(new ResourceNotFoundException("User not found"));
+        when(userService.findUserById(99)).thenThrow(new ResourceNotFoundException("User", 99));
 
         mockMvc.perform(get("/api/v1/users/99").with(TestTokens.employee()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("User not found"));
+                .andExpect(jsonPath("$.detail").value("User not found: 99"));
     }
 
     @Test
     void aMissingUserIsNotFoundOnUpdateNotABadRequest() throws Exception {
         when(userService.updateUser(eq(7), any(User.class)))
-                .thenThrow(new ResourceNotFoundException("User not found"));
+                .thenThrow(new ResourceNotFoundException("User", 7));
 
         mockMvc.perform(put("/api/v1/users/7")
                         .with(TestTokens.employee())
@@ -645,7 +645,7 @@ class UserControllerTest {
 
     @Test
     void aMissingUserIsNotFoundOnDeleteNotAServerError() throws Exception {
-        doThrow(new ResourceNotFoundException("User not found")).when(userService).deleteUser(99);
+        doThrow(new ResourceNotFoundException("User", 99)).when(userService).deleteUser(99);
 
         mockMvc.perform(delete("/api/v1/users/99").with(TestTokens.supervisor()))
                 .andExpect(status().isNotFound());
@@ -705,7 +705,7 @@ class UserControllerTest {
                         .with(TestTokens.supervisor()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("User not found"));
+                .andExpect(jsonPath("$.detail").value("User not found: nobody@example.com"));
     }
 
     @Test
