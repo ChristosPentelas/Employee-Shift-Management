@@ -78,9 +78,9 @@ class ApiService {
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // The staff list reads every page, and the leave lists return a ListPage
-  // the screen can ask past. The others read only their first for now, so
-  // older items need a "load more" (B26).
+  // The staff list reads every page, and the leave and news lists return a
+  // ListPage the screen can ask past. The others read only their first for
+  // now, so older items need a "load more" (B26).
   static List<dynamic> _pageContent(http.Response response) =>
       jsonDecode(response.body)['content'] as List<dynamic>;
 
@@ -177,16 +177,19 @@ class ApiService {
     }
   }
 
-  // The newest page of news.
-  Future<List<NewsItem>> getNews({int page = 0, int size = 20}) async {
+  // One page of news, newest first: every post, or with [type] only posts of
+  // that type, which the server filters (B26). [type] is a NewsType name as
+  // the server spells it, e.g. 'GOAL'; any other word is a 400.
+  Future<ListPage<NewsItem>> getNews({String? type, int page = 0, int size = 20}) async {
+    final path = type == null ? "news" : "news/type/$type";
     try{
       final response = await _client.get(
-        Uri.parse("$baseUrl/news?page=$page&size=$size"),
+        Uri.parse("$baseUrl/$path?page=$page&size=$size"),
         headers: {"Content-Type" : "application/json"},
       );
 
       if (response.statusCode == 200) {
-        return _pageContent(response).map((item) => NewsItem.fromJson(item)).toList();
+        return _page(response, NewsItem.fromJson);
       }else{
         throw Exception("Αποτυχία φόρτωσης ειδήσεων");
     }

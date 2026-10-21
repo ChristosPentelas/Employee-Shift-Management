@@ -5,6 +5,11 @@ import '../services/api_providers.dart';
 import '../models/news_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
+import '../state/paged_list.dart';
+
+/// One tab: its label, and the NewsType it shows as the server spells it,
+/// or null for every post.
+typedef _NewsTab = ({String label, String? type});
 
 class NewsScreen extends ConsumerStatefulWidget {
   @override
@@ -13,12 +18,58 @@ class NewsScreen extends ConsumerStatefulWidget {
 
 class _NewsScreenState extends ConsumerState<NewsScreen> {
   late final ApiService _apiService = ref.read(apiServiceProvider);
-  late Future<List<NewsItem>> _newsFuture;
+
+  // In the order shown. The TabBar and the lists are both built from this,
+  // so they cannot get out of step.
+  static const List<_NewsTab> _tabs = [
+    (label: "Ολα", type: null),
+    (label: "Ανακοινώσεις", type: 'ANNOUNCEMENT'),
+    (label: "Στόχοι", type: 'GOAL'),
+    (label: "Εργασίες", type: 'TASK'),
+  ];
+
+  // Each tab's posts, a page at a time (B26). The server filters by type, so
+  // the Goals tab shows the newest goals - not the goals that happen to be
+  // among the newest 20 posts, as it did when every tab filtered one list.
+  // `late`: the closures use _apiService, a member of this State.
+  late final List<PagedList<NewsItem>> _lists = [
+    // Each closure keeps its own `tab`: a Dart for loop gives every pass a
+    // fresh variable.
+    for (final tab in _tabs)
+      PagedList(
+        fetch: (page) => _apiService.getNews(type: tab.type, page: page),
+        idOf: (n) => n.id,
+      ),
+  ];
+
+  // All four, after a post or a delete: a post is in "all" and in its own
+  // type's tab, and reloading only those would need its type here too.
+  void _reloadAll() {
+    for (final list in _lists) {
+      list.reload();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _newsFuture = _apiService.getNews();
+    _reloadAll();
+  }
+
+  @override
+  void dispose() {
+    for (final list in _lists) {
+      list.dispose();
+    }
+    super.dispose();
+  }
+
+  /// The list keeps the data; saying that a page failed is the screen's job.
+  Future<void> _loadMore(PagedList<NewsItem> list) async {
+    final loaded = await list.loadMore();
+    if (loaded || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.")));
   }
 
   @override
@@ -26,43 +77,22 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     final isSupervisor = ref.watch(isSupervisorProvider);
 
     return DefaultTabController(
-      length: 4,
+      length: _tabs.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text("Νέα & Ενημερώσεις"),
           backgroundColor: Colors.orange,
           bottom: TabBar(
             isScrollable: true,
-            tabs: [
-              Tab(text: "Ολα"),
-              Tab(text: "Ανακοινώσεις"),
-              Tab(text: "Στόχοι"),
-              Tab(text: "Εργασίες"),
-            ],
+            tabs: [for (final tab in _tabs) Tab(text: tab.label)],
           ),
         ),
-        body: FutureBuilder<List<NewsItem>>(
-          future: _newsFuture,
-          builder: (context, snapshot) {
-            if(snapshot.connectionState == ConnectionState.waiting){
-              return Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return Center(child: Text("Σφάλμα: ${snapshot.error}"));
-            }else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return Center(child: Text("Δεν υπάρχουν νέα."));
-            }
-
-            List<NewsItem> allNews = snapshot.data!;
-
-            return TabBarView(
-              children: [
-                _buildNewsList(allNews, isSupervisor),
-                _buildNewsList(allNews.where((n) => n.type == 'ANNOUNCEMENT').toList(), isSupervisor),
-                _buildNewsList(allNews.where((n) => n.type == 'GOAL').toList(), isSupervisor),
-                _buildNewsList(allNews.where((n) => n.type == 'TASK').toList(), isSupervisor),
-              ],
-            );
-          },
+        // No filtering here any more: each tab's list is already its type.
+        body: TabBarView(
+          children: [
+            for (var i = 0; i < _tabs.length; i++)
+              _buildNewsList(_lists[i], _tabs[i], isSupervisor),
+          ],
         ),
         floatingActionButton: isSupervisor
           ? FloatingActionButton(
@@ -75,17 +105,54 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     );
   }
 
-  Widget _buildNewsList(List<NewsItem> items, bool isSupervisor){
-    if (items.isEmpty) return Center(child: Text("Καμία εγγραφή σε αυτή την κατηγορία."));
+  // Rebuilt each time this tab's list tells its listeners it changed.
+  Widget _buildNewsList(PagedList<NewsItem> list, _NewsTab tab, bool isSupervisor) =>
+      ListenableBuilder(
+        listenable: list,
+        builder: (context, _) => _buildNewsPage(list, tab, isSupervisor),
+      );
 
+  Widget _buildNewsPage(PagedList<NewsItem> list, _NewsTab tab, bool isSupervisor){
+    if (list.loading) {
+      return Center(child: CircularProgressIndicator());
+    } else if (list.error != null) {
+      return Center(child: Text("Σφάλμα: ${list.error}"));
+    } else if (list.items.isEmpty) {
+      return Center(child: Text(tab.type == null
+          ? "Δεν υπάρχουν νέα."
+          : "Καμία εγγραφή σε αυτή την κατηγορία."));
+    }
+
+    final items = list.items;
     return ListView.builder(
-      itemCount: items.length,
+      // A TabBarView destroys the tabs it is not showing. The posts survive
+      // in _lists, but the scroll offset only survives saved under this key.
+      key: PageStorageKey(tab.label),
+      // One row more while the server has older posts: the button.
+      itemCount: items.length + (list.hasMore ? 1 : 0),
       itemBuilder: (context,index){
+        if (index == items.length) {
+          return Padding(
+            padding: EdgeInsets.all(12),
+            child: Center(
+              child: TextButton(
+                // Disabled while a page is on its way.
+                onPressed: list.loadingMore ? null : () => _loadMore(list),
+                child: Text("Φόρτωση παλαιότερων"),
+              ),
+            ),
+          );
+        }
         final item = items[index];
         return Card(
           margin: EdgeInsets.all(10),
           elevation: 4,
           child: ExpansionTile(
+            // An ExpansionTile saves whether it is open in the same storage,
+            // under the nearest PageStorageKey above it. Without its own key
+            // that is the list's, and it would read the scroll offset back as
+            // "open" and throw. Its own key also keeps each post open or shut.
+            key: PageStorageKey(item.id),
             leading: Icon(
               item.type == 'TASK' ? Icons.assignment : (item.type == 'GOAL' ? Icons.flag : Icons.campaign),
               color: item.type == 'TASK' ? Colors.orange : (item.type == 'GOAL' ? Colors.green : Colors.blue),
@@ -209,9 +276,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                   // missing dialog must not skip the refresh below (F25).
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (!mounted) return;
-                  setState(() {
-                    _newsFuture = _apiService.getNews();
-                  });
+                  _reloadAll();
                 } catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
@@ -242,9 +307,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
               try{
                 await _apiService.deleteNews(newsId);
                 if (!mounted) return;
-                setState(() {
-                  _newsFuture = _apiService.getNews();
-                });
+                _reloadAll();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Η ανάρτηση διαγράφηκε")),
                 );

@@ -173,9 +173,23 @@ behaviour; `paged_list_test.dart` tests the class alone, and each of its six
 guards was removed once to see a test fail. Not chosen: a `PagedListView`
 widget (leave and news rows differ, and reloading from outside needs a
 `GlobalKey`), a Riverpod `AsyncNotifier` family (much more to learn at once),
-a mixin on `State` (one per class, and news needs four). Left: **26b2b** news
-on four `PagedList`s, **26c** inbox and sent (two lists on one screen),
-**26d** older chat messages, where the 5 s poll reloads page 0.
+a mixin on `State` (one per class, and news needs four). **26b2b done**
+(`feat(frontend): page each news tab on its own`): `getNews` takes an
+optional `type` and asks `/news/type/{type}` for it, returning a `ListPage`.
+The news screen builds its `TabBar` and four `PagedList`s from one list of
+tabs (records), loads all four on opening (4 requests of 20; loading a tab
+when first shown needs a `TabController` listener, not chosen), and reloads
+all four after a post or a delete, since a post is in "all" and in its type's
+tab. The one `FutureBuilder` over the whole `TabBarView` is gone: each tab
+has its own spinner, error, empty text and "load more", so with no news at
+all every tab says so on its own. Each tab's `ListView` has a
+`PageStorageKey`, since a `TabBarView` destroys the tabs it is not showing
+and the scroll offset was lost. That key made every `ExpansionTile` crash
+(`type 'double' is not a subtype of type 'bool?'`): a tile saves whether it
+is open under the nearest `PageStorageKey` above it, which was now the
+list's, so it read the scroll offset. Each tile now has its own key, found
+by the scroll test before it shipped. Left: **26c** inbox and sent (two lists
+on one screen), **26d** older chat messages, where the 5 s poll reloads page 0.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so

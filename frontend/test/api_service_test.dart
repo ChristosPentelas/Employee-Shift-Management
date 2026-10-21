@@ -97,8 +97,27 @@ void main() {
 
     final news = await api.getNews();
 
-    expect(news.single.title, 'Staff meeting');
+    expect(news.items.single.title, 'Staff meeting');
+    expect(sent!.url.path, '/api/v1/news');
     expect(sent!.url.queryParameters, {'page': '0', 'size': '20'});
+  });
+
+  // B26 step 26b2b: each news tab pages through its own type on the server.
+  test('news of one type is asked for by type, at the page given', () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response(
+          '{"content":[],"page":1,"size":20,"totalElements":21,"totalPages":2}',
+          200);
+    }));
+
+    final goals = await api.getNews(type: 'GOAL', page: 1);
+
+    expect(sent!.url.path, '/api/v1/news/type/GOAL');
+    expect(sent!.url.queryParameters, {'page': '1', 'size': '20'});
+    expect(goals.page, 1);
+    expect(goals.hasMore, isFalse);
   });
 
   test("the supervisor's calendar asks for the month it shows", () async {
@@ -466,7 +485,9 @@ void main() {
       final api = ApiService(client: MockClient((request) async {
         // A PUT answers 204 with no body, like the server's mark-chat-read.
         if (request.method == 'PUT') return http.Response('', 204);
-        return http.Response('{"content":[]}', 200);
+        return http.Response(
+            '{"content":[],"page":0,"size":20,"totalElements":0,"totalPages":0}',
+            200);
       }));
 
       final printed = await printedBy(() async {
