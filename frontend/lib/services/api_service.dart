@@ -1,6 +1,7 @@
 import 'dart:convert'; //To convert from JSON to Map
 import 'package:employee_shift_management_ui/models/leave_request_model.dart';
 import 'package:employee_shift_management_ui/models/news_model.dart';
+import 'package:employee_shift_management_ui/models/page_model.dart';
 import 'package:http/http.dart' as http;//Library for internet
 import '../models/user_model.dart';
 import '../models/shift_model.dart';
@@ -77,10 +78,15 @@ class ApiService {
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // The staff list reads every page; the others only their first for now, so
+  // The staff list reads every page, and the leave lists return a ListPage
+  // the screen can ask past. The others read only their first for now, so
   // older items need a "load more" (B26).
   static List<dynamic> _pageContent(http.Response response) =>
       jsonDecode(response.body)['content'] as List<dynamic>;
+
+  static ListPage<T> _page<T>(
+          http.Response response, T Function(Map<String, dynamic>) itemFromJson) =>
+      ListPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>, itemFromJson);
 
   // YYYY-MM-DD, the date format of ?start= and &end=.
   static String _isoDate(DateTime day) =>
@@ -227,24 +233,24 @@ class ApiService {
     }
   }
 
-  Future<List<LeaveRequest>> getAllLeaveRequests() async {
-    // The latest 50, by start date.
-    final response = await _client.get(Uri.parse("$baseUrl/leaves?page=0&size=50"));
+  // 50 at a time, latest start date first; page 0 is the latest.
+  Future<ListPage<LeaveRequest>> getAllLeaveRequests({int page = 0}) async {
+    final response = await _client.get(Uri.parse("$baseUrl/leaves?page=$page&size=50"));
     if (response.statusCode == 200) {
-      return _pageContent(response).map((item) => LeaveRequest.fromJson(item)).toList();
+      return _page(response, LeaveRequest.fromJson);
     }
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }
 
-  /// Only the logged-in employee's own requests. Supervisors use
-  /// getAllLeaveRequests; from F1 step 7d an employee may not call that.
+  /// Only the logged-in employee's own requests, a page at a time like
+  /// getAllLeaveRequests, which from F1 step 7d an employee may not call.
   /// The caller says who is logged in: a service is handed what it needs
   /// instead of reaching into app state (F24).
-  Future<List<LeaveRequest>> getMyLeaveRequests(int userId) async {
-    final response = await _client.get(Uri.parse("$baseUrl/users/$userId/leaves?page=0&size=50"));
+  Future<ListPage<LeaveRequest>> getMyLeaveRequests(int userId, {int page = 0}) async {
+    final response = await _client.get(Uri.parse("$baseUrl/users/$userId/leaves?page=$page&size=50"));
 
     if (response.statusCode == 200) {
-      return _pageContent(response).map((item) => LeaveRequest.fromJson(item)).toList();
+      return _page(response, LeaveRequest.fromJson);
     }
     throw Exception("Σφάλμα φόρτωσης αδειών");
   }

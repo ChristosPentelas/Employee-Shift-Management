@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../models/leave_request_model.dart';
+import '../models/page_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
 
@@ -18,26 +19,91 @@ class LeaveRequestsScreen extends ConsumerStatefulWidget {
 
 class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
-  late Future<List<LeaveRequest>> _leavesFuture;
+
+  // The requests loaded so far, page 0 first (B26). Kept in fields rather
+  // than a FutureBuilder: loading more adds to the list, and a FutureBuilder
+  // handed a new future shows its spinner instead of the rows on screen.
+  List<LeaveRequest> _leaves = [];
+  int _page = 0;
+  bool _hasMore = false;
+  bool _loading = true; // the first load, before there is anything to show
+  bool _loadingMore = false;
+  Object? _error; // only for the first load; a later page has its SnackBar
+  // Raised by every reload. A page that was on its way when the list started
+  // again belongs to the old list, and is dropped instead of appended.
+  int _generation = 0;
 
   /// A supervisor reviews everyone's requests; an employee loads only their
   /// own from the server, instead of downloading everyone's and hiding the
   /// rest on the phone (F7).
-  Future<List<LeaveRequest>> _loadLeaves() {
+  Future<ListPage<LeaveRequest>> _fetch(int page) {
     final me = ref.read(authProvider);
-    if (me == null) return Future.value(const []); // logged out: screen is closing
+    if (me == null) { // logged out: screen is closing
+      return Future.value(const ListPage(items: [], page: 0, totalPages: 0));
+    }
 
     return ref.read(isSupervisorProvider)
-        ? _apiService.getAllLeaveRequests()
-        : _apiService.getMyLeaveRequests(me.user.id);
+        ? _apiService.getAllLeaveRequests(page: page)
+        : _apiService.getMyLeaveRequests(me.user.id, page: page);
+  }
+
+  /// Loads the list again from page 0, dropping any older pages. The rows on
+  /// screen stay until the new ones arrive.
+  Future<void> _reload() async {
+    final generation = ++_generation;
+    try {
+      final first = await _fetch(0);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _leaves = first.items;
+        _page = first.page;
+        _hasMore = first.hasMore;
+        _loading = false;
+        _loadingMore = false; // a page on its way is dropped, see _loadMore
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _error = e;
+      });
+    }
+  }
+
+  /// Adds the next page below the rows on screen.
+  Future<void> _loadMore() async {
+    // A second tap before the page came back would add it twice.
+    if (_loadingMore) return;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
+    try {
+      final next = await _fetch(_page + 1);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        // By id: a request filed since the last page pushes one already
+        // shown onto this one (B69).
+        final shown = _leaves.map((l) => l.id).toSet();
+        _leaves = [..._leaves, ...next.items.where((l) => !shown.contains(l.id))];
+        _page = next.page;
+        _hasMore = next.hasMore;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      // The rows already loaded stay, and so does the button.
+      setState(() => _loadingMore = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.")));
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    setState(() {
-      _leavesFuture = _loadLeaves();
-    });
+    // No setState: nothing is built yet, and _loading already shows the spinner.
+    _reload();
   }
 
   @override
@@ -49,24 +115,36 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
         title: Text("Αιτήματα Αδείας"),
         backgroundColor: Colors.orange,
       ),
-      body: FutureBuilder<List<LeaveRequest>>(
-        future: _leavesFuture,
-        builder: (context,snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting){
+      body: Builder(
+        builder: (context) {
+          if (_loading){
             return Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text("Σφάλμα: ${snapshot.error}"));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          } else if (_error != null) {
+            return Center(child: Text("Σφάλμα: $_error"));
+          } else if (_leaves.isEmpty) {
             return Center(child: Text("Δεν υπάρχουν αιτήματα."));
           }
 
           // No filtering here any more: an employee is sent only their own
           // requests, so other people's reasons never reach the phone (F7).
-          List<LeaveRequest> list = snapshot.data!;
+          List<LeaveRequest> list = _leaves;
 
           return ListView.builder(
-            itemCount: list.length,
+            // One row more while the server has older requests: the button.
+            itemCount: list.length + (_hasMore ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index == list.length) {
+                return Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Center(
+                    child: TextButton(
+                      // Disabled while a page is on its way.
+                      onPressed: _loadingMore ? null : _loadMore,
+                      child: Text("Φόρτωση παλαιότερων"),
+                    ),
+                  ),
+                );
+              }
               final req = list[index];
               return Card(
                 margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -149,9 +227,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
     // Reload unless nothing changed: after a 409 or 404 the list on screen is
     // out of date, and the reload shows what is really stored (B42).
     if (result != UpdateLeaveStatusResult.failed) {
-      setState(() {
-        _leavesFuture = _loadLeaves();
-      });
+      _reload();
     }
   }
 
@@ -250,9 +326,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                 if (result == SubmitLeaveResult.created) {
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (!mounted) return;
-                  setState(() {
-                    _leavesFuture = _loadLeaves();
-                  });
+                  _reload();
                 } else if (dialogContext.mounted) {
                   setDialogState(() => saveError = _submitErrorText(result));
                 }

@@ -143,8 +143,21 @@ nothing: a failed page fails the list. Kept by id, so someone pushed onto the
 next page by an addition is listed once; a deletion can still skip someone
 (B69). A "type a name" search was not chosen: it needs a new endpoint, and a
 few hundred people load cheaply. The employee-list screen tests now answer
-with the real page shape, `totalPages` included. Left: **26b** "load more"
-for news and leaves, **26c** inbox and sent (two lists on one screen),
+with the real page shape, `totalPages` included. 26b was split in two, since
+the news tabs filter one list on the phone and need their own decision.
+**26b1 done** (`feat(frontend): load older leave requests`): both leave
+methods take a `page` and return a `ListPage<T>` (`models/page_model.dart`,
+generic so news and messages can reuse it), with `hasMore`. The leave screen
+keeps the rows in fields instead of a `FutureBuilder`, which would show its
+spinner again for every page, and ends the list with "Φόρτωση παλαιότερων"
+while there is more: a button, not infinite scroll, which needs a scroll
+listener and fires many times. Every reload (filing, answering) starts again
+from page 0 and drops a page still on its way through a counter that each
+reload raises; a second tap while a page loads does nothing; a failed page
+keeps the rows and says so in a SnackBar; repeats are dropped by id (B69). A
+reload now keeps the old rows on screen until the new ones arrive, instead
+of the spinner. Answering a request on page 2 brings the list back to page 0
+(B70). Left: **26b2** news, **26c** inbox and sent (two lists on one screen),
 **26d** older chat messages, where the 5 s poll reloads page 0.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
@@ -632,19 +645,34 @@ allowed, so not "end after start") - and give each its own message.
 
 **B69 · LOW · Reading a list page by page can skip a row that moves** — found 2026-10-21
 Where: every paged list is read by offset (`?page=N` = skip N × size rows).
-Since B26 step 26a `ApiService.getAllEmployees` reads all its pages in a row,
-and 26b-d will add "load more" to the other lists.
+Since B26 step 26a `ApiService.getAllEmployees` reads all its pages in a row;
+since 26b1 the leave screen has a "load more", and 26b2-d add one to the
+other lists.
 Why it matters: a row deleted between two requests moves everyone after it up
 one place, so the first row of the next page is never sent: the staff picker
 can miss one person until it is opened again. An added row does the opposite
 and sends one twice; the staff list drops that by id, but a "load more" that
 only appends would show it twice. Needs a change in the exact seconds between
-two requests, so rare with a few hundred people.
+two requests, so rare with a few hundred people. The staff list and the leave
+screen drop a repeat by id.
 Relates to: B26, F9.
 Fix idea: keyset paging - ask for "the next 100 after (name, id) of the last
 one I have" instead of "page N" - which no change can shift. That is a backend
 change to every list endpoint; for "load more", dropping repeats by id on the
 client is the cheap half.
+
+**B70 · LOW · Answering a leave request on an older page jumps back to the first** — found 2026-10-21
+Where: `leave_requests_screen.dart` `_updateStatus`, which calls `_reload()`
+after an approve or reject.
+Why it matters: since B26 step 26b1 a supervisor can load older requests.
+Answering one there reloads from page 0, so the pages loaded after it are
+dropped and the list is back at its top; to answer the next old request they
+must load those pages again.
+Relates to: B26, B42, B63.
+Fix idea: after a 200, replace that one row with the request the server sends
+back (`PUT .../status` answers with it) instead of reloading. Keep the full
+reload after a 409 or 404 - there the list is out of date, which is what B63
+needs to show.
 
 ---
 

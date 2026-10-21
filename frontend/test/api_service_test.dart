@@ -169,7 +169,10 @@ void main() {
     final api = ApiService(client: MockClient((request) async {
       paths.add(request.url.path);
       return http.Response(
-          request.url.path.contains('leaves') ? '{"content":[]}' : '[]', 200);
+          request.url.path.contains('leaves')
+              ? '{"content":[],"page":0,"size":50,"totalElements":0,"totalPages":0}'
+              : '[]',
+          200);
     }));
 
     await api.getMyLeaveRequests(7);
@@ -178,6 +181,28 @@ void main() {
     // /users/{id}/leaves since F16 step 16d2; the old
     // /leaves/users/{id}/leaves was removed from the server in 16d3.
     expect(paths, ['/api/v1/users/7/leaves', '/api/v1/users/7/schedule']);
+  });
+
+  // B26: the leave screen loads older requests a page at a time.
+  test('both leave lists ask for the page they are given', () async {
+    final asked = <Map<String, String>>[];
+    final api = ApiService(client: MockClient((request) async {
+      asked.add(request.url.queryParameters);
+      return http.Response(
+          '{"content":[],"page":2,"size":50,"totalElements":100,"totalPages":3}',
+          200);
+    }));
+
+    final everyone = await api.getAllLeaveRequests(page: 2);
+    await api.getMyLeaveRequests(7, page: 2);
+
+    expect(asked, [
+      {'page': '2', 'size': '50'},
+      {'page': '2', 'size': '50'},
+    ]);
+    // The page's place in the list reaches the screen, not only its rows.
+    expect(everyone.page, 2);
+    expect(everyone.hasMore, isFalse);
   });
 
   test('the staff list asks for the largest page the server allows', () async {

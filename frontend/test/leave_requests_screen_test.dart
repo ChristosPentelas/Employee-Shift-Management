@@ -1,6 +1,9 @@
 // F7 / F1 step 7c: an employee must not receive other people's leave requests
 // at all. Before this, the screen downloaded every request and hid the rest.
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/leave_requests_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
@@ -11,6 +14,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'helpers/app_scope.dart';
 
+// What the server sends for no requests: the PageResponse shape (F9), with no
+// pages at all.
+const emptyPage =
+    '{"content":[],"page":0,"size":50,"totalElements":0,"totalPages":0}';
+
 void main() {
   /// Opens the screen and reports which paths it asked the server for.
   Future<List<String>> requestedPaths(
@@ -18,7 +26,7 @@ void main() {
     final paths = <String>[];
     final api = ApiService(client: MockClient((request) async {
       paths.add(request.url.path);
-      return http.Response('{"content":[]}', 200);
+      return http.Response(emptyPage, 200);
     }));
 
     await tester.pumpWidget(
@@ -59,7 +67,7 @@ void main() {
       final api = ApiService(client: MockClient((request) async {
         if (request.method == 'POST') return http.Response('{}', postStatus);
         listLoads.add(request.url.path);
-        return http.Response('{"content":[]}', 200);
+        return http.Response(emptyPage, 200);
       }));
       await tester.pumpWidget(withAppState(testContainer(user: worker),
           MaterialApp(home: LeaveRequestsScreen(apiService: api))));
@@ -144,7 +152,8 @@ void main() {
     const pendingList = '{"content":[{"id":5,"startDate":"2026-10-01",'
         '"endDate":"2026-10-05","status":"PENDING","reason":"Surgery",'
         '"user":{"id":7,"name":"Worker","email":"worker@example.com",'
-        '"role":"EMPLOYEE"}}]}';
+        '"role":"EMPLOYEE"}}],'
+        '"page":0,"size":50,"totalElements":1,"totalPages":1}';
 
     /// Opens the screen as [boss] against a fake server that answers the PUT
     /// with [putStatus], and taps approve. Returns how many times the list
@@ -196,6 +205,176 @@ void main() {
 
       expect(find.text('Η αίτηση δεν υπάρχει πια.'), findsOneWidget);
       expect(listLoads, hasLength(2));
+    });
+  });
+
+  // B26: the list used to stop at the server's first page, so a request on
+  // page 2 - perhaps still PENDING - could not be seen or answered.
+  group('older requests', () {
+    final worker =
+        User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
+    final boss =
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+
+    /// One page of requests with these [ids], each with the reason "Reason <id>".
+    String leavePage(int page, int totalPages, List<int> ids,
+            {String status = 'APPROVED'}) =>
+        jsonEncode({
+          'content': [
+            for (final id in ids)
+              {
+                'id': id,
+                'startDate': '2026-10-01',
+                'endDate': '2026-10-05',
+                'status': status,
+                'reason': 'Reason $id',
+                'user': {
+                  'id': 7,
+                  'name': 'Worker',
+                  'email': 'worker@example.com',
+                  'role': 'EMPLOYEE'
+                },
+              }
+          ],
+          'page': page,
+          'size': 50,
+          'totalElements': ids.length,
+          'totalPages': totalPages,
+        });
+
+    Finder loadMore() => find.text('Φόρτωση παλαιότερων');
+    Finder shown(int id) => find.text('Λόγος: Reason $id');
+
+    /// Opens the screen as [user]; [pages] answers each ?page= with a reply.
+    /// Returns the pages asked for, in order.
+    Future<List<String?>> openAs(WidgetTester tester, User user,
+        Future<http.Response> Function(String? page) pages,
+        {int putStatus = 200}) async {
+      final asked = <String?>[];
+      final api = ApiService(client: MockClient((request) async {
+        if (request.method == 'PUT') return http.Response('{}', putStatus);
+        final page = request.url.queryParameters['page'];
+        asked.add(page);
+        return pages(page);
+      }));
+      await tester.pumpWidget(withAppState(testContainer(user: user),
+          MaterialApp(home: LeaveRequestsScreen(apiService: api))));
+      await tester.pumpAndSettle();
+      return asked;
+    }
+
+    testWidgets('a list that fits on one page has no load-more button',
+        (WidgetTester tester) async {
+      await openAs(tester, worker, (_) async => http.Response(leavePage(0, 1, [1]), 200));
+
+      expect(shown(1), findsOneWidget);
+      expect(loadMore(), findsNothing);
+    });
+
+    testWidgets('load more asks for the next page and adds it below',
+        (WidgetTester tester) async {
+      final asked = await openAs(tester, worker, (page) async => http.Response(
+          page == '0' ? leavePage(0, 2, [1]) : leavePage(1, 2, [2]), 200));
+
+      await tester.tap(loadMore());
+      await tester.pumpAndSettle();
+
+      expect(asked, ['0', '1']);
+      expect(shown(1), findsOneWidget);
+      expect(shown(2), findsOneWidget);
+      expect(tester.getTopLeft(shown(1)).dy, lessThan(tester.getTopLeft(shown(2)).dy));
+      expect(loadMore(), findsNothing); // that was the last page
+    });
+
+    testWidgets('a second tap while the page is on its way asks only once',
+        (WidgetTester tester) async {
+      final secondPage = Completer<http.Response>();
+      final asked = await openAs(tester, worker, (page) => page == '0'
+          ? Future.value(http.Response(leavePage(0, 2, [1]), 200))
+          : secondPage.future);
+
+      // No pump in between: the second tap reaches the same, still enabled
+      // button, as a quick double tap does on a phone.
+      await tester.tap(loadMore());
+      await tester.tap(loadMore());
+      await tester.pump();
+      secondPage.complete(http.Response(leavePage(1, 2, [2]), 200));
+      await tester.pumpAndSettle();
+
+      expect(asked, ['0', '1']);
+      expect(shown(2), findsOneWidget);
+    });
+
+    testWidgets('a page that fails to load keeps the list and says so',
+        (WidgetTester tester) async {
+      await openAs(tester, worker, (page) async => page == '0'
+          ? http.Response(leavePage(0, 2, [1]), 200)
+          : http.Response('', 500));
+
+      await tester.tap(loadMore());
+      await tester.pumpAndSettle();
+
+      expect(shown(1), findsOneWidget);
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.'), findsOneWidget);
+      // Still there and enabled, so the supervisor can try again.
+      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Φόρτωση παλαιότερων'))
+          .onPressed, isNotNull);
+    });
+
+    testWidgets('a request already shown is not shown twice',
+        (WidgetTester tester) async {
+      // Request 2 was last on page 0; a newer one filed in between pushed it
+      // onto page 1 as well (B69).
+      await openAs(tester, worker, (page) async => http.Response(
+          page == '0' ? leavePage(0, 2, [1, 2]) : leavePage(1, 2, [2, 3]), 200));
+
+      await tester.tap(loadMore());
+      await tester.pumpAndSettle();
+
+      expect(shown(2), findsOneWidget);
+      expect(shown(3), findsOneWidget);
+    });
+
+    testWidgets('answering a request starts the list again from page 0',
+        (WidgetTester tester) async {
+      final asked = await openAs(tester, boss, (page) async => http.Response(
+          page == '0'
+              ? leavePage(0, 2, [1], status: 'PENDING')
+              : leavePage(1, 2, [2], status: 'PENDING'),
+          200));
+      await tester.tap(loadMore());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.check_circle).last); // request 2
+      await tester.pumpAndSettle();
+
+      expect(asked, ['0', '1', '0']);
+      expect(shown(1), findsOneWidget);
+      expect(shown(2), findsNothing); // page 1 is not loaded any more
+      expect(loadMore(), findsOneWidget);
+    });
+
+    testWidgets('a page asked for before a reload is not added after it',
+        (WidgetTester tester) async {
+      final secondPage = Completer<http.Response>();
+      await openAs(tester, boss, (page) => page == '0'
+          ? Future.value(http.Response(leavePage(0, 2, [1], status: 'PENDING'), 200))
+          : secondPage.future);
+
+      await tester.tap(loadMore());
+      await tester.pump();
+      // While page 1 is on its way, approving reloads the list from page 0.
+      await tester.tap(find.byIcon(Icons.check_circle));
+      await tester.pumpAndSettle();
+      // Page 1 belongs to the list from before the reload.
+      secondPage.complete(http.Response(leavePage(1, 2, [2], status: 'PENDING'), 200));
+      await tester.pumpAndSettle();
+
+      expect(shown(1), findsOneWidget);
+      expect(shown(2), findsNothing);
+      // The reload ended the old load, so the button works again.
+      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Φόρτωση παλαιότερων'))
+          .onPressed, isNotNull);
     });
   });
 }
