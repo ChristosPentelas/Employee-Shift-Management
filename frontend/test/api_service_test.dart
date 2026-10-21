@@ -196,6 +196,79 @@ void main() {
     expect(sent!.url.queryParameters, {'page': '0', 'size': '100'});
   });
 
+  // B26: the staff list feeds pickers, so it reads every page, not only the
+  // first. Each fake answers ?page=N with the users given for page N.
+  group('the staff list across pages', () {
+    String staffPage(int page, int totalPages, List<int> ids) => jsonEncode({
+          'content': [
+            for (final id in ids)
+              {'id': id, 'name': 'User $id', 'email': 'u$id@example.com', 'role': 'EMPLOYEE'}
+          ],
+          'page': page,
+          'size': 100,
+          'totalElements': ids.length,
+          'totalPages': totalPages,
+        });
+
+    test('reads every page, in order, into one list', () async {
+      final asked = <String?>[];
+      final api = ApiService(client: MockClient((request) async {
+        final page = request.url.queryParameters['page'];
+        asked.add(page);
+        if (asked.length > 5) return http.Response('', 500); // fail, not hang
+        return http.Response(
+            staffPage(int.parse(page!), 3, [int.parse(page) + 1]), 200);
+      }));
+
+      final staff = await api.getAllEmployees();
+
+      expect(asked, ['0', '1', '2']);
+      expect(staff.map((u) => u.id), [1, 2, 3]);
+    });
+
+    test('an empty staff list is one request', () async {
+      var requests = 0;
+      final api = ApiService(client: MockClient((request) async {
+        requests++;
+        if (requests > 5) return http.Response('', 500); // fail, not hang
+        // What the server sends for no users: no pages at all, not one empty one.
+        return http.Response(staffPage(0, 0, []), 200);
+      }));
+
+      final staff = await api.getAllEmployees();
+
+      expect(staff, isEmpty);
+      expect(requests, 1);
+    });
+
+    test('a failed later page fails the whole list', () async {
+      final api = ApiService(client: MockClient((request) async {
+        final page = request.url.queryParameters['page'];
+        return page == '0'
+            ? http.Response(staffPage(0, 2, [1]), 200)
+            : http.Response('', 500);
+      }));
+
+      // Not page 0 alone: a picker missing people is the bug B26 is about.
+      await expectLater(api.getAllEmployees(), throwsException);
+    });
+
+    test('someone who moves onto the next page is listed once', () async {
+      // User 2 is last on page 0; someone added before it in the name order
+      // between the two requests pushes it onto page 1 as well.
+      final api = ApiService(client: MockClient((request) async {
+        final page = request.url.queryParameters['page'];
+        return http.Response(
+            page == '0' ? staffPage(0, 2, [1, 2]) : staffPage(1, 2, [2, 3]),
+            200);
+      }));
+
+      final staff = await api.getAllEmployees();
+
+      expect(staff.map((u) => u.id), [1, 2, 3]);
+    });
+  });
+
   test('assigning a shift reports why the server refused it', () async {
     Future<AssignShiftResult> assignAnswered(int status) {
       final api = ApiService(

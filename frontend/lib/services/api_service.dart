@@ -77,7 +77,8 @@ class ApiService {
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // Only the first page is read for now; older items need a "load more" (B26).
+  // The staff list reads every page; the others only their first for now, so
+  // older items need a "load more" (B26).
   static List<dynamic> _pageContent(http.Response response) =>
       jsonDecode(response.body)['content'] as List<dynamic>;
 
@@ -111,24 +112,44 @@ class ApiService {
     return Duration(seconds: seconds);
   }
 
-  // The staff list feeds pickers (assign a shift, start a chat), so it asks
-  // for the largest page the server allows: 100 people, sorted by name.
+  // The staff list feeds pickers (assign a shift, start a chat), which need
+  // everyone, so it reads every page (B26), sorted by name, 100 people at a
+  // time - the largest page the server allows. All or nothing: if one page
+  // fails, so does the list, since a picker silently missing people is the
+  // very bug this fixes.
   Future<List<User>> getAllEmployees() async {
     try{
-      // endpoint for all users
-      final response = await _client.get(
-        Uri.parse("$baseUrl/users?page=0&size=100"),
-        headers: {"Content-Type": "application/json"},
-      );
+      // Keyed by id: someone added between two requests pushes everyone after
+      // them down one place, so the last person of a page comes back first on
+      // the next. A Dart map keeps insertion order, so the list stays by name.
+      // Someone deleted mid-way does the opposite and skips a person, which
+      // paging by offset cannot prevent.
+      final employees = <int, User>{};
+      var page = 0;
+      int totalPages;
+      do {
+        final response = await _client.get(
+          Uri.parse("$baseUrl/users?page=$page&size=100"),
+          headers: {"Content-Type": "application/json"},
+        );
+        if (response.statusCode != 200) {
+          throw Exception("Αποτυχία φόρτωσης υπαλλήλων: ${response.statusCode}");
+        }
 
-      if (response.statusCode == 200){
-        // We convert each element of the page into a User object
-        List<User> employees = _pageContent(response).map((dynamic item) => User.fromJson(item)).toList();
+        // Decoded once, for both the people and the page count.
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        for (final item in body['content'] as List<dynamic>) {
+          final user = User.fromJson(item);
+          employees.putIfAbsent(user.id, () => user);
+        }
+        // The server's count, never one worked out from size=100: it lowers a
+        // larger size instead of refusing it. 0 when there is nobody, so an
+        // empty list is still one request.
+        totalPages = body['totalPages'] as int;
+        page++;
+      } while (page < totalPages);
 
-        return employees;
-      }else{
-        throw Exception("Αποτυχία φόρτωσης υπαλλήλων: ${response.statusCode}");
-    }
+      return employees.values.toList();
     }catch (e) {
       throw Exception("Σφάλμα δικτύου: $e");
     }

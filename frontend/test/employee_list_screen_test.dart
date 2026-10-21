@@ -21,7 +21,9 @@ User employee() =>
 
 // An empty page, the server's list shape since F9.
 ApiService emptyListServer() => ApiService(
-    client: MockClient((_) async => http.Response('{"content":[]}', 200)));
+    client: MockClient((_) async => http.Response(
+        '{"content":[],"page":0,"size":100,"totalElements":0,"totalPages":0}',
+        200)));
 
 Widget appWith(ProviderContainer container, ApiService api) =>
     withAppState(container, MaterialApp(home: EmployeeListScreen(apiService: api)));
@@ -65,8 +67,9 @@ void main() {
       // Empty before the account exists, then the new employee.
       return http.Response(
           listCalls == 1
-              ? '{"content":[]}'
-              : '{"content":[{"id":8,"name":"New Hire","email":"new@example.com","role":"EMPLOYEE"}]}',
+              ? '{"content":[],"page":0,"size":100,"totalElements":0,"totalPages":0}'
+              : '{"content":[{"id":8,"name":"New Hire","email":"new@example.com","role":"EMPLOYEE"}],'
+                  '"page":0,"size":100,"totalElements":1,"totalPages":1}',
           200);
     });
     final api = ApiService(
@@ -112,8 +115,9 @@ void main() {
       // The employee before the delete, nobody after it.
       return http.Response(
           listCalls == 1
-              ? '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}]}'
-              : '{"content":[]}',
+              ? '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+                  '"page":0,"size":100,"totalElements":1,"totalPages":1}'
+              : '{"content":[],"page":0,"size":100,"totalElements":0,"totalPages":0}',
           200);
     });
     // The details screen takes its ApiService from the providers, so the

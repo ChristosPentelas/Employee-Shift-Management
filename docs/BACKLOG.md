@@ -42,7 +42,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
-| F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0 (B26) |
+| F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0, except for the staff list, which it reads in full (B26) |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
 | F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Left: deleting a user deletes the messages they sent to others (B47) |
@@ -130,10 +130,22 @@ Why it matters: older items are still on the server but unreachable from the
 app. Intended for now - F9 is about the server not sending everything - but a
 user will notice once a list outgrows its page. The staff list matters most:
 it feeds the assign-shift and chat pickers, so employee 101 cannot be picked.
-Relates to: F9.
+Relates to: F9, B69.
 Fix idea: a "load more" at the end of the list (or infinite scroll with a
 `ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and
 appends.
+Progress: split into four steps on 2026-10-21, one list shape each.
+**26a done** (`fix(frontend): read every page of the staff list`):
+`getAllEmployees` reads page after page, 100 at a time, until the server's
+`totalPages`, so both pickers see everyone and its callers did not change. A
+picker cannot use "load more", which is why this list reads them all. All or
+nothing: a failed page fails the list. Kept by id, so someone pushed onto the
+next page by an addition is listed once; a deletion can still skip someone
+(B69). A "type a name" search was not chosen: it needs a new endpoint, and a
+few hundred people load cheaply. The employee-list screen tests now answer
+with the real page shape, `totalPages` included. Left: **26b** "load more"
+for news and leaves, **26c** inbox and sent (two lists on one screen),
+**26d** older chat messages, where the 5 s poll reloads page 0.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
@@ -617,6 +629,22 @@ Relates to: B24 (found while fixing it), B19, F15.
 Fix idea: check in the dialog before sending - position not blank and at most
 `FieldLimits.TEXT` characters, end not equal to start (overnight shifts are
 allowed, so not "end after start") - and give each its own message.
+
+**B69 · LOW · Reading a list page by page can skip a row that moves** — found 2026-10-21
+Where: every paged list is read by offset (`?page=N` = skip N × size rows).
+Since B26 step 26a `ApiService.getAllEmployees` reads all its pages in a row,
+and 26b-d will add "load more" to the other lists.
+Why it matters: a row deleted between two requests moves everyone after it up
+one place, so the first row of the next page is never sent: the staff picker
+can miss one person until it is opened again. An added row does the opposite
+and sends one twice; the staff list drops that by id, but a "load more" that
+only appends would show it twice. Needs a change in the exact seconds between
+two requests, so rare with a few hundred people.
+Relates to: B26, F9.
+Fix idea: keyset paging - ask for "the next 100 after (name, id) of the last
+one I have" instead of "page N" - which no change can shift. That is a backend
+change to every list endpoint; for "load more", dropping repeats by id on the
+client is the cheap half.
 
 ---
 
