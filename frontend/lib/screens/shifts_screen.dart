@@ -194,8 +194,11 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
     User? selectedEmployee;
     String? saveError; // Shown in the dialog when the server refuses the shift.
     final _positionController = TextEditingController();
-    final _startController = TextEditingController(text: "08:00");
-    final _endController = TextEditingController(text: "16:00");
+    // Picked, not typed, so a time the server cannot read cannot be entered
+    // (B24). Declared out here: the builder below re-runs on every
+    // setDialogState, and anything declared inside it would reset each time.
+    TimeOfDay startTime = TimeOfDay(hour: 8, minute: 0);
+    TimeOfDay endTime = TimeOfDay(hour: 16, minute: 0);
 
     showDialog(
       context: context,
@@ -219,8 +222,25 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
                   onChanged: (val) => setDialogState(() => selectedEmployee = val),
                 ),
                 TextField(controller: _positionController, decoration: InputDecoration(labelText: "Θέση εργασίας")),
-                TextField(controller: _startController, decoration: InputDecoration(labelText: "Έναρξη (HH:mm)")),
-                TextField(controller: _endController, decoration: InputDecoration(labelText: "Λήξη (HH:mm)")),
+                ListTile(
+                  title: Text("Έναρξη: ${_hhmm(startTime)}"),
+                  trailing: Icon(Icons.access_time),
+                  onTap: () async {
+                    final picked = await _pickTime(dialogContext, startTime);
+                    if (!dialogContext.mounted) return;
+                    // null: the picker was cancelled, so the old time stays.
+                    if (picked != null) setDialogState(() => startTime = picked);
+                  },
+                ),
+                ListTile(
+                  title: Text("Λήξη: ${_hhmm(endTime)}"),
+                  trailing: Icon(Icons.access_time),
+                  onTap: () async {
+                    final picked = await _pickTime(dialogContext, endTime);
+                    if (!dialogContext.mounted) return;
+                    if (picked != null) setDialogState(() => endTime = picked);
+                  },
+                ),
                 if (saveError != null)
                   Padding(
                     padding: EdgeInsets.only(top: 12),
@@ -236,8 +256,8 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
                 Shift newShift = Shift(
                   id: 0,
                   date: selectedDate,
-                  startTime: _startController.text,
-                  endTime: _endController.text,
+                  startTime: _hhmm(startTime),
+                  endTime: _hhmm(endTime),
                   position: _positionController.text,
                 );
 
@@ -263,12 +283,34 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
     );
   }
 
+  /// Opens a 24-hour time picker on [initial]; null if it was cancelled.
+  Future<TimeOfDay?> _pickTime(BuildContext dialogContext, TimeOfDay initial) {
+    return showTimePicker(
+      context: dialogContext,
+      initialTime: initial,
+      // On its own the picker follows the device locale, and an English phone
+      // would show AM/PM. Shift times here are written 08:00 - 16:00.
+      builder: (pickerContext, child) => MediaQuery(
+        data: MediaQuery.of(pickerContext).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+  }
+
+  /// The "HH:mm" the server reads as a LocalTime, e.g. 07:05. Not
+  /// TimeOfDay.format(), which follows the locale ("7:05 AM") and would
+  /// bring back the very 400 that B24 was about.
+  String _hhmm(TimeOfDay time) =>
+      "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+
   String _assignErrorText(AssignShiftResult result) {
     switch (result) {
       case AssignShiftResult.overlaps:
         return "Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.";
       case AssignShiftResult.invalid:
-        return "Ελέγξτε τις ώρες (μορφή ΩΩ:λλ, π.χ. 08:00).";
+        // The picker rules out a malformed time (B24), so a 400 now means
+        // equal times or a missing / too long position (B68).
+        return "Ελέγξτε τα στοιχεία: η λήξη δεν μπορεί να είναι ίδια με την έναρξη και η θέση εργασίας είναι υποχρεωτική.";
       case AssignShiftResult.failed:
       // Never shown - created closes the dialog - but Dart wants every case
       // named, so a value added to the enum later cannot be forgotten here.

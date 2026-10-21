@@ -123,23 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B24 · MEDIUM · Assigning a shift with a mistyped time fails without a word** — found 2026-09-18
-Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
-"HH:mm"; `ApiService.assignShift` returns `false` on any non-2xx and the dialog
-does nothing with it.
-Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
-answers 400 and the supervisor sees the dialog just sit there, with no hint
-which field is wrong. The same will apply to the shift-time rule F15 adds,
-and to F30's overlap rule (409).
-Half fixed by `feat(frontend): show why a shift could not be assigned`: `assignShift` returns an
-`AssignShiftResult` and the dialog stays open with a Greek message for 409,
-400 and anything else. The server's English `detail` is deliberately not
-shown - B2's rule, the app owns the wording (corrected 2026-09-23; an earlier
-note here said to show it as it is). Left: the free-text time fields.
-Relates to: B1 (the server now sends field errors), B19 (same silent-failure
-pattern for leave), F15.
-Fix idea: use `showTimePicker` so a malformed time cannot be typed.
-
 **B26 · LOW · Paged lists show only their first page** — found 2026-09-19
 Where: every paged list in `ApiService` asks for page 0 only - news 20,
 leaves 50, chat / inbox / sent 50, staff 100 - and nothing asks for page 1.
@@ -213,8 +196,10 @@ Fix idea: the same shape as `assignShift` since B24: show a message on
 failure.
 
 **B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
-Where: `shifts_screen.dart` `_showAssignShiftDialog` creates three
-`TextEditingController`s as local variables for every dialog it opens. Seen
+Where: `shifts_screen.dart` `_showAssignShiftDialog` creates a
+`TextEditingController` as a local variable for every dialog it opens (three
+until B24's fix turned the two time fields into pickers; the position one is
+left). Seen
 again in F25 step 25b (2026-09-29): the news post (`_showAddNewsDialog`), leave
 (`_showAddLeaveDialog`) and profile (`_showEditDialog`) dialogs do the same.
 Why it matters: a controller holds listeners until `dispose()` is called;
@@ -229,6 +214,9 @@ Model (2026-10-14): the change-password dialog (B8),
 its own `State` with `dispose()`, `mounted` and `context`, popping with
 `true` for the screen to show the message. The four dialogs above are
 unchanged.
+Note (2026-10-21): the assign dialog's `startTime` / `endTime` (`TimeOfDay`,
+B24) live next to `selectedEmployee`, outside the `StatefulBuilder`; they move
+into that `State` together.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
@@ -615,6 +603,20 @@ Relates to: B18 (found while fixing it).
 Fix idea: decide first. If it is not allowed, `sendMessage` rejects equal ids
 with a 400, with a service test. If it is allowed ("notes to self"), say so in
 a comment; the list's grouping test already covers it.
+
+**B68 · LOW · A blank position is sent to the server, and its 400 is blamed on the times** — found 2026-10-21
+Where: `shifts_screen.dart` `_showAssignShiftDialog`: Save is enabled as soon
+as an employee is picked, whatever the position field holds.
+Why it matters: an empty position goes to the server, which answers 400
+(`@NotBlank`, `ShiftRequest`), and until B24's fix the dialog then said
+"check the times (HH:mm)" - wrong field. The text now names both possible
+causes, but the app could tell the supervisor before sending, as the leave
+dialog does for its reason (B19). The same holds for equal start and end times,
+the other 400 left.
+Relates to: B24 (found while fixing it), B19, F15.
+Fix idea: check in the dialog before sending - position not blank and at most
+`FieldLimits.TEXT` characters, end not equal to start (overnight shifts are
+allowed, so not "end after start") - and give each its own message.
 
 ---
 
@@ -1301,4 +1303,36 @@ Tests: new `ResourceNotFoundExceptionTest` pins the format;
 All four went red with the format broken. The five controller tests build
 their stub exception with the new constructor and expect the new text - they
 mock the service, so they never saw the server's real wording. Suite: 276
+tests, all green.
+
+**B24 · MEDIUM · Assigning a shift with a mistyped time fails without a word** — found 2026-09-18
+Where: `shifts_screen.dart:190-212`. Start and end are free-text fields labelled
+"HH:mm"; `ApiService.assignShift` returns `false` on any non-2xx and the dialog
+does nothing with it.
+Why it matters: "8:00" or "8.00" does not parse as a `LocalTime`, so the server
+answers 400 and the supervisor sees the dialog just sit there, with no hint
+which field is wrong. The same will apply to the shift-time rule F15 adds,
+and to F30's overlap rule (409).
+Half fixed by `feat(frontend): show why a shift could not be assigned`: `assignShift` returns an
+`AssignShiftResult` and the dialog stays open with a Greek message for 409,
+400 and anything else. The server's English `detail` is deliberately not
+shown - B2's rule, the app owns the wording (corrected 2026-09-23; an earlier
+note here said to show it as it is). Left: the free-text time fields.
+Relates to: B1 (the server now sends field errors), B19 (same silent-failure
+pattern for leave), F15.
+Fix idea: use `showTimePicker` so a malformed time cannot be typed.
+
+Fixed by: `fix(frontend): pick shift times instead of typing them`, 2026-10-21.
+Start and end are `ListTile`s that open `showTimePicker` (the news deadline's
+pattern), held as `TimeOfDay` and turned into `"HH:mm"` only when the `Shift`
+is built, by a `padLeft` helper - not `TimeOfDay.format()`, which follows the
+locale ("7:05 AM") and would reproduce the 400. The picker is forced to a
+24-hour clock through `MediaQuery.alwaysUse24HourFormat`; the app has no Greek
+localization, so the device locale would otherwise decide. The 400 text no
+longer mentions the format: what is left is equal times or a missing / too
+long position (B68). `Shift.startTime` stays a `String` - it is the wire
+format, and changing the model was a separate refactor.
+Tests: four in `shifts_screen_test.dart` - tapping the time opens a picker, a
+picked 7:05 is sent as `"07:05"`, cancelling keeps the old time, and no AM/PM
+is shown. All four went red on the free-text fields. Frontend suite: 120
 tests, all green.
