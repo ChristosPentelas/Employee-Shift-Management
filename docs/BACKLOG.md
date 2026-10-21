@@ -157,7 +157,24 @@ reload raises; a second tap while a page loads does nothing; a failed page
 keeps the rows and says so in a SnackBar; repeats are dropped by id (B69). A
 reload now keeps the old rows on screen until the new ones arrive, instead
 of the spinner. Answering a request on page 2 brings the list back to page 0
-(B70). Left: **26b2** news, **26c** inbox and sent (two lists on one screen),
+(B70). **26b2** news: each tab will be its own list from the server
+(decided 2026-10-21) - "Όλα" from `/news`, the others from
+`/news/type/{type}` - instead of all four filtering one list on the phone,
+where the Goals tab could say "no entries" while older goals were on page 2.
+That needs the leave screen's paging four times on one screen, so first
+**26b2a done** (`refactor(frontend): move the leave list's paging into a
+class`): the fields, `reload` and `loadMore` moved into `PagedList<T>`
+(`state/paged_list.dart`), a `ChangeNotifier` the screen draws with a
+`ListenableBuilder` and disposes in its new `dispose()`. The screen keeps
+which endpoint to call (F7) and the SnackBar; `loadMore` answers false for a
+failed page, since a class with no `context` cannot show one. The 16 leave
+screen tests passed unchanged, which is what shows the refactor kept the
+behaviour; `paged_list_test.dart` tests the class alone, and each of its six
+guards was removed once to see a test fail. Not chosen: a `PagedListView`
+widget (leave and news rows differ, and reloading from outside needs a
+`GlobalKey`), a Riverpod `AsyncNotifier` family (much more to learn at once),
+a mixin on `State` (one per class, and news needs four). Left: **26b2b** news
+on four `PagedList`s, **26c** inbox and sent (two lists on one screen),
 **26d** older chat messages, where the 5 s poll reloads page 0.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
