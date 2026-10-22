@@ -62,6 +62,14 @@ public class MessageService {
     }
 
     /**
+     * The newest message with each person, one per conversation. Sorted like
+     * every other list, so the conversation with the latest message comes first.
+     */
+    public Page<Message> getConversations(Integer userId, Pageable pageable) {
+        return messageRepository.findLatestPerConversation(userId, Paging.withSort(pageable, NEWEST_FIRST));
+    }
+
+    /**
      * Only the receiver can mark a message as read; anyone else doing it would
      * fake a read receipt.
      *

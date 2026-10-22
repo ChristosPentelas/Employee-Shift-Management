@@ -138,6 +138,21 @@ class QueryCountIntegrationTest {
     }
 
     @Test
+    void conversationsLoadBothUsersWithTheMessagesInOneStatement() {
+        // The subquery that picks each conversation's newest message is part
+        // of the same statement, so it costs nothing extra here (B26).
+        User me = user("me");
+        send(me, user("partner-a"));
+        send(user("partner-b"), me);
+        send(me, user("partner-c"));
+
+        long statements = countStatements(() ->
+                messageService.getConversations(me.getId(), PageRequest.of(0, 20)).map(MessageResponse::from));
+
+        assertEquals(1, statements);
+    }
+
+    @Test
     void chatLoadsBothUsersWithTheMessagesInOneStatement() {
         User alice = user("alice");
         User bob = user("bob");

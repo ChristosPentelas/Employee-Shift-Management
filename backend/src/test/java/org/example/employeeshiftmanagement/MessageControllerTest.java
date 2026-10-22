@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -130,6 +131,35 @@ class MessageControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"%s\"}".formatted(longest)))
                 .andExpect(status().isCreated());
+    }
+
+    // B26 step 26c1: one row per conversation, for the caller the token names.
+    @Test
+    void conversationsAreTheCallersAndLeakNoPassword() throws Exception {
+        when(messageService.getConversations(eq(7), any(Pageable.class))).thenReturn(TestPages.of(message()));
+
+        mockMvc.perform(get("/api/v1/messages/conversations")
+                        .param("page", "1")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                // The app needs both people to tell who the conversation is with.
+                .andExpect(jsonPath("$.content[0].sender.id").value(9))
+                .andExpect(jsonPath("$.content[0].receiver.id").value(7))
+                .andExpect(jsonPath("$.content[0].read").value(false))
+                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
+                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist())
+                .andExpect(jsonPath("$.totalPages").value(1));
+
+        // 7 is the token's subject: there is no id in the URL to trust.
+        verify(messageService).getConversations(eq(7), argThat(pageable -> pageable.getPageNumber() == 1));
+    }
+
+    @Test
+    void conversationsWithoutATokenAreUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/messages/conversations"))
+                .andExpect(status().isUnauthorized());
+
+        verify(messageService, never()).getConversations(anyInt(), any());
     }
 
     @Test

@@ -79,6 +79,21 @@ public class MessageController {
                 messageService.getUnreadMessages(userId, pageable), MessageResponse::from));
     }
 
+    /**
+     * The caller's conversations: one row per person, holding the newest
+     * message between them (whoever sent it), newest conversation first. Not
+     * a list of every message - the chat endpoint is that.
+     *
+     * Only the token says whose conversations these are, so there is no id in
+     * the URL to check and no @PreAuthorize (B48).
+     */
+    @GetMapping("/conversations")
+    public ResponseEntity<PageResponse<MessageResponse>> getConversations(Authentication authentication,
+                                                                          Pageable pageable) {
+        return ResponseEntity.ok(PageResponse.from(
+                messageService.getConversations(CurrentUser.id(authentication), pageable), MessageResponse::from));
+    }
+
     @PutMapping("/{messageId}/read")
     public ResponseEntity<MessageResponse> markRead(Authentication authentication,
                                                     @PathVariable Integer messageId) {

@@ -188,8 +188,30 @@ and the scroll offset was lost. That key made every `ExpansionTile` crash
 (`type 'double' is not a subtype of type 'bool?'`): a tile saves whether it
 is open under the nearest `PageStorageKey` above it, which was now the
 list's, so it read the scroll offset. Each tile now has its own key, found
-by the scroll test before it shipped. Left: **26c** inbox and sent (two lists
-on one screen), **26d** older chat messages, where the 5 s poll reloads page 0.
+by the scroll test before it shipped. Decided 2026-10-22: **every paged list
+scrolls** - the next page loads when the list's last row is built, as message
+apps do - instead of a button; leaves and news switch in 26c3. The server
+stays paged either way. **26c**, the messages screen, shows conversations (one
+row per person) built on the phone from page 0 of inbox and of sent; paging
+both on the phone is wrong at the edges (a newer message with someone may sit
+in the list not loaded that far yet, and a page can add no new person), so
+the server groups them. **26c1 done** (`feat(backend): list a user's
+conversations a page at a time`): `GET /api/v1/messages/conversations` is the
+caller's newest message with each person, whoever sent it, newest
+conversation first; the user comes from the token only (B48), so no
+`@PreAuthorize`. One JPQL query, `m.id in (select max(m2.id) ... group by
+<the other person>)`: the highest id, not the latest timestamp, since ids
+never tie. A planned hand-written `countQuery` was dropped: removed once, the
+paging test still passed, so Spring's derived count already counts
+conversations, and a copy of the query would have to be kept in step.
+`ConversationsIntegrationTest` (MySQL) covers the grouping, the order, a
+message to yourself, other people's chats and paging; grouping by the sender
+alone fails two of its tests. One statement per page
+(`QueryCountIntegrationTest`). The inbox and sent endpoints stay. Left:
+**26c2** the app reads conversations through a `PagedList` with a shared
+`PagedListFooter` (infinite scroll) and stops calling inbox and sent, **26c3**
+leaves and news use the footer, **26d** older chat messages, scrolling up
+while the 5 s poll adds new ones at the bottom.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
@@ -421,6 +443,9 @@ conversation-list endpoint would change these routes anyway).
 Fix idea: decide between `/messages/inbox` (identity from the token only, like
 `POST /messages`) and `/users/{userId}/inbox` (the F16 rule). Either is an
 expand-then-contract change, since the app calls inbox, sent and chat.
+Since B26 step 26c1 (2026-10-22) there is one more data point: the new
+`GET /messages/conversations` takes the user from the token only, and from
+26c2 the app no longer calls inbox or sent.
 
 **B49 · LOW · List filters are written three different ways** — found 2026-10-05
 Where: path segments (`/news/type/{type}`, `/news/author/{authorId}`), a
