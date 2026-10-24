@@ -34,40 +34,48 @@ Map<String, Object?> message(int id, User from, User to, int minute,
       'receiver': to.toJson(),
     };
 
-/// Answers the worker's inbox and sent lists from [messages], newest first
-/// like the server, and an empty chat for the chat screen a tap opens.
-http.Client fakeServer(List<Map<String, Object?>> messages) {
-  List<Map<String, Object?>> where(bool Function(Map<String, Object?>) test) =>
-      messages.where(test).toList()
-        ..sort((a, b) => (b['timestamp'] as String).compareTo(a['timestamp'] as String));
-  int idOf(Object? user) => (user as Map<String, dynamic>)['id'] as int;
+/// Answers the worker's conversations, page N with [pages][N] - already one
+/// row per person, newest first, as the server sends them since B26 step
+/// 26c1 - and an empty chat for the chat screen a tap opens. Records the
+/// conversation pages asked for in [asked].
+http.Client fakeServer(List<List<Map<String, Object?>>> pages, {List<String>? asked}) {
+  http.Response page(List<Map<String, Object?>> rows, int number, int total) =>
+      http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'content': rows,
+            'page': number,
+            'size': 20,
+            'totalElements': rows.length,
+            'totalPages': total,
+          })),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
 
   return MockClient((request) async {
-    final page = switch (request.url.path) {
-      '/api/v1/messages/inbox/7' => where((m) => idOf(m['receiver']) == 7),
-      '/api/v1/messages/sent/7' => where((m) => idOf(m['sender']) == 7),
-      '/api/v1/messages/chat' => <Map<String, Object?>>[],
-      _ => null,
-    };
-    if (page == null) return http.Response('unexpected request', 404);
-    return http.Response.bytes(
-        utf8.encode(jsonEncode({
-          'content': page,
-          'page': 0,
-          'size': 50,
-          'totalElements': page.length,
-          'totalPages': 1,
-        })),
-        200,
-        headers: {'content-type': 'application/json; charset=utf-8'});
+    switch (request.url.path) {
+      case '/api/v1/messages/conversations':
+        final number = int.parse(request.url.queryParameters['page']!);
+        asked?.add('$number');
+        // No conversations at all is no pages, as the server says it.
+        final total = pages.length == 1 && pages[0].isEmpty ? 0 : pages.length;
+        return page(pages[number], number, total);
+      case '/api/v1/messages/chat':
+        return page([], 0, 0);
+      default:
+        return http.Response('unexpected request', 404);
+    }
   });
 }
 
-/// Opens the list as the worker, against [fakeServer].
-Future<void> openList(WidgetTester tester, List<Map<String, Object?>> messages) async {
+/// Opens the list as the worker, against [fakeServer] with one page.
+Future<void> openList(WidgetTester tester, List<Map<String, Object?>> messages) =>
+    openPages(tester, [messages]);
+
+Future<void> openPages(WidgetTester tester, List<List<Map<String, Object?>>> pages,
+    {List<String>? asked}) async {
   final container = testContainer(
       user: worker,
-      overrides: [networkClientProvider.overrideWithValue(fakeServer(messages))]);
+      overrides: [networkClientProvider.overrideWithValue(fakeServer(pages, asked: asked))]);
   await tester.pumpWidget(
       withAppState(container, const MaterialApp(home: MessagesListScreen())));
   await tester.pumpAndSettle();
@@ -87,27 +95,26 @@ void main() {
       expect(find.widgetWithText(ListTile, 'Worker'), findsNothing);
     });
 
-    testWidgets('a conversation is one row, showing its newest message',
+    // Picking each conversation's newest message, and one row for a note to
+    // yourself, are the server's job since B26 step 26c1 and are tested there
+    // (ConversationsIntegrationTest). Here: the rows stay as the server sent
+    // them, each with its newest message.
+    testWidgets('rows keep the order the server sends: newest conversation first',
         (WidgetTester tester) async {
       await openList(tester, [
-        message(1, boss, worker, 1, content: 'first'),
-        message(2, worker, boss, 2, content: 'second'),
-        message(3, boss, worker, 3, content: 'third'),
         message(4, colleague, worker, 4, content: 'other chat'),
+        message(3, boss, worker, 3, content: 'third'),
       ]);
 
       expect(find.byType(ListTile), findsNWidgets(2));
       expect(find.text('third'), findsOneWidget);
-      expect(find.text('first'), findsNothing);
-      expect(find.text('second'), findsNothing);
-      // Newest conversation on top.
       final titles = tester
           .widgetList<ListTile>(find.byType(ListTile))
           .map((tile) => (tile.title as Text).data);
       expect(titles, ['Colleague', 'Boss']);
     });
 
-    testWidgets('a message to myself is one row, not one from inbox and one from sent',
+    testWidgets('a note to myself is listed under my own name',
         (WidgetTester tester) async {
       await openList(tester, [message(1, worker, worker, 1, content: 'note to self')]);
 
@@ -144,6 +151,67 @@ void main() {
     });
   });
 
+  // B26 step 26c2: the list used to stop at page 0 of the inbox and of sent,
+  // so a conversation older than both was missing. It now scrolls on.
+  group('older conversations', () {
+    /// Someone the worker wrote to; ids from 100, so no clash with the others.
+    User person(int id) =>
+        User(id: id, name: 'Person $id', email: 'p$id@example.com', role: 'EMPLOYEE');
+
+    testWidgets('scrolling to the end loads the next page',
+        (WidgetTester tester) async {
+      final asked = <String>[];
+      // 20 rows: more than the test screen holds, so the end is out of sight.
+      await openPages(tester, [
+        [for (var i = 0; i < 20; i++) message(100 + i, worker, person(100 + i), 59 - i)],
+        [message(200, person(200), worker, 1, content: 'an old chat')],
+      ], asked: asked);
+      expect(asked, ['0']);
+      expect(find.text('an old chat'), findsNothing);
+
+      await tester.drag(find.byType(ListView), const Offset(0, -5000));
+      await tester.pumpAndSettle();
+
+      expect(asked, ['0', '1']);
+      expect(find.text('an old chat'), findsOneWidget);
+    });
+
+    testWidgets('someone who moves onto the next page is listed once',
+        (WidgetTester tester) async {
+      // A new message from someone else between the two pages pushed the boss
+      // down from the end of page 0 onto page 1.
+      await openPages(tester, [
+        [message(3, colleague, worker, 3), message(2, boss, worker, 2)],
+        [message(2, boss, worker, 2), message(1, person(100), worker, 1)],
+      ]);
+
+      expect(find.widgetWithText(ListTile, 'Boss'), findsOneWidget);
+      expect(find.widgetWithText(ListTile, 'Person 100'), findsOneWidget);
+    });
+
+    testWidgets('a failed load says so, not "no messages"',
+        (WidgetTester tester) async {
+      // getInbox used to turn any failure into an empty list (B44).
+      final container = testContainer(
+          user: worker,
+          overrides: [
+            networkClientProvider
+                .overrideWithValue(MockClient((_) async => http.Response('', 500)))
+          ]);
+      await tester.pumpWidget(
+          withAppState(container, const MaterialApp(home: MessagesListScreen())));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση των μηνυμάτων.'), findsOneWidget);
+    });
+
+    testWidgets('with no conversations it says so', (WidgetTester tester) async {
+      await openList(tester, []);
+
+      expect(find.text('Δεν υπάρχουν μηνύματα.'), findsOneWidget);
+    });
+  });
+
   testWidgets('a session that ends during loading still finishes with the same user',
       (WidgetTester tester) async {
     final container = testContainer(
@@ -151,19 +219,30 @@ void main() {
     final paths = <String>[];
     final api = ApiService(client: MockClient((request) async {
       paths.add(request.url.path);
-      // The session ends while the first reply is on its way.
+      // The session ends while the reply is on its way.
       container.read(authProvider.notifier).logOut();
-      return http.Response('{"content": []}', 200);
+      return http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'content': [message(1, boss, worker, 1)],
+            'page': 0,
+            'size': 20,
+            'totalElements': 1,
+            'totalPages': 1,
+          })),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
     }));
 
     await tester.pumpWidget(
         withAppState(container, MaterialApp(home: MessagesListScreen(apiService: api))));
     await tester.pumpAndSettle();
 
-    // Before B16's fix the second request re-read the cleared session, threw,
-    // and was never sent.
-    expect(paths, ['/api/v1/messages/inbox/7', '/api/v1/messages/sent/7']);
+    // Before B16's fix the screen re-read the cleared session after the await
+    // and threw. One request since B26 step 26c2 (it was inbox, then sent):
+    // turning the reply into rows is what needs the user read beforehand.
+    expect(paths, ['/api/v1/messages/conversations']);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.widgetWithText(ListTile, 'Boss'), findsOneWidget);
   });
 
   testWidgets('a reply that arrives after the screen closed is ignored (F25)',
@@ -190,7 +269,8 @@ void main() {
     navigator.currentState!.pop();
     await tester.pumpAndSettle(); // the screen is gone now
 
-    reply.complete(http.Response('{"content": []}', 200));
+    reply.complete(http.Response(
+        '{"content":[],"page":0,"size":20,"totalElements":0,"totalPages":0}', 200));
     // Without a mounted check the screen now calls setState after dispose,
     // and Flutter fails the test with that error.
     await tester.pumpAndSettle();

@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;//Library for internet
 import '../models/user_model.dart';
 import '../models/shift_model.dart';
 import '../models/message_model.dart';
-import 'dart:developer' as developer;
 
 /// The outcome of ApiService.assignShift.
 enum AssignShiftResult {
@@ -78,9 +77,9 @@ class ApiService {
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // The staff list reads every page, and the leave and news lists return a
-  // ListPage the screen can ask past. The others read only their first for
-  // now, so older items need a "load more" (B26).
+  // The staff list reads every page, and the leave, news and conversation
+  // lists return a ListPage the screen can ask past. Only the chat still
+  // reads its first page alone (B26 step 26d).
   static List<dynamic> _pageContent(http.Response response) =>
       jsonDecode(response.body)['content'] as List<dynamic>;
 
@@ -477,37 +476,24 @@ class ApiService {
     }
   }
 
-  Future<List<Message>> getInbox(int userId) async {
-    try {
-      final response = await _client.get(
-        Uri.parse("$baseUrl/messages/inbox/$userId?page=0&size=50"),
-      );
+  // One page of the logged-in user's conversations: the newest message with
+  // each person, newest conversation first (B26). The server groups them and
+  // takes the user from the token, so there is no id to send. Replaces
+  // reading page 0 of inbox and of sent and grouping them here, which missed
+  // every conversation older than both pages.
+  //
+  // Throws on failure, unlike getInbox and getSent did, which returned [] -
+  // the screen then said "no messages" when the server could not be reached
+  // (B44).
+  Future<ListPage<Message>> getConversations({int page = 0}) async {
+    final response = await _client.get(
+      Uri.parse("$baseUrl/messages/conversations?page=$page&size=20"),
+    );
 
-
-
-      if (response.statusCode == 200) {
-        return _pageContent(response).map((item) => Message.fromJson(item)).toList();
-      }
-    } catch (e) {
-      developer.log("getInbox failed", name: "ApiService", error: e);
+    if (response.statusCode == 200) {
+      return _page(response, Message.fromJson);
     }
-    return [];
-  }
-
-  Future<List<Message>> getSent(int userId) async {
-    try {
-      // Αντιστοιχεί στο @GetMapping("/sent/{userId}") του Controller σου
-      final response = await _client.get(
-        Uri.parse("$baseUrl/messages/sent/$userId?page=0&size=50"),
-      );
-
-      if (response.statusCode == 200) {
-        return _pageContent(response).map((item) => Message.fromJson(item)).toList();
-      }
-    } catch (e) {
-      developer.log("getSent failed", name: "ApiService", error: e);
-    }
-    return [];
+    throw Exception("Loading the conversations failed: ${response.statusCode}");
   }
 
   Future<bool> registerUser(String name,String email,String phone,String password) async{

@@ -143,6 +143,54 @@ void main() {
     expect(list.error, isNull); // not the first load's error
   });
 
+  // B26 step 26c2: the footer shows "try again" instead of loading by itself
+  // while this is set, so a failing server is not asked on every frame.
+  test('a failed later page is remembered until the next try', () async {
+    final first = list.reload();
+    server.answer(0, [1], page: 0, totalPages: 2);
+    await first;
+    expect(list.loadMoreFailed, isFalse);
+
+    final more = list.loadMore();
+    server.fail(1);
+    await more;
+    expect(list.loadMoreFailed, isTrue);
+
+    final retry = list.loadMore();
+    expect(list.loadMoreFailed, isFalse, reason: 'trying again');
+    server.answer(2, [2], page: 1, totalPages: 2);
+    await retry;
+
+    expect(list.loadMoreFailed, isFalse);
+    expect(list.items, [1, 2]);
+  });
+
+  test('a reload forgets a failed page', () async {
+    final first = list.reload();
+    server.answer(0, [1], page: 0, totalPages: 2);
+    await first;
+    final more = list.loadMore();
+    server.fail(1);
+    await more;
+
+    final again = list.reload();
+    server.answer(2, [1], page: 0, totalPages: 2);
+    await again;
+
+    expect(list.loadMoreFailed, isFalse);
+  });
+
+  test('load more after dispose asks nothing and does not throw', () async {
+    final first = list.reload();
+    server.answer(0, [1], page: 0, totalPages: 2);
+    await first;
+    // The footer's after-frame callback can run once the screen has closed.
+    list.dispose();
+
+    expect(await list.loadMore(), isTrue);
+    expect(server.asked, [0]);
+  });
+
   test('the rows cannot be changed from outside', () async {
     final first = list.reload();
     server.answer(0, [1], page: 0, totalPages: 1);

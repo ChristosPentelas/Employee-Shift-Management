@@ -26,6 +26,7 @@ class PagedList<T> extends ChangeNotifier {
   bool _hasMore = false;
   bool _loading = true;
   bool _loadingMore = false;
+  bool _loadMoreFailed = false;
   Object? _error;
   // Raised by every reload. A page that was on its way when the list started
   // again belongs to the old list, and is dropped instead of appended.
@@ -39,6 +40,10 @@ class PagedList<T> extends ChangeNotifier {
   /// The first load, before there is anything to show.
   bool get loading => _loading;
   bool get loadingMore => _loadingMore;
+  /// The last page asked for failed. The footer then offers to try again
+  /// instead of loading by itself, so a failing server is not asked again on
+  /// every frame (B26 step 26c2).
+  bool get loadMoreFailed => _loadMoreFailed;
   /// Why the first load failed; a later page answers through loadMore.
   Object? get error => _error;
 
@@ -59,17 +64,22 @@ class PagedList<T> extends ChangeNotifier {
     }
     _loading = false;
     _loadingMore = false; // a page on its way is dropped, see loadMore
+    _loadMoreFailed = false;
     notifyListeners();
   }
 
   /// Adds the next page after the rows. False only if that page failed, so
   /// the screen can say so; the rows already loaded stay either way.
   Future<bool> loadMore() async {
+    // The footer asks after a frame, which can come once the screen has
+    // closed: notifyListeners after dispose would throw.
+    if (_disposed) return true;
     // A second tap before the page came back would add it twice. Not a
     // failure, so true: the screen must not say one.
     if (_loadingMore) return true;
     final generation = _generation;
     _loadingMore = true;
+    _loadMoreFailed = false;
     notifyListeners();
     try {
       final next = await _fetch(_page + 1);
@@ -86,6 +96,7 @@ class PagedList<T> extends ChangeNotifier {
       // Dropped like a late page: after a reload or dispose nobody asked.
       if (_disposed || generation != _generation) return true;
       _loadingMore = false;
+      _loadMoreFailed = true;
       notifyListeners();
       return false;
     }

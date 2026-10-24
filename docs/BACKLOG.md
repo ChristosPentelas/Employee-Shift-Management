@@ -207,11 +207,29 @@ conversations, and a copy of the query would have to be kept in step.
 `ConversationsIntegrationTest` (MySQL) covers the grouping, the order, a
 message to yourself, other people's chats and paging; grouping by the sender
 alone fails two of its tests. One statement per page
-(`QueryCountIntegrationTest`). The inbox and sent endpoints stay. Left:
-**26c2** the app reads conversations through a `PagedList` with a shared
-`PagedListFooter` (infinite scroll) and stops calling inbox and sent, **26c3**
-leaves and news use the footer, **26d** older chat messages, scrolling up
-while the 5 s poll adds new ones at the bottom.
+(`QueryCountIntegrationTest`). The inbox and sent endpoints stay.
+**26c2 done** (`feat(frontend): scroll through every conversation`): the
+messages screen reads `getConversations` (20 a page) through one `PagedList`
+of `(other, latest)` rows, kept apart by the other person's id; the grouping
+and sorting it did itself are gone, and so are `getInbox` and `getSent`
+(B44's two silent `[]`s with them). New shared `PagedListFooter`
+(`widgets/paged_list_footer.dart`), the last row while there is more: being
+built means the user scrolled near the end, so it loads the next page after
+the frame (`addPostFrameCallback`; loading during build is an error, which
+a test shows by failing three times when the call is made directly). This
+also loads on when the first page is too short to scroll, where a scroll
+listener would never fire. After a failed page it shows "Δοκιμάστε ξανά" and
+never loads by itself, or a failing server would be asked every frame:
+`PagedList` gained `loadMoreFailed` for that, and `loadMore` now does nothing
+after `dispose`, since an after-frame call can come once the screen closed.
+A failed first load shows a fixed Greek text, not the raw error (B41); an
+empty list says "Δεν υπάρχουν μηνύματα." instead of showing nothing. Two
+screen tests changed meaning: picking each conversation's newest message and
+one row for a note to yourself are the server's rules now
+(`ConversationsIntegrationTest`), so here they check the server's order and
+the row's name; the B16 test expects one request instead of two. Left:
+**26c3** leaves and news use the footer, **26d** older chat messages,
+scrolling up while the 5 s poll adds new ones at the bottom.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
@@ -379,6 +397,12 @@ Relates to: F26 (the logs these catch blocks were left with), B42 and B19
 raised).
 Fix idea: throw on failure as `getAllShifts` does, and let each screen show
 a short Greek message with a retry, as B41 describes.
+Progress: since B26 step 26c2 (2026-10-24) the messages list no longer uses
+`getInbox` or `getSent`, which are deleted from the app. It reads
+`getConversations`, which throws, and the screen says "Δεν ήταν δυνατή η
+φόρτωση των μηνυμάτων." instead of looking empty. Left: the chat
+(`getChatHistory` still returns `[]` for any status but 200, and
+`_loadMessages` still catches everything).
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,

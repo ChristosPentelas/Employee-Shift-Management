@@ -102,6 +102,33 @@ void main() {
     expect(sent!.url.queryParameters, {'page': '0', 'size': '20'});
   });
 
+  // B26 step 26c2: one row per conversation, from the server, a page at a time.
+  test('conversations are asked for by page, with no user id in the URL', () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response(
+          '{"content":[],"page":1,"size":20,"totalElements":21,"totalPages":2}',
+          200);
+    }));
+
+    final page = await api.getConversations(page: 1);
+
+    // The server takes the user from the token (26c1).
+    expect(sent!.url.path, '/api/v1/messages/conversations');
+    expect(sent!.url.queryParameters, {'page': '1', 'size': '20'});
+    expect(page.page, 1);
+    expect(page.hasMore, isFalse);
+  });
+
+  test('a failed conversation list throws, not an empty list (B44)', () async {
+    final api = ApiService(client: MockClient((_) async => http.Response('', 500)));
+
+    // getInbox and getSent returned [] for any failure, so the screen showed
+    // "no messages" instead of an error.
+    await expectLater(api.getConversations(), throwsException);
+  });
+
   // B26 step 26b2b: each news tab pages through its own type on the server.
   test('news of one type is asked for by type, at the page given', () async {
     http.BaseRequest? sent;
@@ -491,8 +518,7 @@ void main() {
       }));
 
       final printed = await printedBy(() async {
-        await api.getInbox(7);
-        await api.getSent(7);
+        await api.getConversations();
         await api.markChatAsRead(9);
         await api.deleteUser(7);
         await api.getNews();
@@ -509,8 +535,7 @@ void main() {
       }));
 
       final printed = await printedBy(() async {
-        await api.getInbox(7);
-        await api.getSent(7);
+        await expectLater(api.getConversations(), throwsException);
         await expectLater(api.markChatAsRead(9), throwsException);
         await expectLater(api.getNews(), throwsException);
         await api.changePassword('old-secret', 'new-secret');
