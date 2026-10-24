@@ -42,7 +42,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F6 | HIGH | Entities bound from request bodies | Done | `a97a5b0`, `c39d4c8`, `d48a52e` | |
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
-| F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). The app reads only page 0, except for the staff list, which it reads in full (B26) |
+| F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). Since B26 (2026-10-24) the app reaches every page: the staff list reads all of them, every other list scrolls through them |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
 | F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Left: deleting a user deletes the messages they sent to others (B47) |
@@ -122,126 +122,6 @@ Same problem one hop further: `spring.datasource.url` in
 `application.properties` has `useSSL=false`, so the MySQL password and data
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
-
-**B26 · LOW · Paged lists show only their first page** — found 2026-09-19
-Where: every paged list in `ApiService` asks for page 0 only - news 20,
-leaves 50, chat / inbox / sent 50, staff 100 - and nothing asks for page 1.
-Why it matters: older items are still on the server but unreachable from the
-app. Intended for now - F9 is about the server not sending everything - but a
-user will notice once a list outgrows its page. The staff list matters most:
-it feeds the assign-shift and chat pickers, so employee 101 cannot be picked.
-Relates to: F9, B69.
-Fix idea: a "load more" at the end of the list (or infinite scroll with a
-`ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and
-appends.
-Progress: split into four steps on 2026-10-21, one list shape each.
-**26a done** (`fix(frontend): read every page of the staff list`):
-`getAllEmployees` reads page after page, 100 at a time, until the server's
-`totalPages`, so both pickers see everyone and its callers did not change. A
-picker cannot use "load more", which is why this list reads them all. All or
-nothing: a failed page fails the list. Kept by id, so someone pushed onto the
-next page by an addition is listed once; a deletion can still skip someone
-(B69). A "type a name" search was not chosen: it needs a new endpoint, and a
-few hundred people load cheaply. The employee-list screen tests now answer
-with the real page shape, `totalPages` included. 26b was split in two, since
-the news tabs filter one list on the phone and need their own decision.
-**26b1 done** (`feat(frontend): load older leave requests`): both leave
-methods take a `page` and return a `ListPage<T>` (`models/page_model.dart`,
-generic so news and messages can reuse it), with `hasMore`. The leave screen
-keeps the rows in fields instead of a `FutureBuilder`, which would show its
-spinner again for every page, and ends the list with "Φόρτωση παλαιότερων"
-while there is more: a button, not infinite scroll, which needs a scroll
-listener and fires many times. Every reload (filing, answering) starts again
-from page 0 and drops a page still on its way through a counter that each
-reload raises; a second tap while a page loads does nothing; a failed page
-keeps the rows and says so in a SnackBar; repeats are dropped by id (B69). A
-reload now keeps the old rows on screen until the new ones arrive, instead
-of the spinner. Answering a request on page 2 brings the list back to page 0
-(B70). **26b2** news: each tab will be its own list from the server
-(decided 2026-10-21) - "Όλα" from `/news`, the others from
-`/news/type/{type}` - instead of all four filtering one list on the phone,
-where the Goals tab could say "no entries" while older goals were on page 2.
-That needs the leave screen's paging four times on one screen, so first
-**26b2a done** (`refactor(frontend): move the leave list's paging into a
-class`): the fields, `reload` and `loadMore` moved into `PagedList<T>`
-(`state/paged_list.dart`), a `ChangeNotifier` the screen draws with a
-`ListenableBuilder` and disposes in its new `dispose()`. The screen keeps
-which endpoint to call (F7) and the SnackBar; `loadMore` answers false for a
-failed page, since a class with no `context` cannot show one. The 16 leave
-screen tests passed unchanged, which is what shows the refactor kept the
-behaviour; `paged_list_test.dart` tests the class alone, and each of its six
-guards was removed once to see a test fail. Not chosen: a `PagedListView`
-widget (leave and news rows differ, and reloading from outside needs a
-`GlobalKey`), a Riverpod `AsyncNotifier` family (much more to learn at once),
-a mixin on `State` (one per class, and news needs four). **26b2b done**
-(`feat(frontend): page each news tab on its own`): `getNews` takes an
-optional `type` and asks `/news/type/{type}` for it, returning a `ListPage`.
-The news screen builds its `TabBar` and four `PagedList`s from one list of
-tabs (records), loads all four on opening (4 requests of 20; loading a tab
-when first shown needs a `TabController` listener, not chosen), and reloads
-all four after a post or a delete, since a post is in "all" and in its type's
-tab. The one `FutureBuilder` over the whole `TabBarView` is gone: each tab
-has its own spinner, error, empty text and "load more", so with no news at
-all every tab says so on its own. Each tab's `ListView` has a
-`PageStorageKey`, since a `TabBarView` destroys the tabs it is not showing
-and the scroll offset was lost. That key made every `ExpansionTile` crash
-(`type 'double' is not a subtype of type 'bool?'`): a tile saves whether it
-is open under the nearest `PageStorageKey` above it, which was now the
-list's, so it read the scroll offset. Each tile now has its own key, found
-by the scroll test before it shipped. Decided 2026-10-22: **every paged list
-scrolls** - the next page loads when the list's last row is built, as message
-apps do - instead of a button; leaves and news switch in 26c3. The server
-stays paged either way. **26c**, the messages screen, shows conversations (one
-row per person) built on the phone from page 0 of inbox and of sent; paging
-both on the phone is wrong at the edges (a newer message with someone may sit
-in the list not loaded that far yet, and a page can add no new person), so
-the server groups them. **26c1 done** (`feat(backend): list a user's
-conversations a page at a time`): `GET /api/v1/messages/conversations` is the
-caller's newest message with each person, whoever sent it, newest
-conversation first; the user comes from the token only (B48), so no
-`@PreAuthorize`. One JPQL query, `m.id in (select max(m2.id) ... group by
-<the other person>)`: the highest id, not the latest timestamp, since ids
-never tie. A planned hand-written `countQuery` was dropped: removed once, the
-paging test still passed, so Spring's derived count already counts
-conversations, and a copy of the query would have to be kept in step.
-`ConversationsIntegrationTest` (MySQL) covers the grouping, the order, a
-message to yourself, other people's chats and paging; grouping by the sender
-alone fails two of its tests. One statement per page
-(`QueryCountIntegrationTest`). The inbox and sent endpoints stay.
-**26c2 done** (`feat(frontend): scroll through every conversation`): the
-messages screen reads `getConversations` (20 a page) through one `PagedList`
-of `(other, latest)` rows, kept apart by the other person's id; the grouping
-and sorting it did itself are gone, and so are `getInbox` and `getSent`
-(B44's two silent `[]`s with them). New shared `PagedListFooter`
-(`widgets/paged_list_footer.dart`), the last row while there is more: being
-built means the user scrolled near the end, so it loads the next page after
-the frame (`addPostFrameCallback`; loading during build is an error, which
-a test shows by failing three times when the call is made directly). This
-also loads on when the first page is too short to scroll, where a scroll
-listener would never fire. After a failed page it shows "Δοκιμάστε ξανά" and
-never loads by itself, or a failing server would be asked every frame:
-`PagedList` gained `loadMoreFailed` for that, and `loadMore` now does nothing
-after `dispose`, since an after-frame call can come once the screen closed.
-A failed first load shows a fixed Greek text, not the raw error (B41); an
-empty list says "Δεν υπάρχουν μηνύματα." instead of showing nothing. Two
-screen tests changed meaning: picking each conversation's newest message and
-one row for a note to yourself are the server's rules now
-(`ConversationsIntegrationTest`), so here they check the server's order and
-the row's name; the B16 test expects one request instead of two.
-**26c3 done** (`feat(frontend): scroll leaves and news like the messages`):
-the leave and news lists end with `PagedListFooter` instead of their
-"Φόρτωση παλαιότερων" button, so all three paged lists behave the same. Their
-SnackBar on a failed page went with it - the footer says so in the list, and
-both at once said it twice - and with it the only reason `loadMore` returned a
-`bool`; it is `Future<void>` now, and `loadMoreFailed` is how to tell. The
-screens' tests now give a first page taller than the 600 px test screen
-wherever they check that something is not loaded yet, since a short page's
-footer loads the next one at once. The screen test for a double tap went with
-the button; `paged_list_test.dart` still covers the guard. One news test's
-fake answered page 1 with page 0 again: with a button nothing noticed, with
-the footer in view it asked for ever. A real server answers the page asked
-for, so `PagedList` does not guard against that. Left: **26d** older chat
-messages, scrolling up while the 5 s poll adds new ones at the bottom.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
@@ -393,28 +273,6 @@ shows a small progress indicator until the reply arrives.
 Model (2026-10-14): the change-password dialog (B8) disables its save
 button with a `_saving` flag while the request runs, and a widget test taps
 it twice to check only one request goes out.
-
-**B44 · LOW · A failed inbox, sent list or chat load looks like an empty one** — found 2026-10-01
-Where: `api_service.dart` `getInbox` and `getSent` catch every error and
-return `[]`, and also return `[]` for any status other than 200.
-(`markAsRead`, which caught every error and never looked at the status, was
-replaced in F28 step 28b by `markChatAsRead`, which throws.)
-`chat_screen.dart` `_loadMessages` catches every error and shows nothing.
-Why it matters: the user sees "no messages" when the network or the server
-failed, and has no reason to retry. The chat polls every 5 s (F28), so it
-fails silently over and over. Since F26 the only trace is a
-`developer.log`, which only a developer with a debugger attached sees.
-Relates to: F26 (the logs these catch blocks were left with), B42 and B19
-(the same ignored-status pattern), B41 (how to show the error once it is
-raised).
-Fix idea: throw on failure as `getAllShifts` does, and let each screen show
-a short Greek message with a retry, as B41 describes.
-Progress: since B26 step 26c2 (2026-10-24) the messages list no longer uses
-`getInbox` or `getSent`, which are deleted from the app. It reads
-`getConversations`, which throws, and the screen says "Δεν ήταν δυνατή η
-φόρτωση των μηνυμάτων." instead of looking empty. Left: the chat
-(`getChatHistory` still returns `[]` for any status but 200, and
-`_loadMessages` still catches everything).
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
@@ -695,20 +553,6 @@ Fix idea: two parts, either one helps.
   Maven toolchains (pick the JDK per project in `~/.m2/toolchains.xml`) is the
   heavier alternative, worth it only with several JDK versions in use.
 
-**B65 · LOW · The messages list misses conversations older than page 0** — found 2026-10-19
-Where: `MessagesListScreen._loadInbox` merges page 0 of the inbox with page 0
-of sent (50 messages each, F9) and groups them by person on the phone (B18).
-Why it matters: a conversation whose newest message is older than the 50th
-message in both lists does not appear at all, so a chat the user still has is
-missing from the list. It is also two requests and up to 100 messages to show
-a list that needs one message per person.
-Relates to: B18 (split out of its "Since F9" paragraph when its display part
-was fixed), B48 (a new endpoint would decide the URL shape B48 asks about), F9.
-Fix idea: a server endpoint that returns one row per conversation - the other
-person and the latest message - paged like every other list. In SQL that is a
-"latest row per group" query (a window function, or a join on `MAX(id)` per
-pair). Then the app calls it instead of inbox + sent and stops grouping.
-
 **B66 · LOW · A user can send a message to themselves** — found 2026-10-19
 Where: `MessageService.sendMessage` never compares `receiverId` with the
 sender's id (which comes from the token).
@@ -752,6 +596,11 @@ Fix idea: keyset paging - ask for "the next 100 after (name, id) of the last
 one I have" instead of "page N" - which no change can shift. That is a backend
 change to every list endpoint; for "load more", dropping repeats by id on the
 client is the cheap half.
+Since B26 step 26d the chat pages by offset too, and there overlaps are
+routine: every message that arrives while the user scrolls up pushes one
+row of each older page onto the next. Dropping repeats by id handles that,
+and the app cannot delete messages, so nothing is skipped today; a cursor
+(`?before=<id>`) would make the overlap disappear rather than be cleaned up.
 
 **B70 · LOW · Answering a leave request on an older page jumps back to the first** — found 2026-10-21
 Where: `leave_requests_screen.dart` `_updateStatus`, which calls `_reload()`
@@ -1484,3 +1333,201 @@ Tests: four in `shifts_screen_test.dart` - tapping the time opens a picker, a
 picked 7:05 is sent as `"07:05"`, cancelling keeps the old time, and no AM/PM
 is shown. All four went red on the free-text fields. Frontend suite: 120
 tests, all green.
+
+**B26 · LOW · Paged lists show only their first page** — found 2026-09-19
+Where: every paged list in `ApiService` asks for page 0 only - news 20,
+leaves 50, chat / inbox / sent 50, staff 100 - and nothing asks for page 1.
+Why it matters: older items are still on the server but unreachable from the
+app. Intended for now - F9 is about the server not sending everything - but a
+user will notice once a list outgrows its page. The staff list matters most:
+it feeds the assign-shift and chat pickers, so employee 101 cannot be picked.
+Relates to: F9, B69.
+Fix idea: a "load more" at the end of the list (or infinite scroll with a
+`ScrollController`) that fetches `page + 1` while `page < totalPages - 1` and
+appends.
+Progress: split into four steps on 2026-10-21, one list shape each.
+**26a done** (`fix(frontend): read every page of the staff list`):
+`getAllEmployees` reads page after page, 100 at a time, until the server's
+`totalPages`, so both pickers see everyone and its callers did not change. A
+picker cannot use "load more", which is why this list reads them all. All or
+nothing: a failed page fails the list. Kept by id, so someone pushed onto the
+next page by an addition is listed once; a deletion can still skip someone
+(B69). A "type a name" search was not chosen: it needs a new endpoint, and a
+few hundred people load cheaply. The employee-list screen tests now answer
+with the real page shape, `totalPages` included. 26b was split in two, since
+the news tabs filter one list on the phone and need their own decision.
+**26b1 done** (`feat(frontend): load older leave requests`): both leave
+methods take a `page` and return a `ListPage<T>` (`models/page_model.dart`,
+generic so news and messages can reuse it), with `hasMore`. The leave screen
+keeps the rows in fields instead of a `FutureBuilder`, which would show its
+spinner again for every page, and ends the list with "Φόρτωση παλαιότερων"
+while there is more: a button, not infinite scroll, which needs a scroll
+listener and fires many times. Every reload (filing, answering) starts again
+from page 0 and drops a page still on its way through a counter that each
+reload raises; a second tap while a page loads does nothing; a failed page
+keeps the rows and says so in a SnackBar; repeats are dropped by id (B69). A
+reload now keeps the old rows on screen until the new ones arrive, instead
+of the spinner. Answering a request on page 2 brings the list back to page 0
+(B70). **26b2** news: each tab will be its own list from the server
+(decided 2026-10-21) - "Όλα" from `/news`, the others from
+`/news/type/{type}` - instead of all four filtering one list on the phone,
+where the Goals tab could say "no entries" while older goals were on page 2.
+That needs the leave screen's paging four times on one screen, so first
+**26b2a done** (`refactor(frontend): move the leave list's paging into a
+class`): the fields, `reload` and `loadMore` moved into `PagedList<T>`
+(`state/paged_list.dart`), a `ChangeNotifier` the screen draws with a
+`ListenableBuilder` and disposes in its new `dispose()`. The screen keeps
+which endpoint to call (F7) and the SnackBar; `loadMore` answers false for a
+failed page, since a class with no `context` cannot show one. The 16 leave
+screen tests passed unchanged, which is what shows the refactor kept the
+behaviour; `paged_list_test.dart` tests the class alone, and each of its six
+guards was removed once to see a test fail. Not chosen: a `PagedListView`
+widget (leave and news rows differ, and reloading from outside needs a
+`GlobalKey`), a Riverpod `AsyncNotifier` family (much more to learn at once),
+a mixin on `State` (one per class, and news needs four). **26b2b done**
+(`feat(frontend): page each news tab on its own`): `getNews` takes an
+optional `type` and asks `/news/type/{type}` for it, returning a `ListPage`.
+The news screen builds its `TabBar` and four `PagedList`s from one list of
+tabs (records), loads all four on opening (4 requests of 20; loading a tab
+when first shown needs a `TabController` listener, not chosen), and reloads
+all four after a post or a delete, since a post is in "all" and in its type's
+tab. The one `FutureBuilder` over the whole `TabBarView` is gone: each tab
+has its own spinner, error, empty text and "load more", so with no news at
+all every tab says so on its own. Each tab's `ListView` has a
+`PageStorageKey`, since a `TabBarView` destroys the tabs it is not showing
+and the scroll offset was lost. That key made every `ExpansionTile` crash
+(`type 'double' is not a subtype of type 'bool?'`): a tile saves whether it
+is open under the nearest `PageStorageKey` above it, which was now the
+list's, so it read the scroll offset. Each tile now has its own key, found
+by the scroll test before it shipped. Decided 2026-10-22: **every paged list
+scrolls** - the next page loads when the list's last row is built, as message
+apps do - instead of a button; leaves and news switch in 26c3. The server
+stays paged either way. **26c**, the messages screen, shows conversations (one
+row per person) built on the phone from page 0 of inbox and of sent; paging
+both on the phone is wrong at the edges (a newer message with someone may sit
+in the list not loaded that far yet, and a page can add no new person), so
+the server groups them. **26c1 done** (`feat(backend): list a user's
+conversations a page at a time`): `GET /api/v1/messages/conversations` is the
+caller's newest message with each person, whoever sent it, newest
+conversation first; the user comes from the token only (B48), so no
+`@PreAuthorize`. One JPQL query, `m.id in (select max(m2.id) ... group by
+<the other person>)`: the highest id, not the latest timestamp, since ids
+never tie. A planned hand-written `countQuery` was dropped: removed once, the
+paging test still passed, so Spring's derived count already counts
+conversations, and a copy of the query would have to be kept in step.
+`ConversationsIntegrationTest` (MySQL) covers the grouping, the order, a
+message to yourself, other people's chats and paging; grouping by the sender
+alone fails two of its tests. One statement per page
+(`QueryCountIntegrationTest`). The inbox and sent endpoints stay.
+**26c2 done** (`feat(frontend): scroll through every conversation`): the
+messages screen reads `getConversations` (20 a page) through one `PagedList`
+of `(other, latest)` rows, kept apart by the other person's id; the grouping
+and sorting it did itself are gone, and so are `getInbox` and `getSent`
+(B44's two silent `[]`s with them). New shared `PagedListFooter`
+(`widgets/paged_list_footer.dart`), the last row while there is more: being
+built means the user scrolled near the end, so it loads the next page after
+the frame (`addPostFrameCallback`; loading during build is an error, which
+a test shows by failing three times when the call is made directly). This
+also loads on when the first page is too short to scroll, where a scroll
+listener would never fire. After a failed page it shows "Δοκιμάστε ξανά" and
+never loads by itself, or a failing server would be asked every frame:
+`PagedList` gained `loadMoreFailed` for that, and `loadMore` now does nothing
+after `dispose`, since an after-frame call can come once the screen closed.
+A failed first load shows a fixed Greek text, not the raw error (B41); an
+empty list says "Δεν υπάρχουν μηνύματα." instead of showing nothing. Two
+screen tests changed meaning: picking each conversation's newest message and
+one row for a note to yourself are the server's rules now
+(`ConversationsIntegrationTest`), so here they check the server's order and
+the row's name; the B16 test expects one request instead of two.
+**26c3 done** (`feat(frontend): scroll leaves and news like the messages`):
+the leave and news lists end with `PagedListFooter` instead of their
+"Φόρτωση παλαιότερων" button, so all three paged lists behave the same. Their
+SnackBar on a failed page went with it - the footer says so in the list, and
+both at once said it twice - and with it the only reason `loadMore` returned a
+`bool`; it is `Future<void>` now, and `loadMoreFailed` is how to tell. The
+screens' tests now give a first page taller than the 600 px test screen
+wherever they check that something is not loaded yet, since a short page's
+footer loads the next one at once. The screen test for a double tap went with
+the button; `paged_list_test.dart` still covers the guard. One news test's
+fake answered page 1 with page 0 again: with a button nothing noticed, with
+the footer in view it asked for ever. A real server answers the page asked
+for, so `PagedList` does not guard against that. **26d done**
+(`feat(frontend): scroll up through older chat messages`): the chat polls
+page 0 every 5 s, and replacing the list with it - as it did - would drop any
+older page 5 s after it was loaded. `PagedList.refresh()` fetches page 0 and
+puts it in front, keeping the older pages: fresh copies replace the ones
+shown (so a message being read shows), `_page` stays, `hasMore` follows the
+new total, and it does not raise the generation, so it never cancels an
+older page on its way; a failure with rows on screen changes nothing, with
+nothing loaded it is the error. It returns the page it fetched, and the chat
+checks only that page for unread messages: an unread message on an older
+page stays unread in the list for good, and checking the list would send a
+read request every 5 s (B27). `getChatHistory` takes a `page`, stays newest
+first instead of being turned around, and throws on failure (closing B44).
+The chat's list was already `reverse: true`, so `items[index]` puts the
+newest at the bottom and the footer at the top, where older pages load;
+pages overlap by one row per message that arrived since, and repeats are
+dropped by id (offset paging kept, not a cursor - B69). No spinner on the
+first load, as before; a failed first load says so, a failed poll keeps the
+chat. A new message while scrolled up moves the view up by one bubble, as
+it already did: left as it is (decided 2026-10-24).
+
+Fixed by, 2026-10-21 to 2026-10-24, in eight steps: 26a `fafe5bf`, 26b1
+`720b135`, 26b2a `da0a1b5`, 26b2b `a13970b`, 26c1 `41b583a`, 26c2 `c735165`,
+26c3 `a8b8107`, 26d `feat(frontend): scroll up through older chat messages`.
+Every paged list in the app now reaches every page: the staff list reads all
+of them, and the leave, news, conversation and chat lists scroll through
+them with one shared `PagedList` and `PagedListFooter`. Not fixed by this:
+offset pages can skip a row deleted mid-way (B69), and answering a leave
+request reloads from page 0 (B70). Frontend suite: 179 tests, all green.
+
+**B44 · LOW · A failed inbox, sent list or chat load looks like an empty one** — found 2026-10-01
+Where: `api_service.dart` `getInbox` and `getSent` catch every error and
+return `[]`, and also return `[]` for any status other than 200.
+(`markAsRead`, which caught every error and never looked at the status, was
+replaced in F28 step 28b by `markChatAsRead`, which throws.)
+`chat_screen.dart` `_loadMessages` catches every error and shows nothing.
+Why it matters: the user sees "no messages" when the network or the server
+failed, and has no reason to retry. The chat polls every 5 s (F28), so it
+fails silently over and over. Since F26 the only trace is a
+`developer.log`, which only a developer with a debugger attached sees.
+Relates to: F26 (the logs these catch blocks were left with), B42 and B19
+(the same ignored-status pattern), B41 (how to show the error once it is
+raised).
+Fix idea: throw on failure as `getAllShifts` does, and let each screen show
+a short Greek message with a retry, as B41 describes.
+Progress: since B26 step 26c2 (2026-10-24) the messages list no longer uses
+`getInbox` or `getSent`, which are deleted from the app. It reads
+`getConversations`, which throws, and the screen says "Δεν ήταν δυνατή η
+φόρτωση των μηνυμάτων." instead of looking empty. Left: the chat
+(`getChatHistory` still returns `[]` for any status but 200, and
+`_loadMessages` still catches everything).
+
+Fixed by: `c735165` (B26 step 26c2) and
+`feat(frontend): scroll up through older chat messages` (26d), 2026-10-24.
+`getInbox` and `getSent` are deleted; `getConversations` and `getChatHistory`
+throw on failure. The messages list and the chat say "Δεν ήταν δυνατή η
+φόρτωση των μηνυμάτων." when their first load fails, instead of looking
+empty. A failed poll in an open chat stays quiet on purpose: the messages on
+screen are still right, and the next poll, 5 s later, is the retry. A failed
+read receipt is still only logged; the messages are shown either way.
+
+**B65 · LOW · The messages list misses conversations older than page 0** — found 2026-10-19
+Where: `MessagesListScreen._loadInbox` merges page 0 of the inbox with page 0
+of sent (50 messages each, F9) and groups them by person on the phone (B18).
+Why it matters: a conversation whose newest message is older than the 50th
+message in both lists does not appear at all, so a chat the user still has is
+missing from the list. It is also two requests and up to 100 messages to show
+a list that needs one message per person.
+Relates to: B18 (split out of its "Since F9" paragraph when its display part
+was fixed), B48 (a new endpoint would decide the URL shape B48 asks about), F9.
+Fix idea: a server endpoint that returns one row per conversation - the other
+person and the latest message - paged like every other list. In SQL that is a
+"latest row per group" query (a window function, or a join on `MAX(id)` per
+pair). Then the app calls it instead of inbox + sent and stops grouping.
+
+Fixed by: `41b583a` (B26 step 26c1, `GET /api/v1/messages/conversations`,
+the `MAX(id)` per other person this entry suggested) and `c735165` (26c2, the
+app calls it instead of inbox + sent and no longer groups). This entry was
+still open while 26c was planned from B18's note and B26, so neither step's
+commit names it; closed 2026-10-24.

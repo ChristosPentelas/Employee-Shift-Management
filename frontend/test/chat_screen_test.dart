@@ -35,7 +35,9 @@ class StoredMessage {
   Map<String, Object> toJson() => {
         'id': id,
         'content': content,
-        'timestamp': '2026-10-13T09:${id.toString().padLeft(2, '0')}:00',
+        // A minute apart, in id order; a whole timestamp, since a long chat
+        // has more than 60 messages.
+        'timestamp': DateTime(2026, 10, 13, 9).add(Duration(minutes: id)).toIso8601String(),
         'read': read,
         // Both people in full, as the server's UserResponse sends them.
         'sender': from.toJson(),
@@ -80,17 +82,19 @@ class FakeChatServer {
       if (failLoads) throw http.ClientException('no network');
       // The answer is what the chat held when the request arrived, even if
       // it reaches the app later: a message sent meanwhile is not in it.
-      final page = messages.reversed.map((m) => m.toJson()).toList();
+      // Newest first, 50 a page, like the server (F9); ?page= picks which.
+      final number = int.parse(request.url.queryParameters['page'] ?? '0');
+      final newestFirst = messages.reversed.map((m) => m.toJson()).toList();
+      final page = newestFirst.skip(number * 50).take(50).toList();
       final hold = _heldLoads;
       if (hold != null) await hold.future;
-      // Newest first, one page, like the server (F9).
       return http.Response.bytes(
           utf8.encode(jsonEncode({
             'content': page,
-            'page': 0,
+            'page': number,
             'size': 50,
-            'totalElements': page.length,
-            'totalPages': 1,
+            'totalElements': newestFirst.length,
+            'totalPages': (newestFirst.length + 49) ~/ 50,
           })),
           200,
           headers: {'content-type': 'application/json; charset=utf-8'});
@@ -342,6 +346,130 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(server.loads, hasLength(loadsWhenClosed));
+    });
+  });
+
+  // B26 step 26d: the chat used to show only its newest 50 messages, and
+  // every poll replaced them. Scrolling up now loads older ones above, and a
+  // poll only adds what is new at the bottom.
+  group('older messages', () {
+    /// A chat of [count] messages, the boss and the worker taking turns,
+    /// every one already read.
+    FakeChatServer longChat(int count) => FakeChatServer([
+          for (var id = 1; id <= count; id++)
+            StoredMessage(id, id.isOdd ? boss : worker, id.isOdd ? worker : boss,
+                read: true),
+        ]);
+
+    /// The list is reversed: dragging down moves towards the top, where the
+    /// oldest messages are. Twice: the first drag brings the footer into
+    /// view, and the older page it loads lands above it - out of sight until
+    /// the user scrolls on, as in any chat.
+    Future<void> scrollToTheTop(WidgetTester tester) async {
+      await tester.drag(find.byType(ListView), const Offset(0, 10000));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, 10000));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> scrollToTheBottom(WidgetTester tester) async {
+      await tester.drag(find.byType(ListView), const Offset(0, -10000));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('scrolling up loads the older messages above',
+        (WidgetTester tester) async {
+      // 60: page 0 is 60 down to 11, page 1 is 10 down to 1.
+      final server = longChat(60);
+      await openChat(tester, server);
+      expect(find.text('m60'), findsOneWidget, reason: 'the newest, at the bottom');
+      expect(server.loads, hasLength(1));
+
+      await scrollToTheTop(tester);
+
+      expect(server.loads, hasLength(2));
+      expect(find.text('m1'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('m1')).dy,
+          lessThan(tester.getTopLeft(find.text('m2')).dy),
+          reason: 'older above newer');
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a poll keeps the older messages and adds the new one below',
+        (WidgetTester tester) async {
+      final server = longChat(60);
+      await openChat(tester, server);
+      await scrollToTheTop(tester);
+      expect(find.text('m1'), findsOneWidget);
+
+      server.messages.add(StoredMessage(61, boss, worker, read: true));
+      await wait(tester, const Duration(seconds: 5));
+
+      // Before 26d every poll replaced the list with page 0 again. The new
+      // message at the bottom pushes the view up by one bubble, so m1 slides
+      // just out of sight at the top - left as it is (decided 2026-10-24) -
+      // and scrolling up shows it still there.
+      final loadsBefore = server.loads.length;
+      await scrollToTheTop(tester);
+      expect(find.text('m1'), findsOneWidget);
+      expect(server.loads, hasLength(loadsBefore), reason: 'kept, not loaded again');
+      await scrollToTheBottom(tester);
+      expect(find.text('m61'), findsOneWidget);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('an unread message on an older page is not marked read every poll',
+        (WidgetTester tester) async {
+      final server = longChat(60);
+      // Message 1, on page 1, is still unread when its page is loaded.
+      server.messages.first.read = false;
+      await openChat(tester, server);
+      await scrollToTheTop(tester);
+
+      await wait(tester, const Duration(seconds: 20));
+
+      // Only the page each poll fetched again counts: in the list, message 1
+      // stays unread for good, and looking there would send a PUT every 5 s.
+      expect(server.loads.length, greaterThan(3), reason: 'the chat kept polling');
+      expect(server.readRequests, isEmpty);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a failed first load says so, and the next poll shows the chat',
+        (WidgetTester tester) async {
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)])
+        ..failLoads = true;
+      await openChat(tester, server);
+
+      // Before 26d this was an empty chat, as if nobody had written (B44).
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση των μηνυμάτων.'), findsOneWidget);
+
+      server.failLoads = false;
+      await wait(tester, const Duration(seconds: 5));
+
+      expect(find.text('m1'), findsOneWidget);
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση των μηνυμάτων.'), findsNothing);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a failed poll keeps the chat on screen',
+        (WidgetTester tester) async {
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)]);
+      await openChat(tester, server);
+      expect(find.text('m1'), findsOneWidget);
+
+      server.failLoads = true;
+      await wait(tester, const Duration(seconds: 5));
+
+      expect(server.loads, hasLength(2));
+      expect(find.text('m1'), findsOneWidget);
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση των μηνυμάτων.'), findsNothing);
+
+      await closeChat(tester);
     });
   });
 }

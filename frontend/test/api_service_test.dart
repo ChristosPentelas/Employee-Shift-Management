@@ -160,7 +160,10 @@ void main() {
     expect(sent!.url.queryParameters, {'start': '2026-02-01', 'end': '2026-02-28'});
   });
 
-  test('a chat page arrives newest first and is shown oldest first', () async {
+  // Newest first since B26 step 26d, as the server sends it: the chat list is
+  // reversed, so the newest sits at the bottom and older pages load above.
+  test('a chat page stays newest first, and older pages are asked for by number',
+      () async {
     http.BaseRequest? sent;
     String message(int id, String time) =>
         '{"id":$id,"content":"m$id","timestamp":"2026-09-19T$time",'
@@ -171,17 +174,23 @@ void main() {
       sent = request;
       return http.Response(
           '{"content":[${message(2, "10:00:00")},${message(1, "09:00:00")}],'
-          '"page":0,"size":50,"totalElements":2,"totalPages":1}',
+          '"page":1,"size":50,"totalElements":52,"totalPages":2}',
           200);
     }));
 
-    final chat = await api.getChatHistory(7, 9);
+    final chat = await api.getChatHistory(7, 9, page: 1);
 
-    expect(chat.map((m) => m.id), [1, 2]);
-    expect(sent!.url.queryParameters['page'], '0');
-    expect(sent!.url.queryParameters['size'], '50');
-    expect(sent!.url.queryParameters['user1Id'], '7',
-        reason: 'the caller says who is asking; the service no longer looks it up');
+    expect(chat.items.map((m) => m.id), [2, 1]);
+    expect(chat.page, 1);
+    // user1Id: the caller says who is asking; the service no longer looks it up.
+    expect(sent!.url.queryParameters,
+        {'user1Id': '7', 'user2Id': '9', 'page': '1', 'size': '50'});
+  });
+
+  test('a failed chat load throws, not an empty chat (B44)', () async {
+    final api = ApiService(client: MockClient((_) async => http.Response('', 500)));
+
+    await expectLater(api.getChatHistory(7, 9), throwsException);
   });
 
   test('a chat is marked read with one request naming only the other person',

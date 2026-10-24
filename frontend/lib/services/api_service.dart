@@ -77,12 +77,8 @@ class ApiService {
 
   // Every list endpoint answers one page at a time (F9):
   // {"content": [...], "page": 0, "size": 20, "totalElements": .., "totalPages": ..}
-  // The staff list reads every page, and the leave, news and conversation
-  // lists return a ListPage the screen can ask past. Only the chat still
-  // reads its first page alone (B26 step 26d).
-  static List<dynamic> _pageContent(http.Response response) =>
-      jsonDecode(response.body)['content'] as List<dynamic>;
-
+  // The staff list reads every page; every other list returns a ListPage
+  // the screen can ask past (B26).
   static ListPage<T> _page<T>(
           http.Response response, T Function(Map<String, dynamic>) itemFromJson) =>
       ListPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>, itemFromJson);
@@ -438,18 +434,21 @@ class ApiService {
     }
   }
 
-  // The latest 50 messages of a chat, oldest first. The server sends a page
-  // newest-first (page 0 = the latest), so it is turned around here and the
-  // chat screen keeps receiving the order it always had.
-  Future<List<Message>> getChatHistory(int currentUserId, int otherUserId) async {
+  // One page of a chat, 50 messages, newest first as the server sends it:
+  // page 0 is the latest. Not turned around any more (B26 step 26d): the
+  // chat's list is reversed, so the newest sits at the bottom and older pages
+  // load above it. Throws on failure; it used to return [], and the chat then
+  // looked as if nobody had written (B44).
+  Future<ListPage<Message>> getChatHistory(int currentUserId, int otherUserId,
+      {int page = 0}) async {
     final response = await _client.get(
-      Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId&page=0&size=50")
+      Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId&page=$page&size=50")
     );
 
     if (response.statusCode == 200) {
-      return _pageContent(response).map((item) => Message.fromJson(item)).toList().reversed.toList();
+      return _page(response, Message.fromJson);
     }
-    return [];
+    throw Exception("Loading the chat failed: ${response.statusCode}");
   }
 
   Future<bool> sendMessage(int receiverId, String content) async {

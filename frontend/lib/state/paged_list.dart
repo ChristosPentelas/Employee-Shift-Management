@@ -68,6 +68,46 @@ class PagedList<T> extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Loads page 0 again and puts it in front, keeping the older pages already
+  /// loaded - for a list that grows at the front while it is shown, as a chat
+  /// does when it polls (B26 step 26d). reload, by contrast, drops them.
+  ///
+  /// Returns the fresh page, or null if it failed or was dropped, so the
+  /// caller can look at what the server holds now rather than at rows loaded
+  /// earlier.
+  Future<ListPage<T>?> refresh() async {
+    if (_disposed) return null;
+    // Not raised, as reload does: refreshing must not cancel an older page
+    // on its way, or a chat polling every 5 s would undo every scroll up.
+    final generation = _generation;
+    try {
+      final first = await _fetch(0);
+      if (_disposed || generation != _generation) return null;
+      // The fresh copies first: one already shown is replaced, so a change
+      // such as a message being read shows. Every other row is older.
+      final fresh = first.items.map(_idOf).toSet();
+      _items = List.unmodifiable(
+          [...first.items, ..._items.where((item) => !fresh.contains(_idOf(item)))]);
+      // _page stays: the older pages are still loaded. The total grows as
+      // rows arrive.
+      _hasMore = _page + 1 < first.totalPages;
+      _loading = false;
+      _error = null;
+      notifyListeners();
+      return first;
+    } catch (e) {
+      if (_disposed || generation != _generation) return null;
+      // With rows on screen, a failed refresh changes nothing: they are still
+      // right, and the next poll tries again. With nothing yet, say so.
+      if (_loading || _error != null) {
+        _loading = false;
+        _error = e;
+        notifyListeners();
+      }
+      return null;
+    }
+  }
+
   /// Adds the next page after the rows. If it fails, the rows already loaded
   /// stay and [loadMoreFailed] says so; nothing is returned, since the footer
   /// reads that instead (26c3).

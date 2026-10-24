@@ -194,6 +194,117 @@ void main() {
     expect(server.asked, [0]);
   });
 
+  // B26 step 26d: the chat polls page 0 while older pages may be loaded, so
+  // the poll must add what is new without dropping them, as reload would.
+  group('refresh', () {
+    test('puts the new rows in front and keeps the older pages', () async {
+      final first = list.reload();
+      server.answer(0, [5, 4], page: 0, totalPages: 2);
+      await first;
+      final more = list.loadMore();
+      server.answer(1, [3, 2], page: 1, totalPages: 2);
+      await more;
+
+      // Message 6 arrived; 5 is still on page 0, so it is a repeat.
+      final refreshed = list.refresh();
+      server.answer(2, [6, 5], page: 0, totalPages: 3);
+      final fresh = await refreshed;
+
+      expect(server.asked, [0, 1, 0]);
+      expect(list.items, [6, 5, 4, 3, 2]);
+      expect(list.hasMore, isTrue, reason: 'the total grew to 3 pages');
+      expect(fresh!.items, [6, 5], reason: 'the page itself, for the caller');
+    });
+
+    test('a fresh copy of a row replaces the one on screen', () async {
+      var state = 'unread';
+      final rows = PagedList<({int id, String state})>(
+        fetch: (page) async =>
+            ListPage(items: [(id: 1, state: state)], page: 0, totalPages: 1),
+        idOf: (row) => row.id,
+      );
+      await rows.refresh();
+
+      state = 'read';
+      await rows.refresh();
+
+      // Not the old copy kept because its id was already there.
+      expect(rows.items, [(id: 1, state: 'read')]);
+    });
+
+    test('the first refresh is the first load', () async {
+      expect(list.loading, isTrue);
+
+      final refreshed = list.refresh();
+      server.answer(0, [1], page: 0, totalPages: 2);
+      await refreshed;
+
+      expect(list.loading, isFalse);
+      expect(list.items, [1]);
+      expect(list.hasMore, isTrue);
+    });
+
+    test('a failed refresh with rows on screen changes nothing and says nothing',
+        () async {
+      final first = list.reload();
+      server.answer(0, [1], page: 0, totalPages: 1);
+      await first;
+      var told = 0;
+      list.addListener(() => told++);
+
+      final refreshed = list.refresh();
+      server.fail(1);
+
+      expect(await refreshed, isNull);
+      expect(list.items, [1]);
+      expect(list.error, isNull, reason: 'the next poll tries again');
+      expect(told, 0);
+    });
+
+    test('a failed refresh with nothing loaded yet is an error', () async {
+      final refreshed = list.refresh();
+      server.fail(0);
+      await refreshed;
+
+      expect(list.loading, isFalse);
+      expect(list.error, isNotNull);
+    });
+
+    test('does not cancel an older page on its way', () async {
+      final first = list.reload();
+      server.answer(0, [20, 19], page: 0, totalPages: 2);
+      await first;
+
+      final more = list.loadMore(); // request 1
+      final refreshed = list.refresh(); // request 2
+      server.answer(2, [21, 20], page: 0, totalPages: 2);
+      await refreshed;
+      expect(list.loadingMore, isTrue, reason: 'unlike reload');
+      server.answer(1, [18], page: 1, totalPages: 2);
+      await more;
+
+      expect(list.items, [21, 20, 19, 18]);
+    });
+
+    test('a refresh that a reload overtook is dropped', () async {
+      final refreshed = list.refresh(); // request 0
+      final again = list.reload(); // request 1
+      server.answer(1, [10], page: 0, totalPages: 1);
+      await again;
+      server.answer(0, [99], page: 0, totalPages: 1); // arrives late
+      await refreshed;
+
+      expect(list.items, [10]);
+    });
+
+    test('after dispose it asks nothing', () async {
+      list.dispose();
+
+      expect(await list.refresh(), isNull);
+      expect(server.asked, isEmpty);
+    });
+  });
+
   test('the rows cannot be changed from outside', () async {
     final first = list.reload();
     server.answer(0, [1], page: 0, totalPages: 1);
