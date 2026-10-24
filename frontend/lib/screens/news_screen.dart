@@ -6,6 +6,7 @@ import '../models/news_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
+import '../widgets/paged_list_footer.dart';
 
 /// One tab: its label, and the NewsType it shows as the server spells it,
 /// or null for every post.
@@ -64,14 +65,6 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     super.dispose();
   }
 
-  /// The list keeps the data; saying that a page failed is the screen's job.
-  Future<void> _loadMore(PagedList<NewsItem> list) async {
-    final loaded = await list.loadMore();
-    if (loaded || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.")));
-  }
-
   @override
   Widget build(BuildContext context) {
     final isSupervisor = ref.watch(isSupervisorProvider);
@@ -128,20 +121,12 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
       // A TabBarView destroys the tabs it is not showing. The posts survive
       // in _lists, but the scroll offset only survives saved under this key.
       key: PageStorageKey(tab.label),
-      // One row more while the server has older posts: the button.
+      // One row more while the server has older posts: this tab's footer,
+      // which loads them once it is scrolled into view (26c3).
       itemCount: items.length + (list.hasMore ? 1 : 0),
       itemBuilder: (context,index){
         if (index == items.length) {
-          return Padding(
-            padding: EdgeInsets.all(12),
-            child: Center(
-              child: TextButton(
-                // Disabled while a page is on its way.
-                onPressed: list.loadingMore ? null : () => _loadMore(list),
-                child: Text("Φόρτωση παλαιότερων"),
-              ),
-            ),
-          );
+          return PagedListFooter(list: list);
         }
         final item = items[index];
         return Card(

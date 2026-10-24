@@ -68,22 +68,23 @@ class PagedList<T> extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Adds the next page after the rows. False only if that page failed, so
-  /// the screen can say so; the rows already loaded stay either way.
-  Future<bool> loadMore() async {
+  /// Adds the next page after the rows. If it fails, the rows already loaded
+  /// stay and [loadMoreFailed] says so; nothing is returned, since the footer
+  /// reads that instead (26c3).
+  Future<void> loadMore() async {
     // The footer asks after a frame, which can come once the screen has
     // closed: notifyListeners after dispose would throw.
-    if (_disposed) return true;
-    // A second tap before the page came back would add it twice. Not a
-    // failure, so true: the screen must not say one.
-    if (_loadingMore) return true;
+    if (_disposed) return;
+    // The footer can ask again before the page came back, which would add it
+    // twice. Ignored, not failed: loadMoreFailed stays as it is.
+    if (_loadingMore) return;
     final generation = _generation;
     _loadingMore = true;
     _loadMoreFailed = false;
     notifyListeners();
     try {
       final next = await _fetch(_page + 1);
-      if (_disposed || generation != _generation) return true;
+      if (_disposed || generation != _generation) return;
       final shown = _items.map(_idOf).toSet();
       _items = List.unmodifiable(
           [..._items, ...next.items.where((item) => !shown.contains(_idOf(item)))]);
@@ -91,14 +92,12 @@ class PagedList<T> extends ChangeNotifier {
       _hasMore = next.hasMore;
       _loadingMore = false;
       notifyListeners();
-      return true;
     } catch (e) {
       // Dropped like a late page: after a reload or dispose nobody asked.
-      if (_disposed || generation != _generation) return true;
+      if (_disposed || generation != _generation) return;
       _loadingMore = false;
       _loadMoreFailed = true;
       notifyListeners();
-      return false;
     }
   }
 

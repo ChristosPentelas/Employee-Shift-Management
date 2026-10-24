@@ -61,9 +61,10 @@ void main() {
     expect(list.loadingMore, isTrue);
     server.answer(1, [2], page: 1, totalPages: 2);
 
-    expect(await more, isTrue);
+    await more;
     expect(server.asked, [0, 1]);
     expect(list.items, [1, 2]);
+    expect(list.loadMoreFailed, isFalse);
     expect(list.hasMore, isFalse);
     expect(list.loadingMore, isFalse);
   });
@@ -86,8 +87,9 @@ void main() {
     await first;
 
     final more = list.loadMore();
-    // Not a failure, so the screen must not say one: true.
-    expect(await list.loadMore(), isTrue);
+    await list.loadMore();
+    // Ignored, not failed: the footer must not offer to try again.
+    expect(list.loadMoreFailed, isFalse);
     server.answer(1, [2], page: 1, totalPages: 2);
     await more;
 
@@ -135,8 +137,9 @@ void main() {
 
     final more = list.loadMore();
     server.fail(1);
+    await more;
 
-    expect(await more, isFalse);
+    expect(list.loadMoreFailed, isTrue);
     expect(list.items, [1]);
     expect(list.hasMore, isTrue); // so the button stays
     expect(list.loadingMore, isFalse);
@@ -187,7 +190,7 @@ void main() {
     // The footer's after-frame callback can run once the screen has closed.
     list.dispose();
 
-    expect(await list.loadMore(), isTrue);
+    await list.loadMore();
     expect(server.asked, [0]);
   });
 

@@ -139,7 +139,10 @@ void main() {
       return asked;
     }
 
-    Finder loadMore() => find.text('Φόρτωση παλαιότερων');
+    // More posts than the 600 px test screen holds. Since B26 step 26c3 a
+    // tab loads its next page once its last row comes into view, so a short
+    // first page loads page 1 as soon as the tab is shown.
+    final aScreenful = [for (var id = 1; id <= 20; id++) id];
 
     Future<void> openTab(WidgetTester tester, String label) async {
       await tester.tap(find.text(label));
@@ -155,10 +158,13 @@ void main() {
 
     testWidgets('the Goals tab shows the goals sent for it, not a filter of "all"',
         (WidgetTester tester) async {
-      // The newest 20 posts are all announcements; goal 9 is older.
-      await openNews(tester, worker, (path, _) => path == goals
-          ? newsPage(0, 1, [9], type: 'GOAL')
-          : newsPage(0, 2, [1]));
+      // The newest posts are all announcements; goal 9 is older. Each page is
+      // answered as asked: a fake that sent page 0 back for page 1 would keep
+      // the footer, still in view, asking for ever.
+      await openNews(tester, worker, (path, page) {
+        if (path == goals) return newsPage(0, 1, [9], type: 'GOAL');
+        return page == '0' ? newsPage(0, 2, [1]) : newsPage(1, 2, [2]);
+      });
 
       await openTab(tester, 'Στόχοι');
 
@@ -168,6 +174,7 @@ void main() {
 
     testWidgets('each tab loads more from its own list only',
         (WidgetTester tester) async {
+      // Short first pages: each tab's footer is in view as soon as the tab is.
       final asked = await openNews(tester, worker, (path, page) {
         if (path == all) return page == '0' ? newsPage(0, 2, [1]) : newsPage(1, 2, [2]);
         if (path == goals) {
@@ -178,42 +185,39 @@ void main() {
         return newsPage(0, 0, []);
       });
 
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
-      expect(asked.last, '$all 1');
+      expect(asked, contains('$all 1'));
       expect(find.text('Post 2'), findsOneWidget);
+      // The Goals tab is not built until it is shown, so neither is its footer.
+      expect(asked, isNot(contains('$goals 1')));
 
       await openTab(tester, 'Στόχοι');
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
 
       expect(asked.last, '$goals 1');
       expect(find.text('Post 8'), findsOneWidget);
       expect(asked.where((a) => a.endsWith(' 1')), hasLength(2));
     });
 
-    testWidgets('a page that fails to load keeps the posts and says so',
+    testWidgets('a page that fails to load keeps the posts and offers to try again',
         (WidgetTester tester) async {
       await openNews(tester, worker, (path, page) {
         if (path != all) return newsPage(0, 0, []);
         return page == '0' ? newsPage(0, 2, [1]) : http.Response('', 500);
       });
 
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
-
       expect(find.text('Post 1'), findsOneWidget);
-      expect(find.text('Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.'), findsOneWidget);
-      expect(loadMore(), findsOneWidget);
+      expect(find.text('Δοκιμάστε ξανά'), findsOneWidget);
+      // Said once, in the list: no SnackBar on top of it since 26c3.
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('posting reloads every tab from page 0',
         (WidgetTester tester) async {
       final asked = await openNews(tester, boss, (path, page) => path == all
-          ? (page == '0' ? newsPage(0, 2, [1]) : newsPage(1, 2, [2]))
+          ? (page == '0' ? newsPage(0, 2, aScreenful) : newsPage(1, 2, [21]))
           : newsPage(0, 0, []));
-      await tester.tap(loadMore());
+      await tester.drag(find.byType(ListView), const Offset(0, -5000));
       await tester.pumpAndSettle();
+      expect(find.text('Post 21'), findsOneWidget);
       asked.clear();
 
       await tester.tap(find.byIcon(Icons.add));
@@ -222,9 +226,10 @@ void main() {
       await tester.tap(find.text('Δημοσίευση'));
       await tester.pumpAndSettle();
 
-      // A new post belongs in "all" and in its own type's tab.
-      expect(asked, unorderedEquals(everyList));
-      expect(find.text('Post 2'), findsNothing); // back to page 0
+      // A new post belongs in "all" and in its own type's tab: page 0 of all
+      // four, first. "All" is still scrolled to its end, so its footer then
+      // asks for page 1 anew, as infinite scroll should.
+      expect(asked.take(4), unorderedEquals(everyList));
     });
 
     testWidgets('deleting reloads every tab from page 0',
@@ -245,17 +250,14 @@ void main() {
         (WidgetTester tester) async {
       await openNews(tester, worker, (path, page) {
         if (path != all) return newsPage(0, 0, []);
-        return page == '0'
-            ? newsPage(0, 2, [for (var i = 1; i <= 20; i++) i])
-            : newsPage(1, 2, [21]);
+        return page == '0' ? newsPage(0, 2, aScreenful) : newsPage(1, 2, [21]);
       });
       // The list itself, not the TabBar or the TabBarView, which scroll too.
       Finder newsScroll() => find.descendant(
           of: find.byType(ListView), matching: find.byType(Scrollable));
 
+      // Scrolling to the end also brings page 1, through the footer.
       await tester.drag(find.byType(ListView), const Offset(0, -5000));
-      await tester.pumpAndSettle();
-      await tester.tap(loadMore());
       await tester.pumpAndSettle();
       final place = tester.state<ScrollableState>(newsScroll()).position.pixels;
       expect(place, greaterThan(0));

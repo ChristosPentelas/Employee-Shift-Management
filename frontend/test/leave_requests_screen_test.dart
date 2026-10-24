@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/leave_requests_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
+import 'package:employee_shift_management_ui/widgets/paged_list_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -242,14 +243,19 @@ void main() {
           'totalPages': totalPages,
         });
 
-    Finder loadMore() => find.text('Φόρτωση παλαιότερων');
+    Finder footer() => find.byType(PagedListFooter);
     Finder shown(int id) => find.text('Λόγος: Reason $id');
+    // More rows than the 600 px test screen holds. Since B26 step 26c3 the
+    // list loads its next page once its last row comes into view, so a short
+    // first page would load page 1 at once, before a test could look.
+    final aScreenful = [for (var id = 1; id <= 20; id++) id];
 
     /// Opens the screen as [user]; [pages] answers each ?page= with a reply.
-    /// Returns the pages asked for, in order.
+    /// Returns the pages asked for, in order. [settle] false only pumps: a
+    /// page held back keeps the footer's spinner turning, which never settles.
     Future<List<String?>> openAs(WidgetTester tester, User user,
         Future<http.Response> Function(String? page) pages,
-        {int putStatus = 200}) async {
+        {int putStatus = 200, bool settle = true}) async {
       final asked = <String?>[];
       final api = ApiService(client: MockClient((request) async {
         if (request.method == 'PUT') return http.Response('{}', putStatus);
@@ -259,77 +265,74 @@ void main() {
       }));
       await tester.pumpWidget(withAppState(testContainer(user: user),
           MaterialApp(home: LeaveRequestsScreen(apiService: api))));
-      await tester.pumpAndSettle();
+      if (settle) {
+        await tester.pumpAndSettle();
+      } else {
+        await tester.pump(); // page 0 arrives
+        await tester.pump(); // the footer asks for page 1 after that frame
+      }
       return asked;
     }
 
-    testWidgets('a list that fits on one page has no load-more button',
+    Future<void> scrollToTheEnd(WidgetTester tester) async {
+      await tester.drag(find.byType(ListView), const Offset(0, -5000));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a list that fits on one page has no footer',
         (WidgetTester tester) async {
-      await openAs(tester, worker, (_) async => http.Response(leavePage(0, 1, [1]), 200));
+      final asked = await openAs(
+          tester, worker, (_) async => http.Response(leavePage(0, 1, [1]), 200));
 
       expect(shown(1), findsOneWidget);
-      expect(loadMore(), findsNothing);
+      expect(footer(), findsNothing);
+      expect(asked, ['0']);
     });
 
-    testWidgets('load more asks for the next page and adds it below',
+    testWidgets('scrolling to the end loads the next page below',
         (WidgetTester tester) async {
       final asked = await openAs(tester, worker, (page) async => http.Response(
-          page == '0' ? leavePage(0, 2, [1]) : leavePage(1, 2, [2]), 200));
+          page == '0' ? leavePage(0, 2, aScreenful) : leavePage(1, 2, [21]), 200));
+      expect(asked, ['0'], reason: 'nobody has scrolled down yet');
 
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
-
-      expect(asked, ['0', '1']);
-      expect(shown(1), findsOneWidget);
-      expect(shown(2), findsOneWidget);
-      expect(tester.getTopLeft(shown(1)).dy, lessThan(tester.getTopLeft(shown(2)).dy));
-      expect(loadMore(), findsNothing); // that was the last page
-    });
-
-    testWidgets('a second tap while the page is on its way asks only once',
-        (WidgetTester tester) async {
-      final secondPage = Completer<http.Response>();
-      final asked = await openAs(tester, worker, (page) => page == '0'
-          ? Future.value(http.Response(leavePage(0, 2, [1]), 200))
-          : secondPage.future);
-
-      // No pump in between: the second tap reaches the same, still enabled
-      // button, as a quick double tap does on a phone.
-      await tester.tap(loadMore());
-      await tester.tap(loadMore());
-      await tester.pump();
-      secondPage.complete(http.Response(leavePage(1, 2, [2]), 200));
-      await tester.pumpAndSettle();
+      await scrollToTheEnd(tester);
 
       expect(asked, ['0', '1']);
-      expect(shown(2), findsOneWidget);
+      expect(shown(21), findsOneWidget);
+      expect(tester.getTopLeft(shown(20)).dy, lessThan(tester.getTopLeft(shown(21)).dy));
+      expect(footer(), findsNothing); // that was the last page
     });
 
-    testWidgets('a page that fails to load keeps the list and says so',
-        (WidgetTester tester) async {
-      await openAs(tester, worker, (page) async => page == '0'
-          ? http.Response(leavePage(0, 2, [1]), 200)
-          : http.Response('', 500));
+    // A second load while one is on its way is ignored by PagedList itself
+    // ("a second load more while a page is on its way asks only once" in
+    // paged_list_test.dart); with no button there is nothing to tap twice here.
 
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
+    testWidgets('a page that fails to load keeps the list and offers to try again',
+        (WidgetTester tester) async {
+      var failing = true;
+      await openAs(tester, worker, (page) async {
+        if (page == '0') return http.Response(leavePage(0, 2, [1]), 200);
+        return failing ? http.Response('', 500) : http.Response(leavePage(1, 2, [2]), 200);
+      });
 
       expect(shown(1), findsOneWidget);
-      expect(find.text('Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.'), findsOneWidget);
-      // Still there and enabled, so the supervisor can try again.
-      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Φόρτωση παλαιότερων'))
-          .onPressed, isNotNull);
+      expect(find.text('Δοκιμάστε ξανά'), findsOneWidget);
+      // Said once, in the list: no SnackBar on top of it since 26c3.
+      expect(find.byType(SnackBar), findsNothing);
+
+      failing = false;
+      await tester.tap(find.text('Δοκιμάστε ξανά'));
+      await tester.pumpAndSettle();
+
+      expect(shown(2), findsOneWidget);
     });
 
     testWidgets('a request already shown is not shown twice',
         (WidgetTester tester) async {
       // Request 2 was last on page 0; a newer one filed in between pushed it
-      // onto page 1 as well (B69).
+      // onto page 1 as well (B69). Short page: page 1 loads by itself.
       await openAs(tester, worker, (page) async => http.Response(
           page == '0' ? leavePage(0, 2, [1, 2]) : leavePage(1, 2, [2, 3]), 200));
-
-      await tester.tap(loadMore());
-      await tester.pumpAndSettle();
 
       expect(shown(2), findsOneWidget);
       expect(shown(3), findsOneWidget);
@@ -339,42 +342,49 @@ void main() {
         (WidgetTester tester) async {
       final asked = await openAs(tester, boss, (page) async => http.Response(
           page == '0'
-              ? leavePage(0, 2, [1], status: 'PENDING')
-              : leavePage(1, 2, [2], status: 'PENDING'),
+              ? leavePage(0, 2, aScreenful, status: 'PENDING')
+              : leavePage(1, 2, [21], status: 'PENDING'),
           200));
-      await tester.tap(loadMore());
+      await scrollToTheEnd(tester);
+      expect(shown(21), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.check_circle).last); // request 21
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.check_circle).last); // request 2
-      await tester.pumpAndSettle();
-
-      expect(asked, ['0', '1', '0']);
-      expect(shown(1), findsOneWidget);
-      expect(shown(2), findsNothing); // page 1 is not loaded any more
-      expect(loadMore(), findsOneWidget);
+      // Page 0 again, not page 1 again: the pages after it are dropped. The
+      // list is still scrolled to its end, so the footer is in view and then
+      // fetches page 1 anew - which is what infinite scroll should do.
+      expect(asked.take(3), ['0', '1', '0']);
     });
 
     testWidgets('a page asked for before a reload is not added after it',
         (WidgetTester tester) async {
-      final secondPage = Completer<http.Response>();
-      await openAs(tester, boss, (page) => page == '0'
-          ? Future.value(http.Response(leavePage(0, 2, [1], status: 'PENDING'), 200))
-          : secondPage.future);
+      final stale = Completer<http.Response>();
+      var page1Requests = 0;
+      await openAs(tester, boss, (page) {
+        if (page == '0') {
+          return Future.value(http.Response(leavePage(0, 2, [1], status: 'PENDING'), 200));
+        }
+        // The first page 1 is held back; the one asked for after the reload
+        // answers at once, with a different request.
+        page1Requests++;
+        return page1Requests == 1
+            ? stale.future
+            : Future.value(http.Response(leavePage(1, 2, [3], status: 'PENDING'), 200));
+      }, settle: false);
+      expect(page1Requests, 1);
 
-      await tester.tap(loadMore());
-      await tester.pump();
       // While page 1 is on its way, approving reloads the list from page 0.
       await tester.tap(find.byIcon(Icons.check_circle));
       await tester.pumpAndSettle();
-      // Page 1 belongs to the list from before the reload.
-      secondPage.complete(http.Response(leavePage(1, 2, [2], status: 'PENDING'), 200));
+      expect(shown(3), findsOneWidget);
+
+      // The held page 1 belongs to the list from before the reload.
+      stale.complete(http.Response(leavePage(1, 2, [2], status: 'PENDING'), 200));
       await tester.pumpAndSettle();
 
       expect(shown(1), findsOneWidget);
       expect(shown(2), findsNothing);
-      // The reload ended the old load, so the button works again.
-      expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Φόρτωση παλαιότερων'))
-          .onPressed, isNotNull);
     });
   });
 }

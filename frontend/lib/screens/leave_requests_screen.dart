@@ -7,6 +7,7 @@ import '../models/page_model.dart';
 import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
+import '../widgets/paged_list_footer.dart';
 
 class LeaveRequestsScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
@@ -40,16 +41,6 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
     return ref.read(isSupervisorProvider)
         ? _apiService.getAllLeaveRequests(page: page)
         : _apiService.getMyLeaveRequests(me.user.id, page: page);
-  }
-
-  /// The list keeps the data; saying that a page failed is the screen's job,
-  /// since only the screen has a context to show it in.
-  Future<void> _loadMore() async {
-    final loaded = await _leaves.loadMore();
-    if (loaded || !mounted) return;
-    // The rows already loaded stay, and so does the button.
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Δεν ήταν δυνατή η φόρτωση. Δοκιμάστε ξανά.")));
   }
 
   @override
@@ -93,20 +84,12 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
           List<LeaveRequest> list = _leaves.items;
 
           return ListView.builder(
-            // One row more while the server has older requests: the button.
+            // One row more while the server has older requests: the footer,
+            // which loads them once it is scrolled into view (26c3).
             itemCount: list.length + (_leaves.hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (index == list.length) {
-                return Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Center(
-                    child: TextButton(
-                      // Disabled while a page is on its way.
-                      onPressed: _leaves.loadingMore ? null : _loadMore,
-                      child: Text("Φόρτωση παλαιότερων"),
-                    ),
-                  ),
-                );
+                return PagedListFooter(list: _leaves);
               }
               final req = list[index];
               return Card(

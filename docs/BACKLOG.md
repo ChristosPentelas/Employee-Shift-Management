@@ -227,9 +227,21 @@ empty list says "Δεν υπάρχουν μηνύματα." instead of showing n
 screen tests changed meaning: picking each conversation's newest message and
 one row for a note to yourself are the server's rules now
 (`ConversationsIntegrationTest`), so here they check the server's order and
-the row's name; the B16 test expects one request instead of two. Left:
-**26c3** leaves and news use the footer, **26d** older chat messages,
-scrolling up while the 5 s poll adds new ones at the bottom.
+the row's name; the B16 test expects one request instead of two.
+**26c3 done** (`feat(frontend): scroll leaves and news like the messages`):
+the leave and news lists end with `PagedListFooter` instead of their
+"Φόρτωση παλαιότερων" button, so all three paged lists behave the same. Their
+SnackBar on a failed page went with it - the footer says so in the list, and
+both at once said it twice - and with it the only reason `loadMore` returned a
+`bool`; it is `Future<void>` now, and `loadMoreFailed` is how to tell. The
+screens' tests now give a first page taller than the 600 px test screen
+wherever they check that something is not loaded yet, since a short page's
+footer loads the next one at once. The screen test for a double tap went with
+the button; `paged_list_test.dart` still covers the guard. One news test's
+fake answered page 1 with page 0 again: with a button nothing noticed, with
+the footer in view it asked for ever. A real server answers the page asked
+for, so `PagedList` does not guard against that. Left: **26d** older chat
+messages, scrolling up while the 5 s poll adds new ones at the bottom.
 
 **B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
 Where: `application.properties` does not set `spring.jpa.open-in-view`, so
