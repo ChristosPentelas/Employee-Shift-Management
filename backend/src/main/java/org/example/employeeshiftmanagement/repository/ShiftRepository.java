@@ -17,7 +17,9 @@ public interface ShiftRepository extends JpaRepository<Shift, Integer> {
 
     // Every list query names the user it returns with @EntityGraph: Hibernate
     // then joins it into the same SELECT. Without it, the user is LAZY and
-    // is fetched separately, once per user, when the response is built (F10).
+    // not loaded, and building the response throws LazyInitializationException,
+    // since the session has already closed (B28). findById needs none: see
+    // ShiftService.updateShift.
 
     @EntityGraph(attributePaths = "user")
     Page<Shift> findByUserId(Integer userId, Pageable pageable);

@@ -46,9 +46,10 @@ public class NewsItem {
     private LocalDateTime deadline; //For Tasks
     private Integer targetValue; //For Goals
 
-    // LAZY: each query decides whether it needs the author. The list queries in
+    // LAZY: each query decides whether it needs the author. The queries in
     // NewsItemRepository ask for it with @EntityGraph, so it comes in the
-    // same SQL statement instead of one extra query per user (F10).
+    // same SQL statement instead of one extra query per user (F10). A query that
+    // forgets it fails when the response is built: Open Session In View is off (B28).
     // SET_NULL: deleting the author keeps the post, with no author (B7). MySQL
     // does it, from the foreign key's ON DELETE rule (V5); this annotation only
     // states the rule here.

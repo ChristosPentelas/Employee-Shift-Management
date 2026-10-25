@@ -16,9 +16,10 @@ import java.util.Optional;
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Integer> {
 
     // The order travels inside the Pageable, which LeaveRequestService builds (F9).
-    // Every list query names the user it returns with @EntityGraph: Hibernate
-    // then joins it into the same SELECT. Without it, the user is LAZY and
-    // is fetched separately, once per user, when the response is built (F10).
+    // Every query whose requests reach a response names the user with
+    // @EntityGraph: Hibernate then joins it into the same SELECT. Without it,
+    // the user is LAZY and not loaded, and building the response throws
+    // LazyInitializationException, since the session has already closed (B28).
 
     // Everyone's requests. Inherited from JpaRepository; declared again only
     // to attach the entity graph.
@@ -38,6 +39,10 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     // "select ... from leave_requests where id = ? for update", as
     // UserRepository.findLockedById: two supervisors deciding the same request
     // at once take turns, so the second sees the first's answer (B63).
+    // The answer returns the request, so the user is joined in too. Only the
+    // request's row is locked: Hibernate writes "for update of <its alias>",
+    // so the employee's users row, which ShiftService locks, stays free.
+    @EntityGraph(attributePaths = "user")
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<LeaveRequest> findLockedById(Integer id);
 }

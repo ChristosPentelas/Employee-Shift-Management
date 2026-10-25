@@ -43,7 +43,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F7 | HIGH | Leave-request filter is cosmetic | Done | `95d9164`, `feat(backend): restrict the full leave list to supervisors` | |
 | F8 | HIGH | `ddl-auto=update` is the only schema management | Done | `4cd3b82`, `feat(backend): let Hibernate validate the schema, not change it` | The developer's local DB had drifted (`shifts.user_id` nullable; fresh DBs have `NOT NULL`); fixed by hand before baselining it at V1. Every schema change is now a new `V<n>__*.sql` file (F13's rename, F15's longer text limit, B25) |
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). Since B26 (2026-10-24) the app reaches every page: the staff list reads all of them, every other list scrolls through them |
-| F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28) |
+| F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28). Since B28 closed, a forgotten one throws `LazyInitializationException` instead, and the single-item loads join their users too |
 | F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
 | F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Left: deleting a user deletes the messages they sent to others (B47) |
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
@@ -122,20 +122,6 @@ Same problem one hop further: `spring.datasource.url` in
 `application.properties` has `useSSL=false`, so the MySQL password and data
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
-
-**B28 · LOW · Open Session In View is on, so a forgotten `@EntityGraph` fails silently** — found 2026-09-22
-Where: `application.properties` does not set `spring.jpa.open-in-view`, so
-Spring Boot's default `true` applies (it logs a warning about it at startup).
-Why it matters: since F10 the user associations are `LAZY`. With the session
-held open until the JSON is written, a list query that forgets its
-`@EntityGraph` still works - it just goes back to one query per user, and no
-test or error says so. The single-item endpoints already rely on it: after
-`PUT /messages/{id}/read`, building the response loads sender and receiver in
-two extra queries (a fixed cost, not N+1).
-Relates to: F10.
-Fix idea: `spring.jpa.open-in-view=false`, then fix whatever throws
-`LazyInitializationException` - an `@EntityGraph` on `findById` where a
-response needs the user, or building the DTO inside the service.
 
 **B29 · LOW · `Message.timestamp` is set when the object is built, not when it is saved** — found 2026-09-22
 Where: `Message.java` initialises `timestamp = LocalDateTime.now()` in the
@@ -1531,3 +1517,35 @@ the `MAX(id)` per other person this entry suggested) and `c735165` (26c2, the
 app calls it instead of inbox + sent and no longer groups). This entry was
 still open while 26c was planned from B18's note and B26, so neither step's
 commit names it; closed 2026-10-24.
+
+**B28 · LOW · Open Session In View was on, so a forgotten `@EntityGraph` failed silently** — found 2026-09-22
+Where: `application.properties` does not set `spring.jpa.open-in-view`, so
+Spring Boot's default `true` applies (it logs a warning about it at startup).
+Why it matters: since F10 the user associations are `LAZY`. With the session
+held open until the JSON is written, a list query that forgets its
+`@EntityGraph` still works - it just goes back to one query per user, and no
+test or error says so. The single-item endpoints already rely on it: after
+`PUT /messages/{id}/read`, building the response loads sender and receiver in
+two extra queries (a fixed cost, not N+1).
+Relates to: F10.
+Fix idea: `spring.jpa.open-in-view=false`, then fix whatever throws
+`LazyInitializationException` - an `@EntityGraph` on `findById` where a
+response needs the user, or building the DTO inside the service.
+Fixed by: `fix(backend): turn off open session in view`, 2026-10-25.
+`spring.jpa.open-in-view=false`, and Spring Boot's startup warning is gone.
+Turning it off broke four endpoints, measured with the new
+`LazyLoadingIntegrationTest` before the fix (`LazyInitializationException` on
+each): `PUT /messages/{id}/read`, `GET` and `PUT /news/{id}`, and
+`PUT /leaves/{id}/status`. `MessageRepository.findById` and
+`NewsItemRepository.findById` are now declared with an `@EntityGraph`, and
+`LeaveRequestRepository.findLockedById` has one too. Hibernate writes its lock
+as `for update of <leave alias>`, read from the SQL log, so the joined `users`
+row is not locked (`ShiftService` locks that row). Each of the four now runs
+one SELECT instead of three or two. `PUT /shifts/{id}` already worked:
+`findLockedUserById` loads the same user into the same session, and Hibernate
+fills the shift's lazy user with it. The test covers it, so moving that lock
+would be caught. The test is not `@Transactional`, because a test transaction
+would keep the session open the same way OSIV did, and it checks that no
+`OpenEntityManagerInViewInterceptor` bean exists. The same commit fixed two
+stale comments: `LeaveRequestResponse`'s Javadoc still said F7 was open, and
+`MessageRepository` had typos. Suite: 289 tests, all green.

@@ -10,21 +10,30 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Integer> {
 
     // The order travels inside the Pageable, which MessageService builds (F9).
-    // Every list query names the users it returns with @EntityGraph: Hibernate
-    // then joins them into the same SELECT. Without it, the users are LAZY and
-    // each one would be fetched separately when the response is built (F10).
+    // Every query whose messages reach a response names the users with
+    // @EntityGraph: Hibernate then joins them into the same SELECT. Without
+    // it, the users are LAZY and not loaded, and building the response throws
+    // LazyInitializationException, since the session has already closed (B28).
+
+    // One message: markAsRead returns it, so its users are needed. Inherited
+    // from JpaRepository; declared again only to attach the entity graph.
+    @EntityGraph(attributePaths = {"sender", "receiver"})
+    @Override
+    Optional<Message> findById(Integer id);
 
     @EntityGraph(attributePaths = {"sender", "receiver"})
-    Page<Message> findByReceiverId(Integer receiverId, Pageable pageable); //Every message that recieves a user
+    Page<Message> findByReceiverId(Integer receiverId, Pageable pageable); //Every message a user receives
 
     @EntityGraph(attributePaths = {"sender", "receiver"})
-    Page<Message> findBySenderId(Integer senderId, Pageable pageable); //Every message that send a user
+    Page<Message> findBySenderId(Integer senderId, Pageable pageable); //Every message a user sends
 
-    //Convertation between two users
+    //Conversation between two users
     @EntityGraph(attributePaths = {"sender", "receiver"})
     Page<Message> findBySenderIdAndReceiverIdOrSenderIdAndReceiverId(Integer senderId1, Integer receiverId1,
                                                                      Integer senderId2, Integer receiverId2,

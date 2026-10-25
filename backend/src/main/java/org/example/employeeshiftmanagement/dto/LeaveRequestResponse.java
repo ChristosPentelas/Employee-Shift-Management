@@ -6,10 +6,9 @@ import org.example.employeeshiftmanagement.model.LeaveStatus;
 import java.time.LocalDate;
 
 /**
- * Leave reasons are health and family information. This response still carries
- * every employee's leave to every caller - that is F7, and it needs the
- * authenticated principal from F1 to fix properly. What it no longer carries is
- * their password.
+ * Leave reasons are health and family information, so the endpoints decide who
+ * sees which requests: everyone's only for supervisors, otherwise only your own
+ * (F7). The nested UserResponse keeps the employee's password out (F3).
  */
 public record LeaveRequestResponse(
         Integer id,

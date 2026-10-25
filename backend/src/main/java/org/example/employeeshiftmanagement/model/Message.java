@@ -32,9 +32,10 @@ public class Message {
     @Column(nullable = false)
     private boolean isRead = false; //To know if the receiver saw it
 
-    // LAZY: each query decides whether it needs the users. The list queries in
+    // LAZY: each query decides whether it needs the users. The queries in
     // MessageRepository ask for them with @EntityGraph, so they come in the
-    // same SQL statement instead of one extra query per user (F10).
+    // same SQL statement instead of one extra query per user (F10). A query that
+    // forgets it fails when the response is built: Open Session In View is off (B28).
     // CASCADE: deleting either user deletes the message, from both inboxes.
     // MySQL does it, from the foreign keys' ON DELETE rule (V5); these
     // annotations only state the rule here.

@@ -71,6 +71,9 @@ public class ShiftService {
                 .orElseThrow(()-> new ResourceNotFoundException("Shift", shiftId));
 
         Integer existingUserId = existingShift.getUser().getId();
+        // Also loads the user the response shows: Hibernate fills the shift's
+        // lazy user with this one, the same row in the same session, so
+        // findById needs no @EntityGraph (B28).
         userService.findLockedUserById(existingUserId);
 
         // Checked before the fields change, so the query below never sees a
