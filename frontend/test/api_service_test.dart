@@ -363,6 +363,40 @@ void main() {
     expect(await assignAnswered(500), AssignShiftResult.failed);
   });
 
+  // B31: two different 409s. The server tells them apart by the body's
+  // "type" (RFC 9457), never by its English "detail" text.
+  group('a refused shift', () {
+    Future<AssignShiftResult> assignAnswered409(String body) {
+      final api =
+          ApiService(client: MockClient((_) async => http.Response(body, 409)));
+      return api.assignShift(aShift(), 7);
+    }
+
+    test('is "on leave" when the server says so', () async {
+      expect(
+          await assignAnswered409(
+              '{"type":"urn:shift-manager:problem:employee-on-leave",'
+              '"status":409,"detail":"On approved leave on 2026-09-29"}'),
+          AssignShiftResult.onLeave);
+    });
+
+    test('is an overlap when the 409 has another type or none', () async {
+      expect(await assignAnswered409('{"type":"urn:something-else"}'),
+          AssignShiftResult.overlaps);
+      expect(await assignAnswered409('{"status":409}'), AssignShiftResult.overlaps);
+    });
+
+    test('is still an overlap when the body is not JSON', () async {
+      // E.g. a proxy's HTML page. Reading the type must not turn a real
+      // refusal into "save failed, try again".
+      expect(await assignAnswered409('<html>Conflict</html>'),
+          AssignShiftResult.overlaps);
+      expect(await assignAnswered409(''), AssignShiftResult.overlaps);
+      expect(await assignAnswered409('["not", "an", "object"]'),
+          AssignShiftResult.overlaps);
+    });
+  });
+
   test('assigning a shift without a network is a failure, not a crash', () async {
     final api = ApiService(client: MockClient((_) async {
       throw http.ClientException('no network');

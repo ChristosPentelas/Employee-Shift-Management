@@ -12,6 +12,9 @@ enum AssignShiftResult {
   created,
   /// 409: the employee already has a shift at that time (F30).
   overlaps,
+  /// 409 with the on-leave problem type: the employee has approved leave
+  /// that day (B31).
+  onLeave,
   /// 400: the server refused a field, e.g. a time that is not HH:mm.
   invalid,
   /// Anything else, including no network.
@@ -111,6 +114,25 @@ class ApiService {
     final seconds = int.tryParse(response.headers['retry-after'] ?? '');
     if (seconds == null || seconds <= 0) return null;
     return Duration(seconds: seconds);
+  }
+
+  // The "type" of an error body (RFC 9457), the field that tells two errors
+  // with the same status apart (B31). The server sends none for most errors.
+  // A copy of the backend's ProblemTypes: changing it there breaks this.
+  static const String _employeeOnLeave = 'urn:shift-manager:problem:employee-on-leave';
+
+  // The body's "type", or null if it has none or is not a JSON object - e.g.
+  // a proxy's HTML page. Never throws: jsonDecode would, and the caller's
+  // catch would then turn a refused shift into "save failed, try again".
+  static String? _problemType(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      return body is Map<String, dynamic> && body['type'] is String
+          ? body['type'] as String
+          : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   // The staff list feeds pickers (assign a shift, start a chat), which need
@@ -400,7 +422,9 @@ class ApiService {
         case 201:
           return AssignShiftResult.created;
         case 409:
-          return AssignShiftResult.overlaps;
+          return _problemType(response) == _employeeOnLeave
+              ? AssignShiftResult.onLeave
+              : AssignShiftResult.overlaps;
         case 400:
           return AssignShiftResult.invalid;
         default:

@@ -14,12 +14,15 @@ import 'package:http/testing.dart';
 import 'helpers/app_scope.dart';
 
 /// A fake server: an empty calendar, one employee, and [assignStatus] as the
-/// answer to "assign a shift". Each body it is sent goes into [posted].
-ApiService serverAnsweringAssign(int assignStatus, {List<String>? posted}) =>
+/// answer to "assign a shift", with [problemType] in its body if given (B31).
+/// Each body it is sent goes into [posted].
+ApiService serverAnsweringAssign(int assignStatus,
+        {String? problemType, List<String>? posted}) =>
     ApiService(client: MockClient((request) async {
       if (request.method == 'POST') {
         posted?.add(request.body);
-        return http.Response('{"status":$assignStatus}', assignStatus);
+        final type = problemType == null ? '' : '"type":"$problemType",';
+        return http.Response('{$type"status":$assignStatus}', assignStatus);
       }
       if (request.url.path == '/api/v1/users') {
         return http.Response(
@@ -78,6 +81,22 @@ void main() {
     expect(
         find.text('Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.'),
         findsOneWidget);
+    expect(find.text('Αποθήκευση'), findsOneWidget); // still open
+  });
+
+  // B31: the server refuses a shift on a day of approved leave with a 409 of
+  // its own type. The overlap text would send the supervisor looking for a
+  // shift that is not there.
+  testWidgets('a shift on a leave day keeps the dialog open and says why',
+      (WidgetTester tester) async {
+    await assignAShift(
+        tester,
+        serverAnsweringAssign(409,
+            problemType: 'urn:shift-manager:problem:employee-on-leave'));
+
+    expect(find.text('Ο υπάλληλος έχει εγκεκριμένη άδεια αυτή την ημέρα.'),
+        findsOneWidget);
+    expect(find.textContaining('επικαλύπτεται'), findsNothing);
     expect(find.text('Αποθήκευση'), findsOneWidget); // still open
   });
 

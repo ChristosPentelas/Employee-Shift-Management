@@ -162,7 +162,15 @@ Steps, one change set each:
   lock-order tests and the `ShiftControllerTest` type test were each seen to
   fail on code broken on purpose. Suite: 303 tests, all green.
 - **31b** (frontend) the assign dialog says "on leave" instead of "already
-  has a shift". Until then the app shows the overlap text for this 409 too.
+  has a shift". Done: `feat(frontend): say when a shift falls on approved leave`.
+  `ApiService.assignShift` answers `AssignShiftResult.onLeave` for a 409 whose
+  `type` is the on-leave one; any other 409 is still `overlaps`. The type is
+  read by `_problemType`, which returns null for a body that is not a JSON
+  object instead of throwing: otherwise a proxy's HTML 409 would have reached
+  the method's `catch` and shown "save failed" for a real refusal (seen in a
+  test with the `try` removed). The app keeps a copy of the type string, so
+  `ShiftControllerTest` spells it out rather than using the constant.
+  `flutter test`: 183 passing; `flutter analyze`: 32 issues before and after.
 - **31c** (backend) approving leave removes the shifts on its days. It must
   lock the employee like `ShiftService`: until it does, a shift created at the
   same moment as an approval can still land on a leave day.

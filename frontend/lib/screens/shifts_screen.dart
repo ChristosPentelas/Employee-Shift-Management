@@ -307,6 +307,9 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
     switch (result) {
       case AssignShiftResult.overlaps:
         return "Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.";
+      case AssignShiftResult.onLeave:
+        // The server checks the date the shift is filed under (B31).
+        return "Ο υπάλληλος έχει εγκεκριμένη άδεια αυτή την ημέρα.";
       case AssignShiftResult.invalid:
         // The picker rules out a malformed time (B24), so a 400 now means
         // equal times or a missing / too long position (B68).
