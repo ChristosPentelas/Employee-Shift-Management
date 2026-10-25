@@ -50,9 +50,9 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
     // Newest is the highest id, not the latest timestamp: ids never repeat, so
     // each group keeps exactly one message, where two messages in the same
     // millisecond would both match a max(timestamp). Ids follow the order the
-    // rows were saved; the timestamp is taken when the Message object is built
-    // (B29), so in a race of a millisecond this row's message and the chat's
-    // last one could differ.
+    // rows were inserted; the timestamp is taken just before the INSERT (B29),
+    // so when two sends race, a few microseconds apart, this row's message and
+    // the chat's last one could still differ.
     //
     // The page's count query is the one Spring writes from this (select
     // count(m), same WHERE), which counts conversations, not messages:

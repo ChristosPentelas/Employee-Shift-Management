@@ -123,16 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B29 · LOW · `Message.timestamp` is set when the object is built, not when it is saved** — found 2026-09-22
-Where: `Message.java` initialises `timestamp = LocalDateTime.now()` in the
-field and has no `@PrePersist`, unlike `NewsItem.createdAt` (fixed in B25).
-Why it matters: harmless today because `sendMessage` saves right away, but the
-time is taken when `new Message()` runs, and nothing stops a later save from
-changing it. Two entities, two patterns for the same job.
-Relates to: B25.
-Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
-`updatable = false`. The column is already `NOT NULL`, so no migration.
-
 **B31 · LOW · A shift can be assigned during the employee's approved leave** — found 2026-09-23
 Where: `ShiftService.createShift` / `updateShift` check only other shifts
 (F30), not `leaves_requests`.
@@ -600,6 +590,21 @@ Fix idea: after a 200, replace that one row with the request the server sends
 back (`PUT .../status` answers with it) instead of reloading. Keep the full
 reload after a 409 or 404 - there the list is out of date, which is what B63
 needs to show.
+
+**B71 · LOW · Message and news times use the server's time zone** — found 2026-10-25
+Where: `Message.onCreate` and `NewsItem.onCreate` call `LocalDateTime.now()`,
+which reads the clock in the JVM's default zone; `TimeConfig` says the app
+works in UTC "so a stored Instant never depends on the server's time zone".
+Why it matters: the columns store a wall-clock time with no zone. Moving the
+server to another zone, or a daylight-saving change, makes new messages and
+posts jump an hour (or repeat one) next to older rows, and both lists sort on
+these columns. The app cannot tell which zone a stored time was in.
+Relates to: B29, B25, B56.
+Fix idea: decide what the columns mean first. Either stamp them in UTC
+(`LocalDateTime.now(ZoneOffset.UTC)`, plus a migration converting existing
+rows) and have the app convert to local time for display, or store an
+`Instant` (the JSON then ends in `Z`). Either way the app changes with it:
+today it shows these times exactly as they arrive.
 
 ---
 
@@ -1549,3 +1554,26 @@ would keep the session open the same way OSIV did, and it checks that no
 `OpenEntityManagerInViewInterceptor` bean exists. The same commit fixed two
 stale comments: `LeaveRequestResponse`'s Javadoc still said F7 was open, and
 `MessageRepository` had typos. Suite: 289 tests, all green.
+
+**B29 · LOW · `Message.timestamp` is set when the object is built, not when it is saved** — found 2026-09-22
+Where: `Message.java` initialises `timestamp = LocalDateTime.now()` in the
+field and has no `@PrePersist`, unlike `NewsItem.createdAt` (fixed in B25).
+Why it matters: harmless today because `sendMessage` saves right away, but the
+time is taken when `new Message()` runs, and nothing stops a later save from
+changing it. Two entities, two patterns for the same job.
+Relates to: B25.
+Fix idea: the same as B25 - stamp it in `@PrePersist` and mark the column
+`updatable = false`. The column is already `NOT NULL`, so no migration.
+Fixed by: `fix(backend): stamp a message's time when it is saved`, 2026-10-25.
+The field initialiser is gone; `@PrePersist onCreate()` sets the time and the
+column is `updatable = false`, as on `NewsItem.createdAt`. No migration (V1
+already has `NOT NULL`). `MessageTimestampIntegrationTest` checks both rules
+against MySQL and failed on the old code: the save stored a 1999 time set by
+hand, and a later save overwrote it. The "later save" was real: `markAsRead`
+saves the message again. `ConversationsIntegrationTest` used to set each
+message's time by hand, one minute apart; the save now overwrites that, so the
+helper no longer sets it. Its order still holds when two saves share a
+microsecond, because "newest" is the highest id and the page sorts by id after
+time. The comment in `MessageRepository` that pointed at B29 is updated.
+Left: B71 (both entities use the server's time zone). Suite: 291 tests, all
+green.

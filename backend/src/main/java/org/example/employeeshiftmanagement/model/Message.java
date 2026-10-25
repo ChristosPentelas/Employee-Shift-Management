@@ -26,8 +26,16 @@ public class Message {
     @Column(nullable = false)
     private String content;
 
-    @Column(nullable = false)
-    private LocalDateTime timestamp = LocalDateTime.now(); //Automatic time recording
+    // Set once, by onCreate() just before the INSERT. updatable = false leaves
+    // the column out of every UPDATE, so no later save can rewrite it (B29,
+    // the same rule as NewsItem.createdAt).
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime timestamp;
+
+    @PrePersist
+    protected void onCreate() {
+        this.timestamp = LocalDateTime.now();
+    }
 
     @Column(nullable = false)
     private boolean isRead = false; //To know if the receiver saw it

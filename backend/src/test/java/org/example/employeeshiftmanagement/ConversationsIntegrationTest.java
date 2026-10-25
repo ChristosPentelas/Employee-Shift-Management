@@ -13,7 +13,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,10 +38,6 @@ class ConversationsIntegrationTest {
     @Autowired private MessageService messageService;
     @Autowired private UserRepository userRepository;
     @Autowired private MessageRepository messageRepository;
-
-    // Each message one minute after the last, so "newest" never depends on
-    // two saves landing in the same millisecond.
-    private LocalDateTime clock = LocalDateTime.of(2026, 10, 1, 9, 0);
 
     @Test
     void eachPersonIsOneRowWithTheirNewestMessageWhoeverSentIt() {
@@ -127,13 +122,14 @@ class ConversationsIntegrationTest {
         return userRepository.save(user);
     }
 
+    // The save stamps the time (B29), so the order of these calls is the order
+    // of the messages. Two saves in the same microsecond still come out in that
+    // order: "newest" is the highest id, and the page sorts by id after time.
     private void message(User sender, User receiver, String content) {
         Message message = new Message();
         message.setSender(sender);
         message.setReceiver(receiver);
         message.setContent(content);
-        clock = clock.plusMinutes(1);
-        message.setTimestamp(clock);
         messageRepository.save(message);
     }
 }
