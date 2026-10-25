@@ -305,23 +305,46 @@ class ApiService {
   /// Approves or rejects a leave request and says whether the server took it.
   /// It used to ignore the reply, so a refused answer looked like it worked
   /// (B42).
-  Future<UpdateLeaveStatusResult> updateLeaveStatus(int leaveId, String newStatus) async {
+  ///
+  /// Also how many of the employee's shifts an approval removed (B31), so the
+  /// supervisor can be told; 0 for anything but a 200. A record, not a class:
+  /// two values, compared field by field with == for free.
+  Future<({UpdateLeaveStatusResult result, int removedShifts})> updateLeaveStatus(
+      int leaveId, String newStatus) async {
     try {
       final response = await _client.put(
         Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
       );
       switch (response.statusCode) {
         case 200:
-          return UpdateLeaveStatusResult.updated;
+          return (
+            result: UpdateLeaveStatusResult.updated,
+            removedShifts: _removedShifts(response),
+          );
         case 409:
-          return UpdateLeaveStatusResult.alreadyAnswered;
+          return (result: UpdateLeaveStatusResult.alreadyAnswered, removedShifts: 0);
         case 404:
-          return UpdateLeaveStatusResult.notFound;
+          return (result: UpdateLeaveStatusResult.notFound, removedShifts: 0);
         default:
-          return UpdateLeaveStatusResult.failed;
+          return (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
       }
     } catch (e) {
-      return UpdateLeaveStatusResult.failed;
+      return (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
+    }
+  }
+
+  // The "removedShifts" of an answered leave request, or 0 if the body does
+  // not say. Never throws, like _problemType: by now the server has already
+  // stored the answer, and the caller's catch would report it as failed - the
+  // supervisor would try again and be told it was already answered.
+  static int _removedShifts(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      return body is Map<String, dynamic> && body['removedShifts'] is int
+          ? body['removedShifts'] as int
+          : 0;
+    } on FormatException {
+      return 0;
     }
   }
 

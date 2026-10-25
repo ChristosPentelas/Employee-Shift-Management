@@ -163,10 +163,10 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   }
 
   Future<void> _updateStatus(int id,String status) async {
-    final result = await _apiService.updateLeaveStatus(id, status);
+    final (:result, :removedShifts) = await _apiService.updateLeaveStatus(id, status);
     if (!mounted) return;
 
-    final message = _updateErrorText(result);
+    final message = _updateErrorText(result) ?? _removedShiftsText(removedShifts);
     if (message != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
@@ -189,6 +189,15 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
       case UpdateLeaveStatusResult.failed:
         return "Η αλλαγή απέτυχε. Δοκιμάστε ξανά.";
     }
+  }
+
+  /// After an answer that worked: the shifts the approval removed (B31), or
+  /// null when there were none - the list's new status says enough then.
+  /// Greek has one form for 1 and another for every other count.
+  String? _removedShiftsText(int removedShifts) {
+    if (removedShifts == 0) return null;
+    if (removedShifts == 1) return "Εγκρίθηκε. Αφαιρέθηκε 1 βάρδια.";
+    return "Εγκρίθηκε. Αφαιρέθηκαν $removedShifts βάρδιες.";
   }
 
   void _showAddLeaveDialog() {

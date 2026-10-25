@@ -157,12 +157,13 @@ void main() {
         '"page":0,"size":50,"totalElements":1,"totalPages":1}';
 
     /// Opens the screen as [boss] against a fake server that answers the PUT
-    /// with [putStatus], and taps approve. Returns how many times the list
-    /// was loaded.
-    Future<List<String>> approveAnswered(WidgetTester tester, int putStatus) async {
+    /// with [putStatus] and [putBody], and taps approve. Returns how many
+    /// times the list was loaded.
+    Future<List<String>> approveAnswered(WidgetTester tester, int putStatus,
+        {String putBody = '{}'}) async {
       final listLoads = <String>[];
       final api = ApiService(client: MockClient((request) async {
-        if (request.method == 'PUT') return http.Response('{}', putStatus);
+        if (request.method == 'PUT') return http.Response(putBody, putStatus);
         listLoads.add(request.url.path);
         return http.Response(pendingList, 200);
       }));
@@ -180,6 +181,33 @@ void main() {
       final listLoads = await approveAnswered(tester, 200);
 
       expect(listLoads, hasLength(2));
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    // B31: approving removes the employee's shifts on the leave days, and the
+    // server says how many. The supervisor should know their rota changed.
+    testWidgets('an approval that removed shifts says how many',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, 200,
+          putBody: '{"id":5,"status":"APPROVED","removedShifts":2}');
+
+      expect(find.text('Εγκρίθηκε. Αφαιρέθηκαν 2 βάρδιες.'), findsOneWidget);
+      expect(listLoads, hasLength(2));
+    });
+
+    testWidgets('an approval that removed one shift says so in the singular',
+        (WidgetTester tester) async {
+      await approveAnswered(tester, 200,
+          putBody: '{"id":5,"status":"APPROVED","removedShifts":1}');
+
+      expect(find.text('Εγκρίθηκε. Αφαιρέθηκε 1 βάρδια.'), findsOneWidget);
+    });
+
+    testWidgets('an approval that removed no shifts says nothing extra',
+        (WidgetTester tester) async {
+      await approveAnswered(tester, 200,
+          putBody: '{"id":5,"status":"APPROVED","removedShifts":0}');
+
       expect(find.byType(SnackBar), findsNothing);
     });
 

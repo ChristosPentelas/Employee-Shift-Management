@@ -123,74 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B31 · LOW · A shift can be assigned during the employee's approved leave** — found 2026-09-23
-Where: `ShiftService.createShift` / `updateShift` check only other shifts
-(F30), not `leaves_requests`.
-Why it matters: the supervisor can put someone on the rota on a day they were
-already given off, and nothing says so. Whether that should be refused, only
-warned about, or allowed (e.g. the employee agreed to come in) is a business
-decision, which is why F30 left it out.
-Relates to: F30.
-Fix idea: decide the rule first. If "refuse", look up the employee's
-`APPROVED` leave covering the shift's date and throw `ConflictException`, like
-the overlap check. The reverse also exists: approving leave over days that
-already have shifts.
-Decided 2026-10-25:
-- A shift on a day of the employee's leave is refused (409).
-- Only `APPROVED` leave counts. A `PENDING` request is still only a request,
-  and blocking on it would let an employee lock days just by asking.
-- A shift belongs to the date it is filed under. A Mon 22:00-06:00 shift is
-  refused by leave on Monday, not by leave starting on Tuesday, though it
-  ends then. (The overlap check, F30, still uses real times.)
-- Approving leave is always allowed, and removes that employee's shifts on
-  the leave days, by the same date rule.
-Steps, one change set each:
-- **31a** (backend) refuse the shift. Done:
-  `feat(backend): refuse a shift on a day of approved leave`.
-  `ShiftService.rejectLeaveDays` runs in `createShift` and `updateShift` after
-  the employee lock, before the overlap check, using
-  `LeaveRequestRepository.existsCovering`. `ShiftService` uses the leave
-  repository, not `LeaveRequestService`: in 31c that service needs
-  `ShiftService`, and two services that each need the other cannot be built
-  (a circular dependency). The 409 carries
-  `"type":"urn:shift-manager:problem:employee-on-leave"` (`ProblemTypes`).
-  RFC 9457 made `type` the field for telling problems apart, so no custom
-  property was invented. Other 409s send no `type`, which is how Spring writes
-  about:blank; `ApiExceptionHandler`'s Javadoc wrongly showed one and is
-  fixed. `ShiftLeaveIntegrationTest` covers the rule against MySQL; its four
-  "refused" tests failed before the check existed. The `ShiftServiceTest`
-  lock-order tests and the `ShiftControllerTest` type test were each seen to
-  fail on code broken on purpose. Suite: 303 tests, all green.
-- **31b** (frontend) the assign dialog says "on leave" instead of "already
-  has a shift". Done: `feat(frontend): say when a shift falls on approved leave`.
-  `ApiService.assignShift` answers `AssignShiftResult.onLeave` for a 409 whose
-  `type` is the on-leave one; any other 409 is still `overlaps`. The type is
-  read by `_problemType`, which returns null for a body that is not a JSON
-  object instead of throwing: otherwise a proxy's HTML 409 would have reached
-  the method's `catch` and shown "save failed" for a real refusal (seen in a
-  test with the `try` removed). The app keeps a copy of the type string, so
-  `ShiftControllerTest` spells it out rather than using the constant.
-  `flutter test`: 183 passing; `flutter analyze`: 32 issues before and after.
-- **31c** (backend) approving leave removes the shifts on its days. Done:
-  `feat(backend): remove an employee's shifts when their leave is approved`.
-  `LeaveRequestService.updateLeaveRequest` locks the leave row, then the
-  employee (the lock `ShiftService` takes), then calls
-  `ShiftService.removeShiftsDuring`, one bulk `DELETE` that answers its row
-  count (a derived delete would go row by row, F12). Always that lock order,
-  and `ShiftService` never locks a leave row, so the two cannot deadlock.
-  `PUT /leaves/{id}/status` answers `LeaveDecisionResponse`: the request's
-  fields where they were, plus `removedShifts` (0 for a rejection), so a
-  reader of the old body, like B70's fix, still works. Tests:
-  `LeaveApprovalIntegrationTest` (which shifts go), two races in
-  `ShiftConcurrencyIntegrationTest`, and the lock order in
-  `LeaveRequestServiceTest`. With the employee lock removed on purpose, both
-  races failed: `createShift` got as far as its INSERT, its leave check
-  having read PENDING. With the removal skipped, four tests failed. Approving
-  cannot be undone (B63), so neither can the removal. Suite: 311 tests, all
-  green.
-- **31d** (frontend) after an approval that removed shifts, the app tells the
-  supervisor how many, from `removedShifts`.
-
 **B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
 Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled
 during `await _apiService.assignShift(...)`.
@@ -1632,3 +1564,84 @@ microsecond, because "newest" is the highest id and the page sorts by id after
 time. The comment in `MessageRepository` that pointed at B29 is updated.
 Left: B71 (both entities use the server's time zone). Suite: 291 tests, all
 green.
+
+**B31 · LOW · A shift can be assigned during the employee's approved leave** — found 2026-09-23
+Where: `ShiftService.createShift` / `updateShift` check only other shifts
+(F30), not `leaves_requests`.
+Why it matters: the supervisor can put someone on the rota on a day they were
+already given off, and nothing says so. Whether that should be refused, only
+warned about, or allowed (e.g. the employee agreed to come in) is a business
+decision, which is why F30 left it out.
+Relates to: F30.
+Fix idea: decide the rule first. If "refuse", look up the employee's
+`APPROVED` leave covering the shift's date and throw `ConflictException`, like
+the overlap check. The reverse also exists: approving leave over days that
+already have shifts.
+Decided 2026-10-25:
+- A shift on a day of the employee's leave is refused (409).
+- Only `APPROVED` leave counts. A `PENDING` request is still only a request,
+  and blocking on it would let an employee lock days just by asking.
+- A shift belongs to the date it is filed under. A Mon 22:00-06:00 shift is
+  refused by leave on Monday, not by leave starting on Tuesday, though it
+  ends then. (The overlap check, F30, still uses real times.)
+- Approving leave is always allowed, and removes that employee's shifts on
+  the leave days, by the same date rule.
+Steps, one change set each:
+- **31a** (backend) refuse the shift. Done:
+  `feat(backend): refuse a shift on a day of approved leave`.
+  `ShiftService.rejectLeaveDays` runs in `createShift` and `updateShift` after
+  the employee lock, before the overlap check, using
+  `LeaveRequestRepository.existsCovering`. `ShiftService` uses the leave
+  repository, not `LeaveRequestService`: in 31c that service needs
+  `ShiftService`, and two services that each need the other cannot be built
+  (a circular dependency). The 409 carries
+  `"type":"urn:shift-manager:problem:employee-on-leave"` (`ProblemTypes`).
+  RFC 9457 made `type` the field for telling problems apart, so no custom
+  property was invented. Other 409s send no `type`, which is how Spring writes
+  about:blank; `ApiExceptionHandler`'s Javadoc wrongly showed one and is
+  fixed. `ShiftLeaveIntegrationTest` covers the rule against MySQL; its four
+  "refused" tests failed before the check existed. The `ShiftServiceTest`
+  lock-order tests and the `ShiftControllerTest` type test were each seen to
+  fail on code broken on purpose. Suite: 303 tests, all green.
+- **31b** (frontend) the assign dialog says "on leave" instead of "already
+  has a shift". Done: `feat(frontend): say when a shift falls on approved leave`.
+  `ApiService.assignShift` answers `AssignShiftResult.onLeave` for a 409 whose
+  `type` is the on-leave one; any other 409 is still `overlaps`. The type is
+  read by `_problemType`, which returns null for a body that is not a JSON
+  object instead of throwing: otherwise a proxy's HTML 409 would have reached
+  the method's `catch` and shown "save failed" for a real refusal (seen in a
+  test with the `try` removed). The app keeps a copy of the type string, so
+  `ShiftControllerTest` spells it out rather than using the constant.
+  `flutter test`: 183 passing; `flutter analyze`: 32 issues before and after.
+- **31c** (backend) approving leave removes the shifts on its days. Done:
+  `feat(backend): remove an employee's shifts when their leave is approved`.
+  `LeaveRequestService.updateLeaveRequest` locks the leave row, then the
+  employee (the lock `ShiftService` takes), then calls
+  `ShiftService.removeShiftsDuring`, one bulk `DELETE` that answers its row
+  count (a derived delete would go row by row, F12). Always that lock order,
+  and `ShiftService` never locks a leave row, so the two cannot deadlock.
+  `PUT /leaves/{id}/status` answers `LeaveDecisionResponse`: the request's
+  fields where they were, plus `removedShifts` (0 for a rejection), so a
+  reader of the old body, like B70's fix, still works. Tests:
+  `LeaveApprovalIntegrationTest` (which shifts go), two races in
+  `ShiftConcurrencyIntegrationTest`, and the lock order in
+  `LeaveRequestServiceTest`. With the employee lock removed on purpose, both
+  races failed: `createShift` got as far as its INSERT, its leave check
+  having read PENDING. With the removal skipped, four tests failed. Approving
+  cannot be undone (B63), so neither can the removal. Suite: 311 tests, all
+  green.
+- **31d** (frontend) after an approval that removed shifts, the app tells the
+  supervisor how many, from `removedShifts`. Done:
+  `feat(frontend): say how many shifts an approved leave removed`.
+  `ApiService.updateLeaveStatus` returns a Dart record,
+  `({UpdateLeaveStatusResult result, int removedShifts})`: the first record
+  in `lib/`, chosen over a class for two values because it compares by
+  field. `_removedShifts` never throws (the answer is already stored, so a
+  body it cannot read means 0, not "failed"; a test with it rethrowing got
+  `failed`). The leave screen says "Αφαιρέθηκε 1 βάρδια" or "Αφαιρέθηκαν N
+  βάρδιες", and nothing when none were removed. Plurals by a plain `if`;
+  `Intl.plural` would need `package:intl`, a new dependency, for one message.
+  `flutter test`: 188 passing; `flutter analyze`: 32 issues before and after.
+Fixed by: `6399ff1` (31a), `c35e662` (31b), `0f1f49f` (31c) and
+`feat(frontend): say how many shifts an approved leave removed` (31d),
+2026-10-25.

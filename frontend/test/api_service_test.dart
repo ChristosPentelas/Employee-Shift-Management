@@ -432,10 +432,10 @@ void main() {
 
   // B42: the reply used to be ignored, so a refused answer looked like it worked.
   test('answering leave reports whether the server took it', () async {
-    Future<UpdateLeaveStatusResult> answerAnswered(int status) {
+    Future<UpdateLeaveStatusResult> answerAnswered(int status) async {
       final api = ApiService(
           client: MockClient((_) async => http.Response('{}', status)));
-      return api.updateLeaveStatus(5, 'APPROVED');
+      return (await api.updateLeaveStatus(5, 'APPROVED')).result;
     }
 
     expect(await answerAnswered(200), UpdateLeaveStatusResult.updated);
@@ -465,9 +465,36 @@ void main() {
       throw http.ClientException('no network');
     }));
 
-    final result = await api.updateLeaveStatus(5, 'APPROVED');
+    final answer = await api.updateLeaveStatus(5, 'APPROVED');
 
-    expect(result, UpdateLeaveStatusResult.failed);
+    expect(answer, (result: UpdateLeaveStatusResult.failed, removedShifts: 0));
+  });
+
+  // B31: approving removes the employee's shifts on the leave days, and the
+  // 200 says how many.
+  group('an answered leave request', () {
+    Future<({UpdateLeaveStatusResult result, int removedShifts})> approvedWith(
+        String body) {
+      final api =
+          ApiService(client: MockClient((_) async => http.Response(body, 200)));
+      return api.updateLeaveStatus(5, 'APPROVED');
+    }
+
+    test('says how many shifts the approval removed', () async {
+      expect(await approvedWith('{"id":5,"status":"APPROVED","removedShifts":2}'),
+          (result: UpdateLeaveStatusResult.updated, removedShifts: 2));
+    });
+
+    test('still worked when the body does not say', () async {
+      // The answer is already stored, so a body the app cannot read must not
+      // turn it into "failed": the supervisor would try again, and be told
+      // it was already answered.
+      const worked = (result: UpdateLeaveStatusResult.updated, removedShifts: 0);
+      expect(await approvedWith('{}'), worked);
+      expect(await approvedWith('not json'), worked);
+      expect(await approvedWith('{"removedShifts":"two"}'), worked);
+      expect(await approvedWith('[2]'), worked);
+    });
   });
 
   test('a password change names no user: the server takes it from the token (B8)',
