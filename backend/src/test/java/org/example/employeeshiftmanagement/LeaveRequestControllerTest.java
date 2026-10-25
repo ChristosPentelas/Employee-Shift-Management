@@ -8,6 +8,7 @@ import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
+import org.example.employeeshiftmanagement.service.LeaveDecisionResult;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -166,13 +167,24 @@ class LeaveRequestControllerTest {
     void aSupervisorCanApproveALeave() throws Exception {
         LeaveRequest approved = leaveRequest();
         approved.setStatus(LeaveStatus.APPROVED);
-        when(leaveRequestService.updateLeaveRequest(1, LeaveDecision.APPROVED)).thenReturn(approved);
+        when(leaveRequestService.updateLeaveRequest(1, LeaveDecision.APPROVED))
+                .thenReturn(new LeaveDecisionResult(approved, 2));
 
         mockMvc.perform(put("/api/v1/leaves/1/status")
                         .param("status", "APPROVED")
                         .with(TestTokens.supervisor()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                // B31: how many shifts the approval removed, for the app to say.
+                .andExpect(jsonPath("$.removedShifts").value(2))
+                // ...next to the request's fields, where they were before B31,
+                // not nested one level down.
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.startDate").value("2026-10-01"))
+                .andExpect(jsonPath("$.endDate").value("2026-10-05"))
+                .andExpect(jsonPath("$.reason").value("Surgery"))
+                .andExpect(jsonPath("$.user.name").value("Worker"))
+                .andExpect(jsonPath("$.user.password").doesNotExist());
     }
 
     @Test

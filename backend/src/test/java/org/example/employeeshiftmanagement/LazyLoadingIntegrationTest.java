@@ -133,7 +133,7 @@ class LazyLoadingIntegrationTest {
         LeaveRequest saved = leaveRequestService.createLeaveRequest(employee.getId(), request);
 
         LeaveRequestResponse response = LeaveRequestResponse.from(
-                leaveRequestService.updateLeaveRequest(saved.getId(), LeaveDecision.APPROVED));
+                leaveRequestService.updateLeaveRequest(saved.getId(), LeaveDecision.APPROVED).request());
 
         assertEquals("employee", response.user().name());
     }

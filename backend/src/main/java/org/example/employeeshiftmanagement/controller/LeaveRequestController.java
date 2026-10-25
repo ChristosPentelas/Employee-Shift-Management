@@ -3,11 +3,13 @@ package org.example.employeeshiftmanagement.controller;
 import jakarta.validation.Valid;
 import org.example.employeeshiftmanagement.config.CurrentUser;
 import org.example.employeeshiftmanagement.dto.CreateLeaveRequest;
+import org.example.employeeshiftmanagement.dto.LeaveDecisionResponse;
 import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
 import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
+import org.example.employeeshiftmanagement.service.LeaveDecisionResult;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -77,11 +79,11 @@ public class LeaveRequestController {
 
     @PutMapping("/leaves/{requestId}/status")
     @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<LeaveRequestResponse> updateLeaveStatus(@PathVariable Integer requestId,
-                                                                  // Not LeaveStatus: PENDING is not an answer (B63)
-                                                                  @RequestParam LeaveDecision status) {
-        LeaveRequest updated = leaveRequestService.updateLeaveRequest(requestId, status);
-        return ResponseEntity.ok(LeaveRequestResponse.from(updated));
+    public ResponseEntity<LeaveDecisionResponse> updateLeaveStatus(@PathVariable Integer requestId,
+                                                                   // Not LeaveStatus: PENDING is not an answer (B63)
+                                                                   @RequestParam LeaveDecision status) {
+        LeaveDecisionResult result = leaveRequestService.updateLeaveRequest(requestId, status);
+        return ResponseEntity.ok(LeaveDecisionResponse.from(result));
     }
 
     private static PageResponse<LeaveRequestResponse> toResponses(Page<LeaveRequest> requests) {

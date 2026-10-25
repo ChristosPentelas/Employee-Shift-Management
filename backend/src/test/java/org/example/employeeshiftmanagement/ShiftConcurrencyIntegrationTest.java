@@ -3,10 +3,17 @@ package org.example.employeeshiftmanagement;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.exception.ProblemTypes;
+import org.example.employeeshiftmanagement.model.LeaveDecision;
+import org.example.employeeshiftmanagement.model.LeaveRequest;
+import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.model.User;
+import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 import org.example.employeeshiftmanagement.repository.ShiftRepository;
 import org.example.employeeshiftmanagement.repository.UserRepository;
+import org.example.employeeshiftmanagement.service.LeaveDecisionResult;
+import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.example.employeeshiftmanagement.service.ShiftService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.AfterEach;
@@ -69,6 +76,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * the shift), before the wait - so it still misses the committed shift.
  * READ_COMMITTED on the service method is what makes it look again.
  *
+ * <p>Approving leave removes the employee's shifts on its days (B31), so it is
+ * a shift write too, and takes the same lock. The last two tests replay that
+ * race both ways round: an approval arriving while a shift is being saved
+ * must wait and then remove it, and a shift arriving while leave is being
+ * approved must wait and then be refused.
+ *
  * <p>The first request locks with plain JPA ({@code EntityManager.find} with
  * PESSIMISTIC_WRITE) rather than through UserService, so this test describes
  * the behaviour, not which method the service uses to get it.
@@ -91,6 +104,8 @@ class ShiftConcurrencyIntegrationTest {
     @Autowired private UserService userService;
     @Autowired private UserRepository userRepository;
     @Autowired private ShiftRepository shiftRepository;
+    @Autowired private LeaveRequestService leaveRequestService;
+    @Autowired private LeaveRequestRepository leaveRequestRepository;
     @Autowired private EntityManager entityManager;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -163,17 +178,64 @@ class ShiftConcurrencyIntegrationTest {
         assertEquals(List.of("06:00-08:00", "09:00-17:00"), employeesShifts());
     }
 
+    @Test
+    void anApprovalWaitsForAShiftBeingSavedAndThenRemovesIt() throws Exception {
+        Integer leaveId = pendingLeaveOnDay();
+        Future<?> first = startTheFirstRequest();
+
+        Future<LeaveDecisionResult> second = threads.submit(
+                () -> leaveRequestService.updateLeaveRequest(leaveId, LeaveDecision.APPROVED));
+
+        assertStuckAtTheEmployeesLock(second, "updateLeaveRequest");
+        commitTheFirstRequest.countDown();
+        first.get();
+
+        assertEquals(1, second.get().removedShifts(),
+                "the approval missed the shift committed while it waited");
+        assertEquals(List.of(), employeesShifts());
+    }
+
+    @Test
+    void aShiftSavedWhileLeaveIsBeingApprovedIsRefused() throws Exception {
+        Integer leaveId = pendingLeaveOnDay();
+        Future<?> first = holdOpen(() -> leaveRequestService.updateLeaveRequest(leaveId, LeaveDecision.APPROVED));
+
+        Future<Shift> second = threads.submit(
+                () -> shiftService.createShift(employee.getId(), shift(9, 17)));
+
+        assertStuckAtTheEmployeesLock(second, "createShift");
+        commitTheFirstRequest.countDown();
+        first.get();
+
+        ExecutionException e = assertThrows(ExecutionException.class, second::get,
+                "createShift saved a shift on a leave day approved while it waited");
+        ConflictException conflict = assertInstanceOf(ConflictException.class, e.getCause());
+        assertEquals(ProblemTypes.EMPLOYEE_ON_LEAVE, conflict.getType());
+        assertEquals(List.of(), employeesShifts());
+    }
+
     /**
      * Step 1: lock the employee, save 09:00-17:00, and keep the transaction
-     * open until commitTheFirstRequest is counted down. It holds on longer
-     * than the test waits in step 2, so it can never commit early by itself.
+     * open until commitTheFirstRequest is counted down.
      */
     private Future<?> startTheFirstRequest() throws InterruptedException {
-        Future<?> first = threads.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+        return holdOpen(() -> {
             User locked = entityManager.find(User.class, employee.getId(), LockModeType.PESSIMISTIC_WRITE);
             Shift shift = shift(9, 17);
             shift.setUser(locked);
             shiftRepository.save(shift);
+        });
+    }
+
+    /**
+     * Runs work in a transaction of its own, in another thread, and keeps that
+     * transaction open until commitTheFirstRequest is counted down. It holds
+     * on longer than the test waits in step 2, so it can never commit early
+     * by itself.
+     */
+    private Future<?> holdOpen(Runnable work) throws InterruptedException {
+        Future<?> first = threads.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            work.run();
             firstRequestHoldsTheLock.countDown();
             try {
                 // Bounded, so a broken test cannot hang the build.
@@ -205,8 +267,8 @@ class ShiftConcurrencyIntegrationTest {
                 method + " finished while another transaction held the employee's lock: it never waited for it");
         String statement = stuck.orElseGet(() -> fail(method + " neither finished nor got stuck in a statement"));
         assertTrue(statement.contains("from users") && statement.contains("for update"),
-                method + " is stuck at\n    " + statement + "\nnot at the employee's lock, so its overlap "
-                        + "check ran before the first request committed");
+                method + " is stuck at\n    " + statement + "\nnot at the employee's lock, so its check "
+                        + "ran before the first request committed");
     }
 
     /**
@@ -234,6 +296,17 @@ class ShiftConcurrencyIntegrationTest {
                 .stream()
                 .map(shift -> shift.getStartTime() + "-" + shift.getEndTime())
                 .toList();
+    }
+
+    /** A PENDING leave request for the employee, covering DAY only, committed. */
+    private Integer pendingLeaveOnDay() {
+        LeaveRequest leave = new LeaveRequest();
+        leave.setUser(employee);
+        leave.setStartDate(DAY);
+        leave.setEndDate(DAY);
+        leave.setReason("Holiday");
+        leave.setStatus(LeaveStatus.PENDING);
+        return leaveRequestRepository.save(leave).getId();
     }
 
     private static Shift shift(int startHour, int endHour) {

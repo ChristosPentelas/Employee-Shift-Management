@@ -22,10 +22,13 @@ public class LeaveRequestService {
 
     private final LeaveRequestRepository leaveRequestRepository;
     private final UserService userService;
+    private final ShiftService shiftService;
 
-    public LeaveRequestService(LeaveRequestRepository leaveRequestRepository, UserService userService) {
+    public LeaveRequestService(LeaveRequestRepository leaveRequestRepository, UserService userService,
+                               ShiftService shiftService) {
         this.leaveRequestRepository = leaveRequestRepository;
         this.userService = userService;
+        this.shiftService = shiftService;
     }
 
     @Transactional
@@ -66,9 +69,23 @@ public class LeaveRequestService {
      * cannot both see PENDING. The lock is the transaction's first statement,
      * and a locking read always sees the latest committed row, so MySQL's
      * REPEATABLE READ needs no change here (compare ShiftService).
+     *
+     * Approving removes the employee's shifts on the leave days (B31, decided
+     * 2026-10-25), under the employee's lock - the one createShift and
+     * updateShift take. A shift being saved at that moment is waited for and
+     * then removed too; one saved just after waits until this commits, and its
+     * leave check then sees APPROVED. Without the lock the second case slips
+     * through: its check would still read PENDING.
+     *
+     * The lock order is always the leave row, then the employee. ShiftService
+     * takes only the employee and reads leave without locking it, so neither
+     * side can hold what the other is waiting for (no deadlock).
+     *
+     * REPEATABLE READ is still enough: a DELETE, like a locking read, works on
+     * the latest committed rows, not on this transaction's snapshot.
      */
     @Transactional
-    public LeaveRequest updateLeaveRequest(Integer requestId, LeaveDecision decision) {
+    public LeaveDecisionResult updateLeaveRequest(Integer requestId, LeaveDecision decision) {
         LeaveRequest request = leaveRequestRepository.findLockedById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Leave request", requestId));
         if (request.getStatus() != LeaveStatus.PENDING) {
@@ -76,6 +93,14 @@ public class LeaveRequestService {
                     "Leave request " + requestId + " is already " + request.getStatus());
         }
         request.setStatus(decision.toStatus());
-        return leaveRequestRepository.save(request);
+        LeaveRequest answered = leaveRequestRepository.save(request);
+
+        int removedShifts = 0;
+        if (decision == LeaveDecision.APPROVED) {
+            Integer userId = request.getUser().getId();
+            userService.findLockedUserById(userId);
+            removedShifts = shiftService.removeShiftsDuring(userId, request.getStartDate(), request.getEndDate());
+        }
+        return new LeaveDecisionResult(answered, removedShifts);
     }
 }

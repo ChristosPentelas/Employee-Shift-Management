@@ -108,6 +108,20 @@ public class ShiftService {
         shiftRepository.deleteById(shiftId);
     }
 
+    /**
+     * Removes the employee's shifts from start to end, both days included,
+     * and answers how many there were. Called when their leave is approved
+     * (B31): a shift belongs to its date, as in rejectLeaveDays, so a night
+     * shift the evening before the leave stays.
+     *
+     * The caller must hold the employee's lock (UserService.findLockedUserById),
+     * as createShift does, so no shift can be added between this and the commit.
+     */
+    @Transactional
+    public int removeShiftsDuring(Integer userId, LocalDate start, LocalDate end) {
+        return shiftRepository.deleteByUserIdAndDateBetween(userId, start, end);
+    }
+
     public List<Shift> getSchedule(Integer userId, LocalDate start, LocalDate end){
         userService.findUserById(userId);
         return shiftRepository.findByUserIdAndDateBetween(userId, start, end, CHRONOLOGICAL);

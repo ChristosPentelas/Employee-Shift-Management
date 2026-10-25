@@ -171,9 +171,25 @@ Steps, one change set each:
   test with the `try` removed). The app keeps a copy of the type string, so
   `ShiftControllerTest` spells it out rather than using the constant.
   `flutter test`: 183 passing; `flutter analyze`: 32 issues before and after.
-- **31c** (backend) approving leave removes the shifts on its days. It must
-  lock the employee like `ShiftService`: until it does, a shift created at the
-  same moment as an approval can still land on a leave day.
+- **31c** (backend) approving leave removes the shifts on its days. Done:
+  `feat(backend): remove an employee's shifts when their leave is approved`.
+  `LeaveRequestService.updateLeaveRequest` locks the leave row, then the
+  employee (the lock `ShiftService` takes), then calls
+  `ShiftService.removeShiftsDuring`, one bulk `DELETE` that answers its row
+  count (a derived delete would go row by row, F12). Always that lock order,
+  and `ShiftService` never locks a leave row, so the two cannot deadlock.
+  `PUT /leaves/{id}/status` answers `LeaveDecisionResponse`: the request's
+  fields where they were, plus `removedShifts` (0 for a rejection), so a
+  reader of the old body, like B70's fix, still works. Tests:
+  `LeaveApprovalIntegrationTest` (which shifts go), two races in
+  `ShiftConcurrencyIntegrationTest`, and the lock order in
+  `LeaveRequestServiceTest`. With the employee lock removed on purpose, both
+  races failed: `createShift` got as far as its INSERT, its leave check
+  having read PENDING. With the removal skipped, four tests failed. Approving
+  cannot be undone (B63), so neither can the removal. Suite: 311 tests, all
+  green.
+- **31d** (frontend) after an approval that removed shifts, the app tells the
+  supervisor how many, from `removedShifts`.
 
 **B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
 Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled

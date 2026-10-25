@@ -6,10 +6,13 @@ import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
 import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
+import org.example.employeeshiftmanagement.service.LeaveDecisionResult;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
+import org.example.employeeshiftmanagement.service.ShiftService;
 import org.example.employeeshiftmanagement.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -18,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,12 +34,19 @@ import static org.mockito.Mockito.when;
  * Whether the row lock really makes a second supervisor wait is not tested
  * here - a mock has no locks. The tests check that the locking lookup is the
  * one used; the same @Lock is proven to block in ShiftConcurrencyIntegrationTest.
+ *
+ * The same goes for approving, which removes the employee's shifts (B31):
+ * these tests check that the employee is locked first and that a rejection
+ * removes nothing. Which shifts go is LeaveApprovalIntegrationTest's job, and
+ * that the lock really holds a shift back is ShiftConcurrencyIntegrationTest's.
  */
 class LeaveRequestServiceTest {
 
     private final LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
+    private final UserService userService = mock(UserService.class);
+    private final ShiftService shiftService = mock(ShiftService.class);
     private final LeaveRequestService leaveRequestService =
-            new LeaveRequestService(leaveRequestRepository, mock(UserService.class));
+            new LeaveRequestService(leaveRequestRepository, userService, shiftService);
 
     @BeforeEach
     void savingReturnsWhatWasSaved() {
@@ -59,7 +70,7 @@ class LeaveRequestServiceTest {
     void aPendingRequestCanBeApproved() {
         stored(LeaveStatus.PENDING);
 
-        LeaveRequest answered = leaveRequestService.updateLeaveRequest(5, LeaveDecision.APPROVED);
+        LeaveRequest answered = leaveRequestService.updateLeaveRequest(5, LeaveDecision.APPROVED).request();
 
         assertEquals(LeaveStatus.APPROVED, answered.getStatus());
         verify(leaveRequestRepository).save(answered);
@@ -69,7 +80,7 @@ class LeaveRequestServiceTest {
     void aPendingRequestCanBeRejected() {
         stored(LeaveStatus.PENDING);
 
-        LeaveRequest answered = leaveRequestService.updateLeaveRequest(5, LeaveDecision.REJECTED);
+        LeaveRequest answered = leaveRequestService.updateLeaveRequest(5, LeaveDecision.REJECTED).request();
 
         assertEquals(LeaveStatus.REJECTED, answered.getStatus());
     }
@@ -115,5 +126,39 @@ class LeaveRequestServiceTest {
         leaveRequestService.updateLeaveRequest(5, LeaveDecision.APPROVED);
 
         verify(leaveRequestRepository, never()).findById(anyInt());
+    }
+
+    @Test
+    void approvingRemovesTheEmployeesShiftsOnTheLeaveDays() {
+        stored(LeaveStatus.PENDING);
+        when(shiftService.removeShiftsDuring(7, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 5)))
+                .thenReturn(2);
+
+        LeaveDecisionResult result = leaveRequestService.updateLeaveRequest(5, LeaveDecision.APPROVED);
+
+        assertEquals(2, result.removedShifts());
+    }
+
+    @Test
+    void approvingLocksTheEmployeeBeforeRemovingTheirShifts() {
+        // The lock ShiftService takes: without it, a shift saved at the same
+        // moment would not wait for the approval (B31).
+        stored(LeaveStatus.PENDING);
+
+        leaveRequestService.updateLeaveRequest(5, LeaveDecision.APPROVED);
+
+        InOrder order = inOrder(userService, shiftService);
+        order.verify(userService).findLockedUserById(7);
+        order.verify(shiftService).removeShiftsDuring(anyInt(), any(), any());
+    }
+
+    @Test
+    void rejectingRemovesNoShifts() {
+        stored(LeaveStatus.PENDING);
+
+        LeaveDecisionResult result = leaveRequestService.updateLeaveRequest(5, LeaveDecision.REJECTED);
+
+        assertEquals(0, result.removedShifts());
+        verify(shiftService, never()).removeShiftsDuring(anyInt(), any(), any());
     }
 }
