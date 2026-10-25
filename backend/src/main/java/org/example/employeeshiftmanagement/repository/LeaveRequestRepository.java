@@ -8,8 +8,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 @Repository
@@ -45,4 +48,16 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     @EntityGraph(attributePaths = "user")
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<LeaveRequest> findLockedById(Integer id);
+
+    // Whether one of the user's requests with this status includes the date.
+    // "between" includes both ends, so the first and the last day of a leave
+    // count (B31). Written out rather than derived: the derived name would be
+    // existsByUserIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual.
+    @Query("""
+            select count(l) > 0 from LeaveRequest l
+            where l.user.id = :userId and l.status = :status
+              and :date between l.startDate and l.endDate
+            """)
+    boolean existsCovering(@Param("userId") Integer userId, @Param("status") LeaveStatus status,
+                           @Param("date") LocalDate date);
 }

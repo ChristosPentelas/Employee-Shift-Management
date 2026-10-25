@@ -30,8 +30,12 @@ import java.util.Map;
  * Bodies are RFC 9457 ProblemDetail - the standard error shape, already in
  * Spring, so no client-specific format to invent or document:
  *
- * {"type":"about:blank","title":"Not Found","status":404,
+ * {"title":"Not Found","status":404,
  *  "detail":"User not found","instance":"/api/v1/users/7"}
+ *
+ * No "type" there: Spring leaves it out when it is about:blank, the default,
+ * which is what a missing type means. Only a clash the client must tell
+ * apart sends one (ProblemTypes, B31).
  *
  * Extending ResponseEntityExceptionHandler is what gives sensible answers to
  * malformed JSON, an unknown enum value or a missing request parameter; on its
@@ -48,10 +52,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    /** The request is valid on its own but clashes with stored data (F30). */
+    /**
+     * The request is valid on its own but clashes with stored data (F30).
+     * A clash with a problem type keeps it in the body, so the client can
+     * tell it from the others (B31).
+     */
     @ExceptionHandler(ConflictException.class)
     public ProblemDetail handleConflict(ConflictException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+        if (e.getType() != null) {
+            problem.setType(e.getType());
+        }
+        return problem;
     }
 
     /** A failed login (F16 step 16b; until then the controller built this 401 itself). */

@@ -1,9 +1,12 @@
 package org.example.employeeshiftmanagement.service;
 
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.exception.ProblemTypes;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
+import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.model.User;
+import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 import org.example.employeeshiftmanagement.repository.ShiftRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,10 +31,16 @@ public class ShiftService {
 
     private final ShiftRepository shiftRepository;
     private final UserService userService;
+    // The repository, not LeaveRequestService: approving leave will remove
+    // shifts (B31 step 31c), so that service will need this one, and two
+    // services that each need the other cannot be built.
+    private final LeaveRequestRepository leaveRequestRepository;
 
-    public ShiftService(ShiftRepository shiftRepository, UserService userService) {
+    public ShiftService(ShiftRepository shiftRepository, UserService userService,
+                        LeaveRequestRepository leaveRequestRepository) {
         this.shiftRepository = shiftRepository;
         this.userService = userService;
+        this.leaveRequestRepository = leaveRequestRepository;
     }
 
     /*
@@ -51,6 +60,7 @@ public class ShiftService {
     public Shift createShift(Integer userId,Shift shift){
         // First, before any read the overlap check depends on.
         User user = userService.findLockedUserById(userId);
+        rejectLeaveDays(userId, shift);
         rejectOverlaps(userId, null, shift);
         shift.setUser(user);
         return shiftRepository.save(shift);
@@ -76,9 +86,10 @@ public class ShiftService {
         // findById needs no @EntityGraph (B28).
         userService.findLockedUserById(existingUserId);
 
-        // Checked before the fields change, so the query below never sees a
+        // Checked before the fields change, so the queries below never see a
         // half-edited copy of this shift. getId() on the lazy user is free:
         // Hibernate already knows the id without loading the user.
+        rejectLeaveDays(existingUserId, shiftDetails);
         rejectOverlaps(existingUserId, shiftId, shiftDetails);
 
         existingShift.setDate(shiftDetails.getDate());
@@ -100,6 +111,24 @@ public class ShiftService {
     public List<Shift> getSchedule(Integer userId, LocalDate start, LocalDate end){
         userService.findUserById(userId);
         return shiftRepository.findByUserIdAndDateBetween(userId, start, end, CHRONOLOGICAL);
+    }
+
+    /**
+     * No shift on a day the employee has approved leave (B31): throws
+     * ConflictException, with a problem type so the app can say why.
+     *
+     * Rules decided 2026-10-25: only APPROVED leave counts - a PENDING request
+     * is still only a request. And a shift belongs to its date: a Mon
+     * 22:00-06:00 shift is refused by leave on Monday, not by leave starting
+     * on Tuesday, even though it ends then.
+     *
+     * The caller holds the employee's lock, as for rejectOverlaps.
+     */
+    private void rejectLeaveDays(Integer userId, Shift shift) {
+        if (leaveRequestRepository.existsCovering(userId, LeaveStatus.APPROVED, shift.getDate())) {
+            throw new ConflictException(ProblemTypes.EMPLOYEE_ON_LEAVE,
+                    "On approved leave on " + shift.getDate());
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.ShiftController;
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.exception.ProblemTypes;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.Shift;
 import org.example.employeeshiftmanagement.service.ShiftService;
@@ -153,7 +154,31 @@ class ShiftControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
+                // No problem type: the app reads every untyped 409 here as an
+                // overlap. Spring leaves "type" out when it is about:blank,
+                // which is what a missing type means (RFC 9457).
+                .andExpect(jsonPath("$.type").doesNotExist())
                 .andExpect(jsonPath("$.detail").value("Overlaps shift 12 on 2026-09-14, 06:00-14:00"));
+    }
+
+    @Test
+    void aShiftOnALeaveDayIsAConflictTheAppCanTellApart() throws Exception {
+        // The rule itself is tested in ShiftLeaveIntegrationTest; this checks the HTTP answer.
+        when(shiftService.createShift(eq(7), any(Shift.class)))
+                .thenThrow(new ConflictException(ProblemTypes.EMPLOYEE_ON_LEAVE, "On approved leave on 2026-09-14"));
+
+        mockMvc.perform(post("/api/v1/users/7/shifts")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"date":"2026-09-14","startTime":"08:00","endTime":"16:00",
+                                 "position":"Ταμείο"}
+                                """))
+                .andExpect(status().isConflict())
+                // Spelled out, not ProblemTypes.EMPLOYEE_ON_LEAVE: the app has
+                // this exact text, so changing the constant must fail here.
+                .andExpect(jsonPath("$.type").value("urn:shift-manager:problem:employee-on-leave"))
+                .andExpect(jsonPath("$.detail").value("On approved leave on 2026-09-14"));
     }
 
     @Test

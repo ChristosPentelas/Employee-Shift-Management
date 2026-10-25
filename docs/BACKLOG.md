@@ -63,7 +63,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
 | F28 | LOW | Chat polls every 3 s | Done | `feat(backend): mark a whole chat read in one request`, `fix(frontend): mark a chat read with one request`, `perf(frontend): poll the chat every 5 s, one load at a time` | Done in three steps (2026-10-13). **28a:** `PUT /api/v1/messages/chat/{otherUserId}/read` marks every unread message the other person sent to the caller with one JPQL `UPDATE` and answers 204; the receiver comes from the token, so it needs no `@PreAuthorize`. Covered by V3's `idx_messages_chat`, so no migration. **28b:** the chat shows the messages, then sends that one request only if something to the caller is unread (closes B27). **28c:** the chat polls every 5 s instead of 3; a load never starts while one is on its way, and one asked for meanwhile (after sending) runs right after; an `AppLifecycleListener` stops the timer `onHide` and reloads `onShow` (not `onPause`: desktop and web never reach paused). The audit's "only messages after the last known id" was not done: F9 already caps a load at 50 messages. Still polling, not push (B55) |
 | F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
-| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are still allowed (B31). The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
+| F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are refused since B31 step 31a, with their own problem type so the app can tell the two 409s apart. The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
 Totals: 30 done · 0 partial · 0 open.
 
@@ -135,6 +135,37 @@ Fix idea: decide the rule first. If "refuse", look up the employee's
 `APPROVED` leave covering the shift's date and throw `ConflictException`, like
 the overlap check. The reverse also exists: approving leave over days that
 already have shifts.
+Decided 2026-10-25:
+- A shift on a day of the employee's leave is refused (409).
+- Only `APPROVED` leave counts. A `PENDING` request is still only a request,
+  and blocking on it would let an employee lock days just by asking.
+- A shift belongs to the date it is filed under. A Mon 22:00-06:00 shift is
+  refused by leave on Monday, not by leave starting on Tuesday, though it
+  ends then. (The overlap check, F30, still uses real times.)
+- Approving leave is always allowed, and removes that employee's shifts on
+  the leave days, by the same date rule.
+Steps, one change set each:
+- **31a** (backend) refuse the shift. Done:
+  `feat(backend): refuse a shift on a day of approved leave`.
+  `ShiftService.rejectLeaveDays` runs in `createShift` and `updateShift` after
+  the employee lock, before the overlap check, using
+  `LeaveRequestRepository.existsCovering`. `ShiftService` uses the leave
+  repository, not `LeaveRequestService`: in 31c that service needs
+  `ShiftService`, and two services that each need the other cannot be built
+  (a circular dependency). The 409 carries
+  `"type":"urn:shift-manager:problem:employee-on-leave"` (`ProblemTypes`).
+  RFC 9457 made `type` the field for telling problems apart, so no custom
+  property was invented. Other 409s send no `type`, which is how Spring writes
+  about:blank; `ApiExceptionHandler`'s Javadoc wrongly showed one and is
+  fixed. `ShiftLeaveIntegrationTest` covers the rule against MySQL; its four
+  "refused" tests failed before the check existed. The `ShiftServiceTest`
+  lock-order tests and the `ShiftControllerTest` type test were each seen to
+  fail on code broken on purpose. Suite: 303 tests, all green.
+- **31b** (frontend) the assign dialog says "on leave" instead of "already
+  has a shift". Until then the app shows the overlap text for this 409 too.
+- **31c** (backend) approving leave removes the shifts on its days. It must
+  lock the employee like `ShiftService`: until it does, a shift created at the
+  same moment as an approval can still land on a leave day.
 
 **B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
 Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled

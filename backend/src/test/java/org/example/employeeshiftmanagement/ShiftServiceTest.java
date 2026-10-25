@@ -1,7 +1,10 @@
 package org.example.employeeshiftmanagement;
 
 import org.example.employeeshiftmanagement.exception.ConflictException;
+import org.example.employeeshiftmanagement.exception.ProblemTypes;
+import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.Shift;
+import org.example.employeeshiftmanagement.repository.LeaveRequestRepository;
 import org.example.employeeshiftmanagement.repository.ShiftRepository;
 import org.example.employeeshiftmanagement.service.ShiftService;
 import org.example.employeeshiftmanagement.service.UserService;
@@ -32,9 +35,14 @@ import static org.mockito.Mockito.when;
  * day before to the day after, which is what ShiftService asks for. Each test
  * names the stored shift it puts there and the one it tries to save.
  *
- * The last two tests check only the ORDER of the calls: the employee is
- * locked before the overlap query (B30). A mock has no locks, so whether
- * the lock really makes a second request wait is ShiftConcurrencyIntegrationTest's job.
+ * The lock tests check only the ORDER of the calls: the employee is
+ * locked before the overlap query (B30) and the leave query (B31). A mock has
+ * no locks, so whether the lock really makes a second request wait is
+ * ShiftConcurrencyIntegrationTest's job.
+ *
+ * The leave repository is a mock that answers "no leave" unless a test says
+ * otherwise. Which leave counts is decided by its query, so the leave rule
+ * itself is tested against MySQL, in ShiftLeaveIntegrationTest.
  */
 class ShiftServiceTest {
 
@@ -42,7 +50,9 @@ class ShiftServiceTest {
 
     private final ShiftRepository shiftRepository = mock(ShiftRepository.class);
     private final UserService userService = mock(UserService.class);
-    private final ShiftService shiftService = new ShiftService(shiftRepository, userService);
+    private final LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
+    private final ShiftService shiftService =
+            new ShiftService(shiftRepository, userService, leaveRequestRepository);
 
     @BeforeEach
     void employeeSevenExists() {
@@ -164,5 +174,41 @@ class ShiftServiceTest {
         InOrder order = inOrder(userService, shiftRepository);
         order.verify(userService).findLockedUserById(7);
         order.verify(shiftRepository).findByUserIdAndDateBetween(eq(7), any(), any(), any(Sort.class));
+    }
+
+    @Test
+    void aShiftOnALeaveDayIsNotSaved() {
+        stored();
+        when(leaveRequestRepository.existsCovering(7, LeaveStatus.APPROVED, DAY)).thenReturn(true);
+
+        ConflictException e = assertThrows(ConflictException.class,
+                () -> shiftService.createShift(7, shift(null, DAY, "09:00", "13:00")));
+
+        assertEquals(ProblemTypes.EMPLOYEE_ON_LEAVE, e.getType());
+        verify(shiftRepository, never()).save(any());
+    }
+
+    @Test
+    void createShiftLocksTheEmployeeBeforeCheckingTheirLeave() {
+        stored();
+
+        shiftService.createShift(7, shift(null, DAY, "09:00", "13:00"));
+
+        InOrder order = inOrder(userService, leaveRequestRepository);
+        order.verify(userService).findLockedUserById(7);
+        order.verify(leaveRequestRepository).existsCovering(7, LeaveStatus.APPROVED, DAY);
+    }
+
+    @Test
+    void updateShiftLocksTheEmployeeBeforeCheckingTheirLeave() {
+        Shift existing = shift(12, DAY, "09:00", "13:00");
+        stored(existing);
+        when(shiftRepository.findById(12)).thenReturn(Optional.of(existing));
+
+        shiftService.updateShift(12, shift(null, DAY, "10:00", "14:00"));
+
+        InOrder order = inOrder(userService, leaveRequestRepository);
+        order.verify(userService).findLockedUserById(7);
+        order.verify(leaveRequestRepository).existsCovering(7, LeaveStatus.APPROVED, DAY);
     }
 }
