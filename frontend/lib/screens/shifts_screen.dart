@@ -338,6 +338,19 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
     }
   }
 
+  // A switch with no default: a value added to the enum later will not
+  // compile until it is given its text here.
+  String _deleteResultText(DeleteShiftResult result) {
+    switch (result) {
+      case DeleteShiftResult.deleted:
+        return "Η βάρδια διαγράφηκε";
+      case DeleteShiftResult.notFound:
+        return "Η βάρδια είχε ήδη διαγραφεί.";
+      case DeleteShiftResult.failed:
+        return "Η διαγραφή απέτυχε. Δοκιμάστε ξανά.";
+    }
+  }
+
   void _confirmDelete(int shiftId) {
     showDialog(
       context: context,
@@ -349,16 +362,21 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              Navigator.of(dialogContext, rootNavigator: true).pop();
-              bool success = await _apiService.deleteShift(shiftId);
+              Navigator.pop(dialogContext);
+              final result = await _apiService.deleteShift(shiftId);
               if (!mounted) return;
-              if (success) {
+              // Reload unless nothing changed: after a 404 the calendar on
+              // screen is out of date, and the reload shows what is stored.
+              if (result != DeleteShiftResult.failed) {
                 _loadShifts();
                 setState(() {
                   _selectedDay = null;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Η βάρδια διαγράφηκε")));
               }
+              // Every outcome says something: a failure used to say nothing
+              // at all (B33).
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text(_deleteResultText(result))));
             },
             child: Text("Διαγραφή", style: TextStyle(color: Colors.white)),
           ),

@@ -123,15 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B33 · LOW · Deleting a shift fails without a word** — found 2026-09-23
-Where: `shifts_screen.dart` `_confirmDelete`: `if (success) { ... }` with no
-`else`; `ApiService.deleteShift` returns `bool`.
-Why it matters: the same silent-failure pattern B24 had for assigning - the
-shift simply stays on the calendar and nobody says why.
-Relates to: B24, B19.
-Fix idea: the same shape as `assignShift` since B24: show a message on
-failure.
-
 **B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
 Where: `shifts_screen.dart` `_showAssignShiftDialog` creates a
 `TextEditingController` as a local variable for every dialog it opens (three
@@ -1679,3 +1670,32 @@ back on. Against the old code the first two failed in both files (two POSTs,
 no spinner); the third passed, as it should - it guards against a flag that
 is never reset. `flutter test`: 194 passing; `flutter analyze`: 32 issues
 before and after.
+
+**B33 · LOW · Deleting a shift fails without a word** — found 2026-09-23
+Where: `shifts_screen.dart` `_confirmDelete`: `if (success) { ... }` with no
+`else`; `ApiService.deleteShift` returns `bool`.
+Why it matters: the same silent-failure pattern B24 had for assigning - the
+shift simply stays on the calendar and nobody says why.
+Relates to: B24, B19.
+Fix idea: the same shape as `assignShift` since B24: show a message on
+failure.
+Fixed by: `fix(frontend): say when deleting a shift failed`, 2026-10-30.
+Decided: an enum result, `DeleteShiftResult { deleted, notFound, failed }`,
+not the fix idea's `bool` plus an `else`, for B42's reason: a 404 (already
+deleted, e.g. by another supervisor) needs a reload, a failure a retry, and a
+`bool` cannot tell them apart - a 404 would have said "try again" for a
+shift that is gone, and kept showing it. Every outcome now shows a snackbar:
+204 "Η βάρδια διαγράφηκε" and a reload, as before; 404 "Η βάρδια είχε ήδη
+διαγραφεί." and a reload; anything else "Η διαγραφή απέτυχε. Δοκιμάστε
+ξανά." and the calendar as it was. Throwing, as `deleteUser` and
+`deleteNews` do, was not used: their callers show the raw exception (B41).
+In the same commit, `Navigator.of(dialogContext, rootNavigator: true).pop()`
+became `Navigator.pop(dialogContext)` like every other dialog; `showDialog`
+already uses the root navigator, so nothing changes but the reading.
+Tests: a `deleting a shift` group in `shifts_screen_test.dart`, one per
+outcome, checking the message and whether the month was loaded again.
+Against the old code the 404 and 500 tests failed (no message) and the 204
+one passed. Test pitfall met on the way: `http.Response(String)` encodes
+its body as Latin-1 unless a charset is given, so a Greek position in the
+fake reply made the fake itself throw; the test uses ASCII. `flutter test`:
+197 passing; `flutter analyze`: 32 issues before and after.

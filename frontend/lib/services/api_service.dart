@@ -44,6 +44,16 @@ enum UpdateLeaveStatusResult {
   failed,
 }
 
+/// The outcome of ApiService.deleteShift (B33).
+enum DeleteShiftResult {
+  /// 204: the shift is gone.
+  deleted,
+  /// 404: it was already gone, e.g. deleted by another supervisor.
+  notFound,
+  /// Anything else, including no network.
+  failed,
+}
+
 /// The outcome of ApiService.changePassword (B8).
 enum ChangePasswordResult {
   /// 204: the new password is stored. The login token stays valid.
@@ -458,13 +468,22 @@ class ApiService {
     }
   }
 
-  Future<bool> deleteShift(int shiftId) async {
+  // An enum, not a bool: "already gone" needs a reload, "failed" a retry, and
+  // a bool cannot tell them apart (B33).
+  Future<DeleteShiftResult> deleteShift(int shiftId) async {
     try {
       final response = await _client.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
-
-      return response.statusCode == 200 || response.statusCode == 204;
+      switch (response.statusCode) {
+        case 200:
+        case 204:
+          return DeleteShiftResult.deleted;
+        case 404:
+          return DeleteShiftResult.notFound;
+        default:
+          return DeleteShiftResult.failed;
+      }
     } catch (e) {
-      return false;
+      return DeleteShiftResult.failed;
     }
   }
 

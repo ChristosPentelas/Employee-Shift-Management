@@ -288,4 +288,65 @@ void main() {
 
     expect(find.text('Home'), findsOneWidget);
   });
+
+  // B33: a delete the server refused left the shift on the calendar and said
+  // nothing, so the supervisor could not tell it apart from a slow one.
+  group('deleting a shift', () {
+    /// Opens the calendar as a supervisor against a fake server with one shift
+    /// on the 15th, which answers the delete with [deleteStatus]; selects the
+    /// 15th and confirms the delete. Returns how often the month was loaded.
+    Future<List<String>> deleteAnswered(
+        WidgetTester tester, int deleteStatus) async {
+      final now = DateTime.now();
+      final month = now.month.toString().padLeft(2, '0');
+      final monthLoads = <String>[];
+      final api = ApiService(client: MockClient((request) async {
+        if (request.method == 'DELETE') return http.Response('', deleteStatus);
+        monthLoads.add(request.url.path);
+        return http.Response(
+            '[{"id":3,"date":"${now.year}-$month-15","startTime":"08:00",'
+            '"endTime":"16:00","position":"Cashier"}]',
+            200);
+      }));
+      final boss = User(
+          id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+      await tester.pumpWidget(withAppState(testContainer(user: boss),
+          MaterialApp(home: ShiftsScreen(apiService: api))));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('15'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.delete_sweep));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+      await tester.pumpAndSettle();
+      return monthLoads;
+    }
+
+    testWidgets('a deleted shift says so and reloads the calendar',
+        (WidgetTester tester) async {
+      final monthLoads = await deleteAnswered(tester, 204);
+
+      expect(find.text('Η βάρδια διαγράφηκε'), findsOneWidget);
+      expect(monthLoads, hasLength(2));
+    });
+
+    // Someone else got there first: the calendar on screen is out of date.
+    testWidgets('a shift that was already gone says so and reloads',
+        (WidgetTester tester) async {
+      final monthLoads = await deleteAnswered(tester, 404);
+
+      expect(find.text('Η βάρδια είχε ήδη διαγραφεί.'), findsOneWidget);
+      expect(monthLoads, hasLength(2));
+    });
+
+    testWidgets('a failed delete says so and leaves the calendar alone',
+        (WidgetTester tester) async {
+      final monthLoads = await deleteAnswered(tester, 500);
+
+      expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(monthLoads, hasLength(1)); // nothing changed, so no reload
+      expect(find.text('Cashier'), findsOneWidget); // still listed
+    });
+  });
 }
