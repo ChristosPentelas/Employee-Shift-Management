@@ -193,6 +193,9 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
     if (!mounted) return;
     User? selectedEmployee;
     String? saveError; // Shown in the dialog when the server refuses the shift.
+    // True while the shift is on its way: Save is off, so a double tap cannot
+    // send it twice (B32).
+    bool saving = false;
     final _positionController = TextEditingController();
     // Picked, not typed, so a time the server cannot read cannot be entered
     // (B24). Declared out here: the builder below re-runs on every
@@ -252,7 +255,10 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
-              onPressed: (selectedEmployee == null) ? null : () async {
+              onPressed: (selectedEmployee == null || saving) ? null : () async {
+                // Before the await: once it starts, a second tap is too late
+                // to stop.
+                setDialogState(() => saving = true);
                 Shift newShift = Shift(
                   id: 0,
                   date: selectedDate,
@@ -271,11 +277,21 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) _loadShifts();
                 } else if (dialogContext.mounted) {
-                  // The dialog stays open, so the supervisor can fix the times.
-                  setDialogState(() => saveError = _assignErrorText(result));
+                  // The dialog stays open, so the supervisor can fix the times
+                  // and save again.
+                  setDialogState(() {
+                    saving = false;
+                    saveError = _assignErrorText(result);
+                  });
                 }
               },
-              child: Text("Αποθήκευση"),
+              // Small enough to sit inside the button in place of its text.
+              child: saving
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text("Αποθήκευση"),
             ),
           ],
         ),

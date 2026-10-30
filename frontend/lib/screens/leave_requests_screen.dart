@@ -206,6 +206,9 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
     // Why the server refused, shown under the reason. The dialog stays open
     // so nothing typed is lost (B19).
     String? saveError;
+    // True while the request is on its way: Submit is off, so a double tap
+    // cannot file the same leave twice (B32).
+    bool saving = false;
 
     showDialog(
       context: context,
@@ -258,13 +261,18 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
             ElevatedButton(
               // trim(): spaces only is not empty, but @NotBlank refuses it.
-              onPressed: (selectedRange == null || _reasonController.text.trim().isEmpty)
+              onPressed: (selectedRange == null ||
+                      _reasonController.text.trim().isEmpty ||
+                      saving)
                   ? null
                   : () async {
                 // Read before the await: the session can end while the
                 // request is on its way (B16).
                 final me = ref.read(authProvider);
                 if (me == null) return;
+                // After the return above, which would leave Submit off for
+                // good; before the await, which would be too late (B32).
+                setDialogState(() => saving = true);
 
                 LeaveRequest newRequest = LeaveRequest(
                   id: 0,
@@ -283,10 +291,18 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
                   if (!mounted) return;
                   _leaves.reload();
                 } else if (dialogContext.mounted) {
-                  setDialogState(() => saveError = _submitErrorText(result));
+                  setDialogState(() {
+                    saving = false;
+                    saveError = _submitErrorText(result);
+                  });
                 }
             },
-              child: Text("Υποβολή"),
+              child: saving
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text("Υποβολή"),
             ),
           ],
         ),

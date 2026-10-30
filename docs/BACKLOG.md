@@ -123,20 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
-Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled
-during `await _apiService.assignShift(...)`.
-Why it matters: a double tap sends two POSTs. Since F30 the second one usually
-gets a 409 and the supervisor may see "overlaps" for a shift that was in fact
-saved by the first tap; if both arrive at the same instant, both are saved
-(B30). A classic beginner pitfall in any form that submits over the network.
-Seen again in B19 (2026-10-17): the leave dialog in `leave_requests_screen.dart`
-`_showAddLeaveDialog` does the same with `submitLeaveRequest`, and a double tap
-files the same leave twice - leave has no overlap check to refuse the second.
-Relates to: B30, F30, B19.
-Fix idea: a `saving` flag in the dialog state; `onPressed: null` and a small
-spinner while it is true.
-
 **B33 · LOW · Deleting a shift fails without a word** — found 2026-09-23
 Where: `shifts_screen.dart` `_confirmDelete`: `if (success) { ... }` with no
 `else`; `ApiService.deleteShift` returns `bool`.
@@ -592,6 +578,19 @@ Fix idea: decide what the columns mean first. Either stamp them in UTC
 rows) and have the app convert to local time for display, or store an
 `Instant` (the JSON then ends in `Z`). Either way the app changes with it:
 today it shows these times exactly as they arrive.
+
+**B72 · LOW · No request to the server ever times out** — found 2026-10-30
+Where: `api_service.dart` and `auth_client.dart`: no `.timeout(...)` on any
+call, and package `http` waits forever by default.
+Why it matters: a server that accepts the connection and never answers (or a
+phone that loses its network mid-request) leaves a spinner turning forever:
+the screen loaders, and since B32 the Save / Submit buttons of the assign and
+leave dialogs. Those dialogs keep Cancel on for exactly this reason.
+Relates to: B32.
+Fix idea: one timeout in `AuthClient.send` (every request passes through it).
+A `TimeoutException` is thrown like any network failure, so the callers'
+existing `catch` blocks already turn it into their "failed" message.
+Pick the length with care: a POST that timed out may still have been saved.
 
 ---
 
@@ -1645,3 +1644,38 @@ Steps, one change set each:
 Fixed by: `6399ff1` (31a), `c35e662` (31b), `0f1f49f` (31c) and
 `feat(frontend): say how many shifts an approved leave removed` (31d),
 2026-10-25.
+
+**B32 · LOW · The assign-shift Save button can be pressed again while saving** — found 2026-09-23
+Where: `shifts_screen.dart` `_showAssignShiftDialog`; the button stays enabled
+during `await _apiService.assignShift(...)`.
+Why it matters: a double tap sends two POSTs. Since F30 the second one usually
+gets a 409 and the supervisor may see "overlaps" for a shift that was in fact
+saved by the first tap; if both arrive at the same instant, both are saved
+(B30). A classic beginner pitfall in any form that submits over the network.
+Seen again in B19 (2026-10-17): the leave dialog in `leave_requests_screen.dart`
+`_showAddLeaveDialog` does the same with `submitLeaveRequest`, and a double tap
+files the same leave twice - leave has no overlap check to refuse the second.
+Relates to: B30, F30, B19.
+Fix idea: a `saving` flag in the dialog state; `onPressed: null` and a small
+spinner while it is true.
+Fixed by: `fix(frontend): stop a double tap from sending a form twice`,
+2026-10-30.
+Decided: the fix idea as written, in both dialogs. A `bool saving` sits next
+to `saveError`, outside the `StatefulBuilder`'s builder (inside it, every
+rebuild would reset it). It is set before the `await` (after it, the second
+tap is already through) and back to `false` in the same `setDialogState` as
+the error, so a refused save can be fixed and sent again; a saved one closes
+the dialog, so there is nothing to reset. In the leave dialog it is set after
+`if (me == null) return;`, which would otherwise leave Submit off for good.
+Cancel stays on while saving: no request has a timeout (B72), so a hung one
+would otherwise trap the user in the dialog; F25's `dialogContext.mounted`
+checks already cover a reply that lands after it closed. The other fields
+stay on too: their values were read before the `await`. The two spinners are
+written out in each screen, not shared from `lib/widgets`, for two uses.
+Tests: three per dialog in `shifts_screen_test.dart` and
+`leave_requests_screen_test.dart` (a held reply via a `Completer`): a double
+tap sends one POST, the button is off and spins, and a refused save turns it
+back on. Against the old code the first two failed in both files (two POSTs,
+no spinner); the third passed, as it should - it guards against a flag that
+is never reset. `flutter test`: 194 passing; `flutter analyze`: 32 issues
+before and after.

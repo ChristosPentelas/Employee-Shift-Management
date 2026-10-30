@@ -16,11 +16,21 @@ import 'helpers/app_scope.dart';
 /// A fake server: an empty calendar, one employee, and [assignStatus] as the
 /// answer to "assign a shift", with [problemType] in its body if given (B31).
 /// Each body it is sent goes into [posted].
+///
+/// With [held], each "assign a shift" instead waits for the test to complete
+/// the [Completer] it adds there, and [assignStatus] is not used (B32).
 ApiService serverAnsweringAssign(int assignStatus,
-        {String? problemType, List<String>? posted}) =>
+        {String? problemType,
+        List<String>? posted,
+        List<Completer<http.Response>>? held}) =>
     ApiService(client: MockClient((request) async {
       if (request.method == 'POST') {
         posted?.add(request.body);
+        if (held != null) {
+          final reply = Completer<http.Response>();
+          held.add(reply);
+          return reply.future;
+        }
         final type = problemType == null ? '' : '"type":"$problemType",';
         return http.Response('{$type"status":$assignStatus}', assignStatus);
       }
@@ -104,6 +114,66 @@ void main() {
     await assignAShift(tester, serverAnsweringAssign(201));
 
     expect(find.text('Αποθήκευση'), findsNothing);
+  });
+
+  // B32: Save stayed enabled while the request was on its way, so a double
+  // tap sent the shift twice.
+  group('while a shift is being saved', () {
+    // pump, not pumpAndSettle, while a reply is held: the spinner animates
+    // forever, so it never settles.
+    final spinner = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(CircularProgressIndicator));
+
+    testWidgets('a double tap sends it once', (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await openAssignDialog(tester, serverAnsweringAssign(0, held: held));
+
+      // Where the finger is: the button's text is gone once it spins.
+      final save = tester.getCenter(find.text('Αποθήκευση'));
+      await tester.tapAt(save);
+      await tester.pump();
+      await tester.tapAt(save);
+      await tester.pump();
+
+      expect(held, hasLength(1));
+      held.single.complete(http.Response('{}', 201));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Save is off and shows a spinner', (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await openAssignDialog(tester, serverAnsweringAssign(0, held: held));
+
+      await tester.tap(find.text('Αποθήκευση'));
+      await tester.pump();
+
+      expect(spinner, findsOneWidget);
+      final save = tester.widget<ElevatedButton>(
+          find.ancestor(of: spinner, matching: find.byType(ElevatedButton)));
+      expect(save.onPressed, isNull);
+      held.single.complete(http.Response('{}', 201));
+      await tester.pumpAndSettle();
+    });
+
+    // The supervisor fixes the times after a refusal; Save must work again.
+    testWidgets('a refused shift turns Save back on',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await openAssignDialog(tester, serverAnsweringAssign(0, held: held));
+
+      await tester.tap(find.text('Αποθήκευση'));
+      await tester.pump();
+      held.single.complete(http.Response('{"status":409}', 409));
+      await tester.pumpAndSettle();
+
+      expect(spinner, findsNothing);
+      await tester.tap(find.text('Αποθήκευση'));
+      await tester.pump();
+      expect(held, hasLength(2));
+      held.last.complete(http.Response('{}', 201));
+      await tester.pumpAndSettle();
+    });
   });
 
   // B24: the times used to be free text, and "8.00" reached the server as a

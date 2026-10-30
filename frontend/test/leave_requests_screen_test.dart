@@ -62,11 +62,19 @@ void main() {
     /// Opens the screen as [worker] against a fake server that answers a new
     /// request with [postStatus], opens the dialog and picks tomorrow to the
     /// day after. Returns how many times the list was loaded.
-    Future<List<String>> openDialogWithDates(
-        WidgetTester tester, int postStatus) async {
+    ///
+    /// With [held], each new request instead waits for the test to complete
+    /// the [Completer] it adds there, and [postStatus] is not used (B32).
+    Future<List<String>> openDialogWithDates(WidgetTester tester, int postStatus,
+        {List<Completer<http.Response>>? held}) async {
       final listLoads = <String>[];
       final api = ApiService(client: MockClient((request) async {
-        if (request.method == 'POST') return http.Response('{}', postStatus);
+        if (request.method == 'POST') {
+          if (held == null) return http.Response('{}', postStatus);
+          final reply = Completer<http.Response>();
+          held.add(reply);
+          return reply.future;
+        }
         listLoads.add(request.url.path);
         return http.Response(emptyPage, 200);
       }));
@@ -142,6 +150,73 @@ void main() {
 
       expect(submitButton(), findsNothing);
       expect(listLoads, hasLength(2));
+    });
+
+    // B32: Submit stayed enabled while the request was on its way, so a
+    // double tap filed the same leave twice - leave has no overlap check to
+    // refuse the second. pump, not pumpAndSettle, while a reply is held: the
+    // spinner animates forever, so it never settles.
+    group('while it is being sent', () {
+      final spinner = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(CircularProgressIndicator));
+
+      testWidgets('a double tap files it once', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openDialogWithDates(tester, 0, held: held);
+        await tester.enterText(find.byType(TextField), 'Surgery');
+        await tester.pump();
+
+        // Where the finger is: the button's text is gone once it spins.
+        final submit = tester.getCenter(submitButton());
+        await tester.tapAt(submit);
+        await tester.pump();
+        await tester.tapAt(submit);
+        await tester.pump();
+
+        expect(held, hasLength(1));
+        held.single.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('Submit is off and shows a spinner',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openDialogWithDates(tester, 0, held: held);
+        await tester.enterText(find.byType(TextField), 'Surgery');
+        await tester.pump();
+
+        await tester.tap(submitButton());
+        await tester.pump();
+
+        expect(spinner, findsOneWidget);
+        final submit = tester.widget<ElevatedButton>(
+            find.ancestor(of: spinner, matching: find.byType(ElevatedButton)));
+        expect(submit.onPressed, isNull);
+        held.single.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a refused request turns Submit back on',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openDialogWithDates(tester, 0, held: held);
+        await tester.enterText(find.byType(TextField), 'Surgery');
+        await tester.pump();
+
+        await tester.tap(submitButton());
+        await tester.pump();
+        held.single.complete(http.Response('{}', 500));
+        await tester.pumpAndSettle();
+
+        expect(spinner, findsNothing);
+        expect(submitEnabled(tester), isTrue);
+        await tester.tap(submitButton());
+        await tester.pump();
+        expect(held, hasLength(2));
+        held.last.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
     });
   });
 
