@@ -123,62 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
-Where: `shifts_screen.dart` `_showAssignShiftDialog` creates a
-`TextEditingController` as a local variable for every dialog it opens (three
-until B24's fix turned the two time fields into pickers; the position one is
-left). Seen
-again in F25 step 25b (2026-09-29): the news post (`_showAddNewsDialog`), leave
-(`_showAddLeaveDialog`) and profile (`_showEditDialog`) dialogs do the same.
-Why it matters: a controller holds listeners until `dispose()` is called;
-each opened dialog leaks three. Small here, but the habit leaks real
-resources elsewhere (animation controllers, streams). The local names also
-start with `_`, which the analyzer flags - `_` means "private to the
-library", and a local variable is already private.
-Fix idea: move the dialog into its own `StatefulWidget` that creates the
-controllers in `initState` and disposes them in `dispose`.
-Model (2026-10-14): the change-password dialog (B8),
-`widgets/change_password_dialog.dart`, was built this way from the start -
-its own `State` with `dispose()`, `mounted` and `context`, popping with
-`true` for the screen to show the message. The four dialogs above are
-unchanged.
-Note (2026-10-21): the assign dialog's `startTime` / `endTime` (`TimeOfDay`,
-B24) live next to `selectedEmployee`, outside the `StatefulBuilder`; they move
-into that `State` together.
-Progress (2026-10-30), one dialog per change set: profile → news → leave →
-assign.
-- **Profile done:** `widgets/edit_profile_dialog.dart`. Unlike the
-  change-password dialog it does not pop with its result: a saved user goes
-  to an `onSaved` callback, called before the dialog checks its own
-  `mounted`, so a save that finishes after a tap outside still reaches the
-  session (F25). Pinned by three new tests in `profile_screen_test.dart`,
-  written first and passing against the old code. `flutter test`: 200
-  passing; `flutter analyze`: 32 issues before, 29 after.
-- **Profile, follow-up:** that first step only showed a failed save's
-  message while the dialog was open; the old code showed it on the screen,
-  so a tap outside followed by a failure went unreported. An `onFailed`
-  callback gives it back to the screen, as `onSaved` does for success. The
-  test "a save that fails after the dialog was closed still says so" failed
-  before this and passes after. The other dialogs report both outcomes this
-  way. `flutter test`: 201 passing; `flutter analyze`: 29.
-- **News done:** `widgets/add_news_dialog.dart`, with `onPosted` and
-  `onFailed`. `selectedType` / `selectedDeadline` became fields of the
-  `State` and `setDialogState` became `setState`. The author is now read when
-  the dialog opens, not when Post is tapped; an expired login closes the
-  dialog with every screen, so no other moment is possible. Three new tests in
-  `news_screen_test.dart`, passing before and after. `flutter test`: 204
-  passing; `flutter analyze`: 29 issues before, 26 after.
-- **Leave done:** `widgets/add_leave_dialog.dart`, with `onFiled` only: a
-  refusal is shown inside the dialog, as before, so it needs no callback.
-  `selectedRange`, `saveError` and `saving` became fields of the `State`, and
-  `_submitErrorText` moved with the dialog, the only thing that used it. The
-  employee is read when the dialog opens, as on news. Two new tests in
-  `leave_requests_screen_test.dart` pin a request answered after a tap
-  outside: filed still reloads the list, refused breaks nothing. Both passed
-  before and after. `flutter test`: 206 passing; `flutter analyze`: 26
-  issues before, 25 after.
-- Left: assign.
-
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
 `shift.date.toIso8601String().split('T')[0]`; `_isoDate()` in the same class
@@ -350,7 +294,7 @@ header could describe. Either is a contract change, with its own test.
 Where: counted during F16 step 16d2, the same 35 before and after it. Ten
 `no_leading_underscores_for_local_identifiers` are B35's dialog variables and
 the one `unused_element` was `_buildStatColumn`, deleted with F20 on
-2026-10-07, leaving 34. Not tracked anywhere else: every screen's constructor has no `key` parameter
+2026-10-07, leaving 34. B35 (done 2026-10-30) removed the ten, leaving 24. Not tracked anywhere else: every screen's constructor has no `key` parameter
 (`use_key_in_widget_constructors`, 10) and two could be `const`; nine
 `createState` methods return a private `_...State` type in a public API
 (`library_private_types_in_public_api`); `child` is not the last argument
@@ -653,8 +597,8 @@ should refuse the mismatch too, with a 400 and a test - a separate,
 backend change.
 
 **B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
-Where: `widgets/add_leave_dialog.dart` `_submit`, and the assign dialog in
-`shifts_screen.dart` (`else if (dialogContext.mounted)`). Both show a refusal
+Where: `widgets/add_leave_dialog.dart` `_submit` and
+`widgets/assign_shift_dialog.dart` `_save` (`else if (mounted)`). Both show a refusal
 only inside the dialog. A tap outside or the back button closes it while the
 request is on its way; the refusal then goes nowhere.
 Why it matters: the user closed the dialog after tapping Submit, so they
@@ -1784,3 +1728,72 @@ one passed. Test pitfall met on the way: `http.Response(String)` encodes
 its body as Latin-1 unless a charset is given, so a Greek position in the
 fake reply made the fake itself throw; the test uses ASCII. `flutter test`:
 197 passing; `flutter analyze`: 32 issues before and after.
+
+**B35 · LOW · The assign dialog's text controllers are never disposed** — found 2026-09-23
+Where: `shifts_screen.dart` `_showAssignShiftDialog` creates a
+`TextEditingController` as a local variable for every dialog it opens (three
+until B24's fix turned the two time fields into pickers; the position one is
+left). Seen
+again in F25 step 25b (2026-09-29): the news post (`_showAddNewsDialog`), leave
+(`_showAddLeaveDialog`) and profile (`_showEditDialog`) dialogs do the same.
+Why it matters: a controller holds listeners until `dispose()` is called;
+each opened dialog leaks three. Small here, but the habit leaks real
+resources elsewhere (animation controllers, streams). The local names also
+start with `_`, which the analyzer flags - `_` means "private to the
+library", and a local variable is already private.
+Fix idea: move the dialog into its own `StatefulWidget` that creates the
+controllers in `initState` and disposes them in `dispose`.
+Model (2026-10-14): the change-password dialog (B8),
+`widgets/change_password_dialog.dart`, was built this way from the start -
+its own `State` with `dispose()`, `mounted` and `context`, popping with
+`true` for the screen to show the message. The four dialogs above are
+unchanged.
+Note (2026-10-21): the assign dialog's `startTime` / `endTime` (`TimeOfDay`,
+B24) live next to `selectedEmployee`, outside the `StatefulBuilder`; they move
+into that `State` together.
+Progress (2026-10-30), one dialog per change set: profile → news → leave →
+assign.
+- **Profile done:** `widgets/edit_profile_dialog.dart`. Unlike the
+  change-password dialog it does not pop with its result: a saved user goes
+  to an `onSaved` callback, called before the dialog checks its own
+  `mounted`, so a save that finishes after a tap outside still reaches the
+  session (F25). Pinned by three new tests in `profile_screen_test.dart`,
+  written first and passing against the old code. `flutter test`: 200
+  passing; `flutter analyze`: 32 issues before, 29 after.
+- **Profile, follow-up:** that first step only showed a failed save's
+  message while the dialog was open; the old code showed it on the screen,
+  so a tap outside followed by a failure went unreported. An `onFailed`
+  callback gives it back to the screen, as `onSaved` does for success. The
+  test "a save that fails after the dialog was closed still says so" failed
+  before this and passes after. The other dialogs report both outcomes this
+  way. `flutter test`: 201 passing; `flutter analyze`: 29.
+- **News done:** `widgets/add_news_dialog.dart`, with `onPosted` and
+  `onFailed`. `selectedType` / `selectedDeadline` became fields of the
+  `State` and `setDialogState` became `setState`. The author is now read when
+  the dialog opens, not when Post is tapped; an expired login closes the
+  dialog with every screen, so no other moment is possible. Three new tests in
+  `news_screen_test.dart`, passing before and after. `flutter test`: 204
+  passing; `flutter analyze`: 29 issues before, 26 after.
+- **Leave done:** `widgets/add_leave_dialog.dart`, with `onFiled` only: a
+  refusal is shown inside the dialog, as before, so it needs no callback.
+  `selectedRange`, `saveError` and `saving` became fields of the `State`, and
+  `_submitErrorText` moved with the dialog, the only thing that used it. The
+  employee is read when the dialog opens, as on news. Two new tests in
+  `leave_requests_screen_test.dart` pin a request answered after a tap
+  outside: filed still reloads the list, refused breaks nothing. Both passed
+  before and after. `flutter test`: 206 passing; `flutter analyze`: 26
+  issues before, 25 after.
+- **Assign done:** `widgets/assign_shift_dialog.dart`, with `onSaved` only:
+  like leave, a refusal is shown inside the dialog. `selectedEmployee`,
+  `startTime` / `endTime`, `saveError` and `saving` became fields of the
+  `State`; `_pickTime`, `_hhmm` and `_assignErrorText` moved with it, the
+  only thing that used them. The staff list is still loaded by the screen,
+  so B34's message comes before any dialog opens. Three new tests in
+  `shifts_screen_test.dart` (a shift answered after a tap outside: saved
+  still reloads the calendar, refused breaks nothing; the typed position is
+  sent), passing before and after. `flutter test`: 209 passing;
+  `flutter analyze`: 25 issues before, 24 after, with no
+  `no_leading_underscores_for_local_identifiers` left.
+Fixed by: `24985dc`, `8145e0e`, `cb1ead8`, `feab2be` and
+`refactor(frontend): give the assign-shift dialog its own State`,
+2026-10-30. Left open from the work: B73, B74, B75.

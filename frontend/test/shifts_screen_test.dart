@@ -15,13 +15,15 @@ import 'helpers/app_scope.dart';
 
 /// A fake server: an empty calendar, one employee, and [assignStatus] as the
 /// answer to "assign a shift", with [problemType] in its body if given (B31).
-/// Each body it is sent goes into [posted].
+/// Each body it is sent goes into [posted], and each load of the month's
+/// shifts adds its path to [shiftLoads].
 ///
 /// With [held], each "assign a shift" instead waits for the test to complete
 /// the [Completer] it adds there, and [assignStatus] is not used (B32).
 ApiService serverAnsweringAssign(int assignStatus,
         {String? problemType,
         List<String>? posted,
+        List<String>? shiftLoads,
         List<Completer<http.Response>>? held}) =>
     ApiService(client: MockClient((request) async {
       if (request.method == 'POST') {
@@ -40,6 +42,7 @@ ApiService serverAnsweringAssign(int assignStatus,
             '"page":0,"size":100,"totalElements":1,"totalPages":1}',
             200);
       }
+      shiftLoads?.add(request.url.path);
       return http.Response('[]', 200); // the month's shifts
     }));
 
@@ -174,6 +177,63 @@ void main() {
       held.last.complete(http.Response('{}', 201));
       await tester.pumpAndSettle();
     });
+
+    // B35: the dialog moved into its own State. A tap outside can close it
+    // while the shift is on its way; the two tests below pin what happens to
+    // each answer then.
+    Future<void> saveAndCloseTheDialog(WidgetTester tester) async {
+      await tester.tap(find.text('Αποθήκευση'));
+      await tester.pump();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    }
+
+    testWidgets('a shift saved after its dialog was closed still reloads the calendar',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      final shiftLoads = <String>[];
+      await openAssignDialog(
+          tester, serverAnsweringAssign(0, held: held, shiftLoads: shiftLoads));
+      await saveAndCloseTheDialog(tester);
+      final loadsBefore = shiftLoads.length;
+
+      held.single.complete(http.Response('{}', 201));
+      await tester.pumpAndSettle();
+
+      expect(shiftLoads, hasLength(loadsBefore + 1));
+    });
+
+    // The refusal is shown inside the dialog, which is gone (B75). What
+    // matters is that nothing touches the closed dialog: a setState on a
+    // State that was disposed throws.
+    testWidgets('a shift refused after its dialog was closed breaks nothing',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      final shiftLoads = <String>[];
+      await openAssignDialog(
+          tester, serverAnsweringAssign(0, held: held, shiftLoads: shiftLoads));
+      await saveAndCloseTheDialog(tester);
+      final loadsBefore = shiftLoads.length;
+
+      held.single.complete(http.Response('{"status":409}', 409));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(shiftLoads, hasLength(loadsBefore));
+    });
+  });
+
+  testWidgets('the typed position is sent',
+      (WidgetTester tester) async {
+    final posted = <String>[];
+    await openAssignDialog(tester, serverAnsweringAssign(201, posted: posted));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Θέση εργασίας'), 'Cashier');
+    await tester.tap(find.text('Αποθήκευση'));
+    await tester.pumpAndSettle();
+
+    expect(posted.single, contains('"position":"Cashier"'));
   });
 
   // B24: the times used to be free text, and "8.00" reached the server as a
