@@ -580,6 +580,17 @@ Fix idea: a `_saving` field in each `State`, set before the await and cleared
 on failure, with the button's `onPressed` null while it is true - as
 `ChangePasswordDialog` does. One dialog per change set; news first, since it
 is the one that duplicates data.
+Progress (2026-10-30):
+- **News done:** `_saving` in `_AddNewsDialogState`, set before the await
+  and cleared after `onFailed` when the dialog is still open; Post shows a
+  small spinner while it is true, as the leave and assign dialogs do (B32),
+  rather than only turning grey as `ChangePasswordDialog` does - a grey
+  button is easy to miss on a slow network. A "while it is being sent" group
+  in `news_screen_test.dart`: "a double tap posts once" and "Post is off and
+  shows a spinner" failed before and pass after; "a failed post turns Post
+  back on" passed before too, and guards against the flag staying on.
+  `flutter test`: 212 passing; `flutter analyze`: 24 before and after.
+- Left: profile.
 
 **B74 · LOW · A news post keeps the target or deadline of a type it no longer has** — found 2026-10-30
 Where: `widgets/add_news_dialog.dart`. Switching the type only hides the

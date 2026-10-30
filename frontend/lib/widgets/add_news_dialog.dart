@@ -43,6 +43,9 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
   // StatefulBuilder they had to live outside the builder for the same reason.
   String _selectedType = 'ANNOUNCEMENT';
   DateTime? _selectedDeadline;
+  // True while the post is on its way: Post is off, so a double tap cannot
+  // publish the same announcement twice (B73).
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -64,6 +67,8 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
   }
 
   Future<void> _post() async {
+    // Before the await: once it starts, a second tap is too late to stop.
+    setState(() => _saving = true);
     final newItem = NewsItem(
       id: 0,
       title: _titleController.text,
@@ -82,6 +87,7 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
     } catch (e) {
       // The dialog stays open, so what was typed can be corrected.
       widget.onFailed(e);
+      if (mounted) setState(() => _saving = false);
       return;
     }
     widget.onPosted();
@@ -127,7 +133,16 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text("Ακύρωση")),
-        ElevatedButton(onPressed: _post, child: Text("Δημοσίευση")),
+        ElevatedButton(
+          onPressed: _saving ? null : _post,
+          // Small enough to sit inside the button in place of its text.
+          child: _saving
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Text("Δημοσίευση"),
+        ),
       ],
     );
   }

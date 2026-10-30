@@ -147,6 +147,77 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
     });
 
+    // B73: Post stayed enabled while the request was on its way, so a double
+    // tap published the same announcement twice. pump, not pumpAndSettle,
+    // while a reply is held: the spinner animates forever, so it never
+    // settles.
+    group('while it is being sent', () {
+      final spinner = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(CircularProgressIndicator));
+
+      /// Opens the dialog with each POST waiting for the test to complete
+      /// the Completer it adds to [held], and types a title.
+      Future<void> openHeld(
+          WidgetTester tester, List<Completer<http.Response>> held) async {
+        await openDialog(tester, (_) {
+          final reply = Completer<http.Response>();
+          held.add(reply);
+          return reply.future;
+        });
+        await tester.enterText(find.widgetWithText(TextField, 'Τίτλος'), 'Inventory');
+      }
+
+      testWidgets('a double tap posts once', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        // Where the finger is: the button's text is gone once it spins.
+        final post = tester.getCenter(find.text('Δημοσίευση'));
+        await tester.tapAt(post);
+        await tester.pump();
+        await tester.tapAt(post);
+        await tester.pump();
+
+        expect(held, hasLength(1));
+        held.single.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('Post is off and shows a spinner', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pump();
+
+        expect(spinner, findsOneWidget);
+        final post = tester.widget<ElevatedButton>(
+            find.ancestor(of: spinner, matching: find.byType(ElevatedButton)));
+        expect(post.onPressed, isNull);
+        held.single.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
+
+      // The dialog stays open after a failure; Post must work again.
+      testWidgets('a failed post turns Post back on', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pump();
+        held.single.complete(http.Response('', 500));
+        await tester.pumpAndSettle();
+
+        expect(spinner, findsNothing);
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pump();
+        expect(held, hasLength(2));
+        held.last.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+      });
+    });
+
     testWidgets('cancelling sends nothing', (WidgetTester tester) async {
       var posts = 0;
       await openDialog(tester, (_) async {
