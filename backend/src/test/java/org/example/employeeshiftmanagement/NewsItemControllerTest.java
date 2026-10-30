@@ -148,6 +148,82 @@ class NewsItemControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // B74: a task with a target value or a goal with a deadline used to be
+    // stored as sent. Each type has at most its own extra, and the error
+    // names the field that does not belong.
+    @Test
+    void creatingATaskRejectsATargetValue() throws Exception {
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Inventory","description":"Count the stock",
+                                 "type":"TASK","targetValue":50}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.targetValue")
+                        .value("Only a goal can have a target value"));
+
+        verify(newsItemService, never()).createNewsItem(any(), anyInt());
+    }
+
+    @Test
+    void creatingAGoalRejectsADeadline() throws Exception {
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Sales","description":"This month",
+                                 "type":"GOAL","deadline":"2026-11-30T00:00:00"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.deadline")
+                        .value("Only a task can have a deadline"));
+
+        verify(newsItemService, never()).createNewsItem(any(), anyInt());
+    }
+
+    @Test
+    void anAnnouncementWithBothExtrasIsToldAboutBoth() throws Exception {
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Staff meeting","description":"Monday 09:00",
+                                 "type":"ANNOUNCEMENT","targetValue":50,
+                                 "deadline":"2026-11-30T00:00:00"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.targetValue")
+                        .value("Only a goal can have a target value"))
+                .andExpect(jsonPath("$.errors.deadline")
+                        .value("Only a task can have a deadline"));
+    }
+
+    // Passes before the rule as well: it guards against a rule that refuses
+    // each type its own extra.
+    @Test
+    void aGoalWithATargetAndATaskWithADeadlineAreCreated() throws Exception {
+        when(newsItemService.createNewsItem(any(NewsItem.class), any())).thenReturn(newsItem());
+
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Sales","description":"This month",
+                                 "type":"GOAL","targetValue":50}
+                                """))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/news")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Inventory","description":"Count the stock",
+                                 "type":"TASK","deadline":"2026-11-30T00:00:00"}
+                                """))
+                .andExpect(status().isCreated());
+    }
+
     @Test
     void creatingNewsRejectsATitleLongerThanTheColumn() throws Exception {
         mockMvc.perform(post("/api/v1/news")

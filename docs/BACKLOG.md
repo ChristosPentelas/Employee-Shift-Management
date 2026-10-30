@@ -592,7 +592,17 @@ deadline - B74 only forbids the wrong pairing.
   date were sent) and pass after; "switching back to goal keeps the typed
   target" passed before too, and guards against clearing the field instead.
   `flutter test`: 218 passing; `flutter analyze`: 24 before and after.
-- Left: 74b, 74c.
+- **74b done:** `validation/ValidNewsFields` + `ValidNewsFieldsValidator` on
+  `CreateNewsRequest`. Unlike `ValidShiftTimesValidator` it can report two
+  violations, one per field that does not belong, each with its own message
+  ("Only a task can have a deadline", "Only a goal can have a target value"),
+  so an announcement with both is told about both at once. Four
+  `@WebMvcTest` tests in `NewsItemControllerTest`: a task with a target, a
+  goal with a deadline, and an announcement with both failed before (the
+  request reached the service) and pass after; a goal with its target and a
+  task with its deadline passed before too, and guard against a rule that is
+  too strict. `mvnw test`: 315 passing, four of them new.
+- Left: 74c.
 
 **B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
 Where: `widgets/add_leave_dialog.dart` `_submit` and

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.validation.FieldLimits;
+import org.example.employeeshiftmanagement.validation.ValidNewsFields;
 
 import java.time.LocalDateTime;
 
@@ -15,7 +16,11 @@ import java.time.LocalDateTime;
  * their token (F1 step 7b). There is also no
  * createdAt - NewsItem.onCreate() (@PrePersist) stamps that server-side, so a
  * client-sent value was only ever ignored.
+ *
+ * deadline belongs to a TASK and targetValue to a GOAL; the ValidNewsFields
+ * annotation on the record refuses either on another type (B74).
  */
+@ValidNewsFields
 public record CreateNewsRequest(
         @NotBlank(message = "Title is required")
         @Size(max = FieldLimits.TEXT, message = "Title must be at most {max} characters")
