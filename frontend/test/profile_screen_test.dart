@@ -65,6 +65,88 @@ void main() {
     expect(find.text('Σφάλμα κατά την ενημέρωση'), findsOneWidget);
   });
 
+  // B35: the edit dialog moved into its own StatefulWidget, so its three
+  // controllers are released when it closes. These pin what it did before.
+  group('the edit dialog', () {
+    String fieldText(WidgetTester tester, String label) =>
+        tester.widget<TextField>(find.widgetWithText(TextField, label)).controller!.text;
+
+    testWidgets('opens with the current name, email and phone',
+        (WidgetTester tester) async {
+      final container = testContainer(
+          user: User(id: 7, name: 'Worker', email: 'worker@example.com',
+              phoneNumber: '6900000000', role: 'EMPLOYEE'));
+      final api = ApiService(
+          client: MockClient((_) async => http.Response('', 500)));
+
+      await tester.pumpWidget(
+          withAppState(container, MaterialApp(home: ProfileScreen(apiService: api))));
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester, 'Όνομα'), 'Worker');
+      expect(fieldText(tester, 'Email'), 'worker@example.com');
+      expect(fieldText(tester, 'Τηλέφωνο'), '6900000000');
+    });
+
+    testWidgets('cancelling sends nothing and keeps the profile',
+        (WidgetTester tester) async {
+      var requests = 0;
+      final container = testContainer(
+          user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'));
+      final api = ApiService(client: MockClient((_) async {
+        requests++;
+        return http.Response('', 500);
+      }));
+
+      await tester.pumpWidget(
+          withAppState(container, MaterialApp(home: ProfileScreen(apiService: api))));
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Όνομα'), 'New Name');
+      await tester.tap(find.widgetWithText(TextButton, 'Ακύρωση'));
+      await tester.pumpAndSettle();
+
+      expect(requests, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(container.read(authProvider)!.user.name, 'Worker');
+    });
+
+    // F25: a tap outside closes the dialog while the save is on its way. The
+    // server stored the new name anyway, so the session must get it too -
+    // the reason the dialog reports through onSaved instead of popping with
+    // the user, which a closed dialog can no longer do.
+    testWidgets('a save that finishes after the dialog was closed still updates the session',
+        (WidgetTester tester) async {
+      final saveReply = Completer<http.Response>();
+      final container = testContainer(
+          user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'));
+      final api = ApiService(client: MockClient((_) => saveReply.future));
+
+      await tester.pumpWidget(
+          withAppState(container, MaterialApp(home: ProfileScreen(apiService: api))));
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Όνομα'), 'New Name');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+      await tester.pump();
+
+      // Close the dialog by tapping outside it (the barrier) mid-request.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+
+      saveReply.complete(http.Response(
+          jsonEncode({'id': 7, 'name': 'New Name', 'email': 'worker@example.com',
+              'role': 'EMPLOYEE'}),
+          200));
+      await tester.pumpAndSettle();
+
+      expect(container.read(authProvider)!.user.name, 'New Name');
+      expect(find.text('New Name'), findsOneWidget);
+    });
+  });
+
   group('changing the password (B8)', () {
     User worker() =>
         User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');

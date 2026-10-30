@@ -145,6 +145,16 @@ unchanged.
 Note (2026-10-21): the assign dialog's `startTime` / `endTime` (`TimeOfDay`,
 B24) live next to `selectedEmployee`, outside the `StatefulBuilder`; they move
 into that `State` together.
+Progress (2026-10-30), one dialog per change set: profile → news → leave →
+assign.
+- **Profile done:** `widgets/edit_profile_dialog.dart`. Unlike the
+  change-password dialog it does not pop with its result: a saved user goes
+  to an `onSaved` callback, called before the dialog checks its own
+  `mounted`, so a save that finishes after a tap outside still reaches the
+  session (F25). Pinned by three new tests in `profile_screen_test.dart`,
+  written first and passing against the old code. `flutter test`: 200
+  passing; `flutter analyze`: 32 issues before, 29 after.
+- Left: news, leave, assign.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
@@ -582,6 +592,18 @@ Fix idea: one timeout in `AuthClient.send` (every request passes through it).
 A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
+
+**B73 · LOW · The profile edit dialog's Save can be pressed again while saving** — found 2026-10-30
+Where: `widgets/edit_profile_dialog.dart` `_save`. B32 added a `saving` flag
+to the assign and leave dialogs and `ChangePasswordDialog` had one from the
+start (B43); the profile dialog has none.
+Why it matters: a double tap sends two `PUT /users/{id}`. Both carry the same
+values, so nothing is corrupted today, but the user sees the success message
+twice, and on a slow network the button gives no sign the tap was taken.
+Relates to: B32, B43, B35 (found while moving this dialog into its own State).
+Fix idea: a `_saving` field in `_EditProfileDialogState`, set before the
+await and cleared on failure, with the button's `onPressed` null while it is
+true - as `ChangePasswordDialog` does.
 
 ---
 

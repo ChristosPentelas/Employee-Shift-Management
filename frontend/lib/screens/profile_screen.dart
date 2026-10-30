@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../screens/login_screen.dart';
 import '../widgets/change_password_dialog.dart';
+import '../widgets/edit_profile_dialog.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
@@ -23,68 +24,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _showEditDialog() {
     final me = ref.read(authProvider);
     if (me == null) return;
-    final user = me.user;
-    final _nameController = TextEditingController(text: user.name);
-    final _emailController = TextEditingController(text: user.email);
-    final _phoneController = TextEditingController(text: user.phoneNumber);
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text("Επεξεργασία Προφίλ"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nameController,
-                decoration: InputDecoration(labelText: "Όνομα"),
-              ),
-              TextField(
-                controller: _emailController,
-                decoration: InputDecoration(labelText: "Email"),
-              ),
-              TextField(
-                controller: _phoneController,
-                decoration: InputDecoration(labelText: "Τηλέφωνο"),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text("Ακύρωση"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final saved = await _apiService.updateUser(
-                user.id,
-                _nameController.text,
-                _emailController.text,
-                _phoneController.text,
-              );
-
-              // The screen may have closed while saving (e.g. the session
-              // expired); its ref and context are no longer usable then.
-              if (!mounted) return;
-
-              if (saved != null) {
-                // A new session with the saved user: build() watches
-                // authProvider, so the profile repaints by itself.
-                ref.read(authProvider.notifier).updateUser(saved);
-                // `mounted` above is the screen's. The dialog is checked on
-                // its own: a tap outside can close it while saving (F25).
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα κατά την ενημέρωση")),);
-              }
-            },
-            child: Text("Αποθήκευση"),
-          ),
-        ],
+      builder: (_) => EditProfileDialog(
+        apiService: _apiService,
+        user: me.user,
+        // Runs even if the dialog was closed while saving; only the screen
+        // needs to be there.
+        onSaved: (saved) {
+          // The screen may have closed while saving (e.g. the session
+          // expired); its ref and context are no longer usable then.
+          if (!mounted) return;
+          // A new session with the saved user: build() watches
+          // authProvider, so the profile repaints by itself.
+          ref.read(authProvider.notifier).updateUser(saved);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
+          );
+        },
       ),
     );
   }
