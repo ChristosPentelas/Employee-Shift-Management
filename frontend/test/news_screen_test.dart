@@ -78,6 +78,90 @@ void main() {
     expect(listCalls, 8, reason: 'every tab reloads although the dialog is gone');
   });
 
+  // B35: the new-post dialog moved into its own StatefulWidget, so its three
+  // controllers are released when it closes. These pin what it did before.
+  group('the new-post dialog', () {
+    final boss =
+        User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    final emptyPage = http.Response(
+        '{"content":[],"page":0,"size":20,"totalElements":0,"totalPages":0}', 200);
+
+    /// Opens the news screen as a supervisor and the new-post dialog on it.
+    /// [post] answers each POST, given its decoded body.
+    Future<void> openDialog(WidgetTester tester,
+        Future<http.Response> Function(Map<String, dynamic> body) post) async {
+      final network = MockClient((request) => request.method == 'POST'
+          ? post(jsonDecode(request.body))
+          : Future.value(emptyPage));
+      final container = testContainer(
+          user: boss, overrides: [networkClientProvider.overrideWithValue(network)]);
+      await tester.pumpWidget(withAppState(container, MaterialApp(home: NewsScreen())));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+    }
+
+    // Like the saved post above, but the post fails. The dialog that would
+    // have said so is gone; the screen is not, so it must.
+    testWidgets('a post that fails after its dialog was closed still says so',
+        (WidgetTester tester) async {
+      final postReply = Completer<http.Response>();
+      await openDialog(tester, (_) => postReply.future);
+      await tester.enterText(find.widgetWithText(TextField, 'Τίτλος'), 'Inventory');
+      await tester.tap(find.text('Δημοσίευση'));
+      await tester.pump();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+
+      postReply.complete(http.Response('', 400));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Σφάλμα'), findsOneWidget);
+    });
+
+    // Choosing GOAL rebuilds the dialog with the target field; what is typed
+    // there goes out as a number.
+    testWidgets('a goal is sent with the target value typed',
+        (WidgetTester tester) async {
+      Map<String, dynamic>? sent;
+      await openDialog(tester, (body) async {
+        sent = body;
+        return http.Response('{}', 201);
+      });
+      await tester.tap(find.text('ANNOUNCEMENT'));
+      await tester.pumpAndSettle();
+      // .last: the button also keeps every item, hidden, to size itself.
+      await tester.tap(find.text('GOAL').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Τίτλος'), 'Sales');
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Τιμή Στόχου (Target Value)'), '50');
+      await tester.tap(find.text('Δημοσίευση'));
+      await tester.pumpAndSettle();
+
+      expect(sent?['type'], 'GOAL');
+      expect(sent?['title'], 'Sales');
+      expect(sent?['targetValue'], 50);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('cancelling sends nothing', (WidgetTester tester) async {
+      var posts = 0;
+      await openDialog(tester, (_) async {
+        posts++;
+        return http.Response('{}', 201);
+      });
+      await tester.enterText(find.widgetWithText(TextField, 'Τίτλος'), 'Inventory');
+      await tester.tap(find.widgetWithText(TextButton, 'Ακύρωση'));
+      await tester.pumpAndSettle();
+
+      expect(posts, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+  });
+
   // B26: the tabs used to filter the first 20 posts on the phone, so the
   // Goals tab could say "no entries" while older goals were on page 2. Now
   // each tab pages through its own list from the server.

@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../models/news_model.dart';
-import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
+import '../widgets/add_news_dialog.dart';
 import '../widgets/paged_list_footer.dart';
 
 /// One tab: its label, and the NewsType it shows as the server spells it,
@@ -175,102 +175,27 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
   }
 
   void _showAddNewsDialog() {
-    final _titleController = TextEditingController();
-    final _descController = TextEditingController();
-    final _targetController = TextEditingController();
-
-    String selectedType = 'ANNOUNCEMENT';
-    DateTime? selectedDeadline;
+    // Read when the dialog opens. The session cannot end while it is open
+    // without closing it: an expired login closes every screen (B16).
+    final me = ref.read(authProvider);
+    if (me == null) return;
 
     showDialog(
       context: context,
-      // `_`: this outer context is not used. Named `context`, it would hide the
-      // screen's, and every `context` below would quietly mean the dialog (F25).
-      builder: (_) => StatefulBuilder(
-        builder: (dialogContext,setDialogState) => AlertDialog(
-          title: Text("Νέα Ανάρτηση"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButton<String>(
-                  value: selectedType,
-                  isExpanded: true,
-                  items: ['ANNOUNCEMENT','GOAL','TASK'].map((String val){
-                    return DropdownMenuItem(value: val, child: Text(val));
-                  }).toList(),
-                  onChanged: (val) {
-                    setDialogState(() => selectedType = val!);
-                  },
-                ),
-                TextField(controller: _titleController,decoration: InputDecoration(labelText: "Τίτλος")),
-                TextField(controller: _descController,decoration: InputDecoration(labelText: "Περιγραφή"), maxLines: 3),
-
-                if (selectedType == 'GOAL')
-                  TextField(
-                    controller: _targetController,
-                    decoration: InputDecoration(labelText: "Τιμή Στόχου (Target Value)"),
-                    keyboardType: TextInputType.number,
-                  ),
-
-                if (selectedType == 'TASK')
-                  ListTile(
-                    title: Text(selectedDeadline == null
-                        ? "Επιλογή Deadline"
-                        : "Deadline: ${selectedDeadline!.day}/${selectedDeadline!.month}"
-                    ),
-                    trailing: Icon(Icons.calendar_today),
-                    onTap: () async {
-                      DateTime? picked = await showDatePicker(
-                        context: dialogContext,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: latestPickableDate(DateTime.now()),);
-                      if (!dialogContext.mounted) return;
-                      if (picked != null) setDialogState(() => selectedDeadline = picked);
-                    },
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
-            ElevatedButton(
-              onPressed: () async {
-                // Read before the await: the session can end while the
-                // request is on its way (B16).
-                final me = ref.read(authProvider);
-                if (me == null) return;
-
-                NewsItem newItem = NewsItem(
-                    id: 0,
-                    title: _titleController.text,
-                    description: _descController.text,
-                    type: selectedType,
-                    createdAt: DateTime.now(),
-                    author: me.user,
-                    deadline: selectedDeadline,
-                    targetValue: int.tryParse(_targetController.text),
-                );
-
-                try{
-                  await _apiService.postNews(newItem);
-                  // Two checks, because either can be gone: the dialog (a tap
-                  // outside it, the back button) or the whole screen (an
-                  // expired login). The post was saved either way, so a
-                  // missing dialog must not skip the refresh below (F25).
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  if (!mounted) return;
-                  _reloadAll();
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
-                }
-              },
-              child: Text("Δημοσίευση"),
-            ),
-          ],
-        ),
+      builder: (_) => AddNewsDialog(
+        apiService: _apiService,
+        author: me.user,
+        // Both run even if the dialog was closed while posting; only the
+        // screen needs to be there. The post was saved either way, so a
+        // missing dialog must not skip the refresh (F25).
+        onPosted: () {
+          if (!mounted) return;
+          _reloadAll();
+        },
+        onFailed: (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
+        },
       ),
     );
   }

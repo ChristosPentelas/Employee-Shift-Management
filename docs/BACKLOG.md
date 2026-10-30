@@ -161,7 +161,14 @@ assign.
   test "a save that fails after the dialog was closed still says so" failed
   before this and passes after. The other dialogs report both outcomes this
   way. `flutter test`: 201 passing; `flutter analyze`: 29.
-- Left: news, leave, assign.
+- **News done:** `widgets/add_news_dialog.dart`, with `onPosted` and
+  `onFailed`. `selectedType` / `selectedDeadline` became fields of the
+  `State` and `setDialogState` became `setState`. The author is now read when
+  the dialog opens, not when Post is tapped; an expired login closes the
+  dialog with every screen, so no other moment is possible. Three new tests in
+  `news_screen_test.dart`, passing before and after. `flutter test`: 204
+  passing; `flutter analyze`: 29 issues before, 26 after.
+- Left: leave, assign.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
@@ -207,7 +214,11 @@ information) and replace the F7 part with where the rule is now enforced.
 Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
 `news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
 Snackbars do the same with `Text("Σφάλμα: $e")` (seen in F25 step 25b): news
-post and delete, employee delete, and leave approve/reject.
+post and delete, employee delete, and leave approve/reject. Since B35
+(2026-10-30) the news post's snackbar is in the `onFailed` that
+`_showAddNewsDialog` hands to `AddNewsDialog`; `postNews` wraps its own
+exception again, so the text reads `Exception: Σφάλμα: Exception: Αποτυχία
+δημιουργίας: 400`.
 Why it matters: the user sees the exception's text, e.g. `Exception: Σφάλμα
 σύνδεσης: ` followed by the underlying Dart error in English: developer
 detail, and no hint of what to do. F29 removed the most likely cause on the
@@ -600,17 +611,37 @@ A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
 
-**B73 · LOW · The profile edit dialog's Save can be pressed again while saving** — found 2026-10-30
-Where: `widgets/edit_profile_dialog.dart` `_save`. B32 added a `saving` flag
-to the assign and leave dialogs and `ChangePasswordDialog` had one from the
-start (B43); the profile dialog has none.
-Why it matters: a double tap sends two `PUT /users/{id}`. Both carry the same
-values, so nothing is corrupted today, but the user sees the success message
-twice, and on a slow network the button gives no sign the tap was taken.
-Relates to: B32, B43, B35 (found while moving this dialog into its own State).
-Fix idea: a `_saving` field in `_EditProfileDialogState`, set before the
-await and cleared on failure, with the button's `onPressed` null while it is
-true - as `ChangePasswordDialog` does.
+**B73 · LOW · The profile and news dialogs can be submitted again while sending** — found 2026-10-30
+Where: `widgets/edit_profile_dialog.dart` `_save` and
+`widgets/add_news_dialog.dart` `_post`. B32 added a `saving` flag to the
+assign and leave dialogs and `ChangePasswordDialog` had one from the start
+(B43); these two have none.
+Why it matters: on the profile a double tap sends two `PUT /users/{id}` with
+the same values, so nothing is corrupted, but the success message shows
+twice. On the news dialog it is worse: two `POST /news`, so the same
+announcement is published twice and every employee sees it twice. On a slow
+network neither button gives any sign the tap was taken.
+Relates to: B32, B43, B35 (found while moving these dialogs into their own
+State).
+Fix idea: a `_saving` field in each `State`, set before the await and cleared
+on failure, with the button's `onPressed` null while it is true - as
+`ChangePasswordDialog` does. One dialog per change set; news first, since it
+is the one that duplicates data.
+
+**B74 · LOW · A news post keeps the target or deadline of a type it no longer has** — found 2026-10-30
+Where: `widgets/add_news_dialog.dart`. Switching the type only hides the
+target field (GOAL) or the deadline row (TASK); `_targetController` and
+`_selectedDeadline` keep their values, and `_post` sends both whatever the
+type. `CreateNewsRequest` accepts any combination.
+Why it matters: choose GOAL, type 50, switch to TASK and post - the server
+stores a task with `targetValue` 50. The app shows the target only on goals,
+so it stays hidden, but it is wrong data, and any other client or a later
+screen would show it.
+Relates to: B35 (found while moving the dialog).
+Fix idea: send `targetValue` only for GOAL and `deadline` only for TASK in
+`_post` (keeping what was typed, in case the user switches back). The server
+should refuse the mismatch too, with a 400 and a test - a separate,
+backend change.
 
 ---
 
