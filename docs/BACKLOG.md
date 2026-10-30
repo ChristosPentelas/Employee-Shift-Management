@@ -602,7 +602,18 @@ deadline - B74 only forbids the wrong pairing.
   request reached the service) and pass after; a goal with its target and a
   task with its deadline passed before too, and guard against a rule that is
   too strict. `mvnw test`: 315 passing, four of them new.
-- Left: 74c.
+- 74c in two change sets: the rule moves to one place first (74c1), then
+  `updateNewsItem` uses it through a new `FieldValidationException`, a 400
+  with the same `errors` body as `@Valid` (74c2). Not
+  `ResponseStatusException`: no `errors` map, and an HTTP status inside the
+  service. Not a check in the controller: business logic belongs in services.
+- **74c1 done:** `validation/NewsFieldRules.mismatches(type, deadline,
+  targetValue)` returns field to message for each extra that does not fit,
+  in field order. `ValidNewsFieldsValidator` turns each entry into a
+  violation instead of holding the rule itself. A refactor: the four 74b
+  tests pass unchanged. `NewsFieldRulesTest`, plain JUnit, six tests. `mvnw
+  test`: 321 passing.
+- Left: 74c2.
 
 **B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
 Where: `widgets/add_leave_dialog.dart` `_submit` and
