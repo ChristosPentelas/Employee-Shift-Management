@@ -578,6 +578,21 @@ Fix idea: send `targetValue` only for GOAL and `deadline` only for TASK in
 `_post` (keeping what was typed, in case the user switches back). The server
 should refuse the mismatch too, with a 400 and a test - a separate,
 backend change.
+Plan (2026-10-31), three change sets, the app first so the server's new rule
+never refuses what today's app sends: **74a** the dialog, **74b**
+`CreateNewsRequest` (a class-level `@ValidNewsFields`, like
+`@ValidShiftTimes`), **74c** `PUT /news/{id}` (`UpdateNewsRequest` has no
+type, so the service checks the stored one; the app does not call it).
+Decided the same day: a GOAL does not have to have a target, nor a TASK a
+deadline - B74 only forbids the wrong pairing.
+- **74a done:** `_post` sends `deadline` only for TASK and `targetValue`
+  only for GOAL; the controller and `_selectedDeadline` keep their values.
+  A "switching the type" group in `news_screen_test.dart`: a goal switched
+  to a task, and a task switched to a goal, failed before (the 50 and the
+  date were sent) and pass after; "switching back to goal keeps the typed
+  target" passed before too, and guards against clearing the field instead.
+  `flutter test`: 218 passing; `flutter analyze`: 24 before and after.
+- Left: 74b, 74c.
 
 **B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
 Where: `widgets/add_leave_dialog.dart` `_submit` and

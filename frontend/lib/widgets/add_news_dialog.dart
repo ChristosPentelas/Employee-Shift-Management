@@ -76,8 +76,10 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
       type: _selectedType,
       createdAt: DateTime.now(),
       author: widget.author,
-      deadline: _selectedDeadline,
-      targetValue: int.tryParse(_targetController.text),
+      // Only the type's own extra: switching the type hides the other one
+      // but keeps what was in it, in case the user switches back (B74).
+      deadline: _selectedType == 'TASK' ? _selectedDeadline : null,
+      targetValue: _selectedType == 'GOAL' ? int.tryParse(_targetController.text) : null,
     );
 
     // Both outcomes are reported before any mounted check: the screen needs

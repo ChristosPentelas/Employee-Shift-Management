@@ -147,6 +147,78 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
     });
 
+    // B74: switching the type only hid the target field or the deadline row;
+    // what was in them was still sent, and the server stored a task with a
+    // target value. What was typed stays, in case the user switches back.
+    group('switching the type', () {
+      Future<void> chooseType(WidgetTester tester, String type) async {
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        // .last: the button also keeps every item, hidden, to size itself.
+        await tester.tap(find.text(type).last);
+        await tester.pumpAndSettle();
+      }
+
+      final targetField = find.widgetWithText(TextField, 'Τιμή Στόχου (Target Value)');
+
+      /// Opens the dialog and returns the body of the post it sends, once
+      /// the test has tapped Post.
+      Future<Map<String, dynamic>? Function()> openRecording(
+          WidgetTester tester) async {
+        Map<String, dynamic>? sent;
+        await openDialog(tester, (body) async {
+          sent = body;
+          return http.Response('{}', 201);
+        });
+        await tester.enterText(find.widgetWithText(TextField, 'Τίτλος'), 'Sales');
+        return () => sent;
+      }
+
+      testWidgets('a goal switched to a task is sent without its target value',
+          (WidgetTester tester) async {
+        final sent = await openRecording(tester);
+        await chooseType(tester, 'GOAL');
+        await tester.enterText(targetField, '50');
+        await chooseType(tester, 'TASK');
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pumpAndSettle();
+
+        expect(sent()?['type'], 'TASK');
+        expect(sent()?['targetValue'], isNull);
+      });
+
+      testWidgets('a task switched to a goal is sent without its deadline',
+          (WidgetTester tester) async {
+        final sent = await openRecording(tester);
+        await chooseType(tester, 'TASK');
+        await tester.tap(find.text('Επιλογή Deadline'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OK')); // the picker opens on today
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Deadline: '), findsOneWidget); // it was picked
+        await chooseType(tester, 'GOAL');
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pumpAndSettle();
+
+        expect(sent()?['type'], 'GOAL');
+        expect(sent()?['deadline'], isNull);
+      });
+
+      testWidgets('switching back to goal keeps the typed target',
+          (WidgetTester tester) async {
+        final sent = await openRecording(tester);
+        await chooseType(tester, 'GOAL');
+        await tester.enterText(targetField, '50');
+        await chooseType(tester, 'TASK');
+        await chooseType(tester, 'GOAL');
+
+        expect(tester.widget<TextField>(targetField).controller!.text, '50');
+        await tester.tap(find.text('Δημοσίευση'));
+        await tester.pumpAndSettle();
+        expect(sent()?['targetValue'], 50);
+      });
+    });
+
     // B73: Post stayed enabled while the request was on its way, so a double
     // tap published the same announcement twice. pump, not pumpAndSettle,
     // while a reply is held: the spinner animates forever, so it never
