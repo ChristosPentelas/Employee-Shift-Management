@@ -564,34 +564,6 @@ A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
 
-**B73 · LOW · The profile and news dialogs can be submitted again while sending** — found 2026-10-30
-Where: `widgets/edit_profile_dialog.dart` `_save` and
-`widgets/add_news_dialog.dart` `_post`. B32 added a `saving` flag to the
-assign and leave dialogs and `ChangePasswordDialog` had one from the start
-(B43); these two have none.
-Why it matters: on the profile a double tap sends two `PUT /users/{id}` with
-the same values, so nothing is corrupted, but the success message shows
-twice. On the news dialog it is worse: two `POST /news`, so the same
-announcement is published twice and every employee sees it twice. On a slow
-network neither button gives any sign the tap was taken.
-Relates to: B32, B43, B35 (found while moving these dialogs into their own
-State).
-Fix idea: a `_saving` field in each `State`, set before the await and cleared
-on failure, with the button's `onPressed` null while it is true - as
-`ChangePasswordDialog` does. One dialog per change set; news first, since it
-is the one that duplicates data.
-Progress (2026-10-30):
-- **News done:** `_saving` in `_AddNewsDialogState`, set before the await
-  and cleared after `onFailed` when the dialog is still open; Post shows a
-  small spinner while it is true, as the leave and assign dialogs do (B32),
-  rather than only turning grey as `ChangePasswordDialog` does - a grey
-  button is easy to miss on a slow network. A "while it is being sent" group
-  in `news_screen_test.dart`: "a double tap posts once" and "Post is off and
-  shows a spinner" failed before and pass after; "a failed post turns Post
-  back on" passed before too, and guards against the flag staying on.
-  `flutter test`: 212 passing; `flutter analyze`: 24 before and after.
-- Left: profile.
-
 **B74 · LOW · A news post keeps the target or deadline of a type it no longer has** — found 2026-10-30
 Where: `widgets/add_news_dialog.dart`. Switching the type only hides the
 target field (GOAL) or the deadline row (TASK); `_targetController` and
@@ -1808,3 +1780,39 @@ assign.
 Fixed by: `24985dc`, `8145e0e`, `cb1ead8`, `feab2be` and
 `refactor(frontend): give the assign-shift dialog its own State`,
 2026-10-30. Left open from the work: B73, B74, B75.
+
+**B73 · LOW · The profile and news dialogs can be submitted again while sending** — found 2026-10-30
+Where: `widgets/edit_profile_dialog.dart` `_save` and
+`widgets/add_news_dialog.dart` `_post`. B32 added a `saving` flag to the
+assign and leave dialogs and `ChangePasswordDialog` had one from the start
+(B43); these two have none.
+Why it matters: on the profile a double tap sends two `PUT /users/{id}` with
+the same values, so nothing is corrupted, but the success message shows
+twice. On the news dialog it is worse: two `POST /news`, so the same
+announcement is published twice and every employee sees it twice. On a slow
+network neither button gives any sign the tap was taken.
+Relates to: B32, B43, B35 (found while moving these dialogs into their own
+State).
+Fix idea: a `_saving` field in each `State`, set before the await and cleared
+on failure, with the button's `onPressed` null while it is true - as
+`ChangePasswordDialog` does. One dialog per change set; news first, since it
+is the one that duplicates data.
+Progress (2026-10-30):
+- **News done:** `_saving` in `_AddNewsDialogState`, set before the await
+  and cleared after `onFailed` when the dialog is still open; Post shows a
+  small spinner while it is true, as the leave and assign dialogs do (B32),
+  rather than only turning grey as `ChangePasswordDialog` does - a grey
+  button is easy to miss on a slow network. A "while it is being sent" group
+  in `news_screen_test.dart`: "a double tap posts once" and "Post is off and
+  shows a spinner" failed before and pass after; "a failed post turns Post
+  back on" passed before too, and guards against the flag staying on.
+  `flutter test`: 212 passing; `flutter analyze`: 24 before and after.
+- **Profile done:** the same `_saving` and spinner in
+  `_EditProfileDialogState`, cleared after `onFailed` when the dialog is
+  still open. A "while it is being saved" group in `profile_screen_test.dart`:
+  "a double tap saves once" and "Save is off and shows a spinner" failed
+  before and pass after; "a failed save turns Save back on" passed before
+  too. `flutter test`: 215 passing; `flutter analyze`: 24 before and after.
+Fixed by: `b6dc2f8` and
+`fix(frontend): stop a double tap from saving a profile twice`, 2026-10-30.
+Every dialog that sends something now turns its button off while it waits.

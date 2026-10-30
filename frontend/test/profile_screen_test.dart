@@ -172,6 +172,86 @@ void main() {
       expect(find.text('Σφάλμα κατά την ενημέρωση'), findsOneWidget);
       expect(container.read(authProvider)!.user.name, 'Worker');
     });
+
+    // B73: Save stayed enabled while the request was on its way, so a double
+    // tap sent the profile twice and said so twice. pump, not pumpAndSettle,
+    // while a reply is held: the spinner animates forever, so it never
+    // settles.
+    group('while it is being saved', () {
+      final spinner = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(CircularProgressIndicator));
+      final savedReply = http.Response(
+          jsonEncode({'id': 7, 'name': 'Worker', 'email': 'worker@example.com',
+              'role': 'EMPLOYEE'}),
+          200);
+
+      /// Opens the edit dialog with each save waiting for the test to
+      /// complete the Completer it adds to [held].
+      Future<void> openHeld(
+          WidgetTester tester, List<Completer<http.Response>> held) async {
+        final container = testContainer(
+            user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'));
+        final api = ApiService(client: MockClient((_) {
+          final reply = Completer<http.Response>();
+          held.add(reply);
+          return reply.future;
+        }));
+        await tester.pumpWidget(
+            withAppState(container, MaterialApp(home: ProfileScreen(apiService: api))));
+        await tester.tap(find.byIcon(Icons.edit));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('a double tap saves once', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        // Where the finger is: the button's text is gone once it spins.
+        final save = tester.getCenter(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        await tester.tapAt(save);
+        await tester.pump();
+        await tester.tapAt(save);
+        await tester.pump();
+
+        expect(held, hasLength(1));
+        held.single.complete(savedReply);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('Save is off and shows a spinner', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        await tester.pump();
+
+        expect(spinner, findsOneWidget);
+        final save = tester.widget<ElevatedButton>(
+            find.ancestor(of: spinner, matching: find.byType(ElevatedButton)));
+        expect(save.onPressed, isNull);
+        held.single.complete(savedReply);
+        await tester.pumpAndSettle();
+      });
+
+      // The dialog stays open after a failure; Save must work again.
+      testWidgets('a failed save turns Save back on', (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        await tester.pump();
+        held.single.complete(http.Response('', 400));
+        await tester.pumpAndSettle();
+
+        expect(spinner, findsNothing);
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        await tester.pump();
+        expect(held, hasLength(2));
+        held.last.complete(savedReply);
+        await tester.pumpAndSettle();
+      });
+    });
   });
 
   group('changing the password (B8)', () {

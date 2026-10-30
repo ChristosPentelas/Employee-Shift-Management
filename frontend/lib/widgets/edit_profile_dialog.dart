@@ -36,6 +36,9 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  // True while the save is on its way: Save is off, so a double tap cannot
+  // send the profile twice (B73).
+  bool _saving = false;
 
   @override
   void initState() {
@@ -54,6 +57,8 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
   }
 
   Future<void> _save() async {
+    // Before the await: once it starts, a second tap is too late to stop.
+    setState(() => _saving = true);
     final saved = await widget.apiService.updateUser(
       widget.user.id,
       _nameController.text,
@@ -69,6 +74,7 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
     } else {
       // The dialog stays open, so what was typed can be corrected.
       widget.onFailed();
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -101,8 +107,14 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
           child: Text("Ακύρωση"),
         ),
         ElevatedButton(
-          onPressed: _save,
-          child: Text("Αποθήκευση"),
+          onPressed: _saving ? null : _save,
+          // Small enough to sit inside the button in place of its text.
+          child: _saving
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Text("Αποθήκευση"),
         ),
       ],
     );
