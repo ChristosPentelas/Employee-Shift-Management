@@ -168,7 +168,16 @@ assign.
   dialog with every screen, so no other moment is possible. Three new tests in
   `news_screen_test.dart`, passing before and after. `flutter test`: 204
   passing; `flutter analyze`: 29 issues before, 26 after.
-- Left: leave, assign.
+- **Leave done:** `widgets/add_leave_dialog.dart`, with `onFiled` only: a
+  refusal is shown inside the dialog, as before, so it needs no callback.
+  `selectedRange`, `saveError` and `saving` became fields of the `State`, and
+  `_submitErrorText` moved with the dialog, the only thing that used it. The
+  employee is read when the dialog opens, as on news. Two new tests in
+  `leave_requests_screen_test.dart` pin a request answered after a tap
+  outside: filed still reloads the list, refused breaks nothing. Both passed
+  before and after. `flutter test`: 206 passing; `flutter analyze`: 26
+  issues before, 25 after.
+- Left: assign.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
 Where: `api_service.dart` `assignShift` sends
@@ -642,6 +651,22 @@ Fix idea: send `targetValue` only for GOAL and `deadline` only for TASK in
 `_post` (keeping what was typed, in case the user switches back). The server
 should refuse the mismatch too, with a 400 and a test - a separate,
 backend change.
+
+**B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
+Where: `widgets/add_leave_dialog.dart` `_submit`, and the assign dialog in
+`shifts_screen.dart` (`else if (dialogContext.mounted)`). Both show a refusal
+only inside the dialog. A tap outside or the back button closes it while the
+request is on its way; the refusal then goes nowhere.
+Why it matters: the user closed the dialog after tapping Submit, so they
+likely think it went through. For leave that is B19's risk again - an
+employee may not show up for work believing their leave is pending - only
+rarer, since it takes a closed dialog and a refusal. The test "a request
+refused after its dialog was closed breaks nothing" pins today's silence.
+Relates to: B19, B35 (found while moving the leave dialog), F25.
+Fix idea: an `onFailed` callback the screen turns into a snackbar when the
+dialog is gone, as the profile and news dialogs do; or keep the dialog from
+closing while it sends (`barrierDismissible: false` plus a `PopScope`), at
+the cost of the Cancel B72 relies on. That test then changes on purpose.
 
 ---
 

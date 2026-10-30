@@ -217,6 +217,47 @@ void main() {
         held.last.complete(http.Response('{}', 201));
         await tester.pumpAndSettle();
       });
+
+      // B35: the dialog moved into its own State. A tap outside can close it
+      // while the request is on its way; the two tests below pin what
+      // happens to each answer then.
+      Future<void> submitAndCloseTheDialog(WidgetTester tester) async {
+        await tester.enterText(find.byType(TextField), 'Surgery');
+        await tester.pump();
+        await tester.tap(submitButton());
+        await tester.pump();
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
+      }
+
+      testWidgets('a request filed after its dialog was closed still reloads the list',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        final listLoads = await openDialogWithDates(tester, 0, held: held);
+        await submitAndCloseTheDialog(tester);
+
+        held.single.complete(http.Response('{}', 201));
+        await tester.pumpAndSettle();
+
+        expect(listLoads, hasLength(2));
+      });
+
+      // The refusal is shown inside the dialog, which is gone. What matters
+      // is that nothing touches the closed dialog: a setState on a State
+      // that was disposed throws.
+      testWidgets('a request refused after its dialog was closed breaks nothing',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        final listLoads = await openDialogWithDates(tester, 0, held: held);
+        await submitAndCloseTheDialog(tester);
+
+        held.single.complete(http.Response('{}', 500));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(listLoads, hasLength(1));
+      });
     });
   });
 

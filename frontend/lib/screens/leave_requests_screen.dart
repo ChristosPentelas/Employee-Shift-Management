@@ -4,9 +4,9 @@ import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../models/leave_request_model.dart';
 import '../models/page_model.dart';
-import '../utils/date_limits.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
+import '../widgets/add_leave_dialog.dart';
 import '../widgets/paged_list_footer.dart';
 
 class LeaveRequestsScreen extends ConsumerStatefulWidget {
@@ -201,124 +201,23 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   }
 
   void _showAddLeaveDialog() {
-    DateTimeRange? selectedRange;
-    final _reasonController = TextEditingController();
-    // Why the server refused, shown under the reason. The dialog stays open
-    // so nothing typed is lost (B19).
-    String? saveError;
-    // True while the request is on its way: Submit is off, so a double tap
-    // cannot file the same leave twice (B32).
-    bool saving = false;
+    // Read when the dialog opens. The session cannot end while it is open
+    // without closing it: an expired login closes every screen (B16).
+    final me = ref.read(authProvider);
+    if (me == null) return;
 
     showDialog(
       context: context,
-      // `_`: this outer context is not used. Named `context`, it would hide the
-      // screen's, and every `context` below would quietly mean the dialog (F25).
-      builder: (_) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: Text("Αίτηση Αδείας"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ElevatedButton.icon(
-                icon: Icon(Icons.date_range),
-                label: Text(selectedRange == null
-                  ? "Επιλέξτε Ημερομηνίες"
-                  : "${selectedRange!.start.day}/${selectedRange!.start.month} - ${selectedRange!.end.day}/${selectedRange!.end.month}"
-                  ),
-                onPressed: () async {
-                  final DateTimeRange? picked = await showDateRangePicker(
-                    context: dialogContext,
-                    firstDate: DateTime.now(),
-                    lastDate: latestPickableDate(DateTime.now()),
-                  );
-                  // setDialogState belongs to the dialog, so ask about the
-                  // dialog, not the screen (F25).
-                  if (!dialogContext.mounted) return;
-                  if (picked != null) setDialogState(() => selectedRange = picked);
-                },
-              ),
-              SizedBox(height: 10),
-              TextField(
-                controller: _reasonController,
-                // Required: the server's CreateLeaveRequest.reason is
-                // @NotBlank, and the supervisor decides by it (B19).
-                decoration: InputDecoration(labelText: "Λόγος"),
-                // FieldLimits.TEXT on the server.
-                maxLength: 255,
-                // Typing does not rebuild a StatefulBuilder by itself; without
-                // this the submit button would not notice the reason.
-                onChanged: (_) => setDialogState(() {}),
-              ),
-              if (saveError != null)
-                Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(saveError!, style: TextStyle(color: Colors.red)),
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
-            ElevatedButton(
-              // trim(): spaces only is not empty, but @NotBlank refuses it.
-              onPressed: (selectedRange == null ||
-                      _reasonController.text.trim().isEmpty ||
-                      saving)
-                  ? null
-                  : () async {
-                // Read before the await: the session can end while the
-                // request is on its way (B16).
-                final me = ref.read(authProvider);
-                if (me == null) return;
-                // After the return above, which would leave Submit off for
-                // good; before the await, which would be too late (B32).
-                setDialogState(() => saving = true);
-
-                LeaveRequest newRequest = LeaveRequest(
-                  id: 0,
-                  employee: me.user,
-                  startDate: selectedRange!.start,
-                  endDate: selectedRange!.end,
-                  status: 'PENDING',
-                  reason: _reasonController.text,
-                );
-
-                final result = await _apiService.submitLeaveRequest(newRequest);
-                // The dialog and the screen are checked separately: the dialog
-                // can be closed (tap outside) while the screen stays (F25).
-                if (result == SubmitLeaveResult.created) {
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  if (!mounted) return;
-                  _leaves.reload();
-                } else if (dialogContext.mounted) {
-                  setDialogState(() {
-                    saving = false;
-                    saveError = _submitErrorText(result);
-                  });
-                }
-            },
-              child: saving
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text("Υποβολή"),
-            ),
-          ],
-        ),
+      builder: (_) => AddLeaveDialog(
+        apiService: _apiService,
+        employee: me.user,
+        // Runs even if the dialog was closed while sending; only the screen
+        // needs to be there.
+        onFiled: () {
+          if (!mounted) return;
+          _leaves.reload();
+        },
       ),
     );
-  }
-
-  String _submitErrorText(SubmitLeaveResult result) {
-    switch (result) {
-      case SubmitLeaveResult.invalid:
-        return "Ελέγξτε τις ημερομηνίες και τον λόγο.";
-      case SubmitLeaveResult.failed:
-      // Never shown - created closes the dialog - but Dart wants every case
-      // named, so a value added to the enum later cannot be forgotten here.
-      case SubmitLeaveResult.created:
-        return "Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.";
-    }
   }
 }
