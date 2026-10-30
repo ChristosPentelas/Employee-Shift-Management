@@ -43,6 +43,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             SnackBar(content: Text("Το προφίλ ενημερώθηκε επιτυχώς!")),
           );
         },
+        onFailed: () {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Σφάλμα κατά την ενημέρωση")),
+          );
+        },
       ),
     );
   }

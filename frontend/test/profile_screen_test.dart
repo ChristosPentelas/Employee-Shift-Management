@@ -145,6 +145,33 @@ void main() {
       expect(container.read(authProvider)!.user.name, 'New Name');
       expect(find.text('New Name'), findsOneWidget);
     });
+
+    // The same tap outside, but the save fails. The screen is still there, so
+    // it must still say so - the dialog that would have is gone.
+    testWidgets('a save that fails after the dialog was closed still says so',
+        (WidgetTester tester) async {
+      final saveReply = Completer<http.Response>();
+      final container = testContainer(
+          user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'));
+      final api = ApiService(client: MockClient((_) => saveReply.future));
+
+      await tester.pumpWidget(
+          withAppState(container, MaterialApp(home: ProfileScreen(apiService: api))));
+      await tester.tap(find.byIcon(Icons.edit));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+      await tester.pump();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+
+      saveReply.complete(http.Response('', 400));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Σφάλμα κατά την ενημέρωση'), findsOneWidget);
+      expect(container.read(authProvider)!.user.name, 'Worker');
+    });
   });
 
   group('changing the password (B8)', () {

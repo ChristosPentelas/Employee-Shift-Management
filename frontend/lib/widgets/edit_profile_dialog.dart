@@ -7,22 +7,24 @@ import '../services/api_service.dart';
 /// Its own StatefulWidget, like ChangePasswordDialog, so the three
 /// controllers are released in dispose() when the dialog closes (B35).
 ///
-/// A saved user goes to [onSaved] rather than out through Navigator.pop: a tap
-/// outside can close the dialog while the save is on its way, and a closed
-/// dialog can no longer pop with anything - but the server stored the change,
-/// so the screen must still hear about it (F25).
+/// The outcome goes to [onSaved] or [onFailed] rather than out through
+/// Navigator.pop: a tap outside can close the dialog while the save is on its
+/// way, and a closed dialog can no longer pop with anything or show a message
+/// - but the screen is still there and must still hear about it (F25).
 class EditProfileDialog extends StatefulWidget {
   // Passed in rather than read from apiServiceProvider, so the screen can
   // hand over the one it has - in tests, one with a fake client.
   final ApiService apiService;
   final User user;
   final ValueChanged<User> onSaved;
+  final VoidCallback onFailed;
 
   const EditProfileDialog({
     super.key,
     required this.apiService,
     required this.user,
     required this.onSaved,
+    required this.onFailed,
   });
 
   @override
@@ -59,16 +61,14 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
       _phoneController.text,
     );
 
+    // Both outcomes are reported before any mounted check: the screen needs
+    // them even when this dialog is already gone.
     if (saved != null) {
-      // Before the mounted check: the screen needs the saved user even when
-      // this dialog is already gone.
       widget.onSaved(saved);
       if (mounted) Navigator.pop(context);
     } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Σφάλμα κατά την ενημέρωση")),
-      );
+      // The dialog stays open, so what was typed can be corrected.
+      widget.onFailed();
     }
   }
 

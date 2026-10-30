@@ -154,6 +154,13 @@ assign.
   session (F25). Pinned by three new tests in `profile_screen_test.dart`,
   written first and passing against the old code. `flutter test`: 200
   passing; `flutter analyze`: 32 issues before, 29 after.
+- **Profile, follow-up:** that first step only showed a failed save's
+  message while the dialog was open; the old code showed it on the screen,
+  so a tap outside followed by a failure went unreported. An `onFailed`
+  callback gives it back to the screen, as `onSaved` does for success. The
+  test "a save that fails after the dialog was closed still says so" failed
+  before this and passes after. The other dialogs report both outcomes this
+  way. `flutter test`: 201 passing; `flutter analyze`: 29.
 - Left: news, leave, assign.
 
 **B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
