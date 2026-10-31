@@ -1,15 +1,19 @@
 package org.example.employeeshiftmanagement.service;
 
+import org.example.employeeshiftmanagement.exception.FieldValidationException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.model.User;
 import org.example.employeeshiftmanagement.repository.NewsItemRepository;
+import org.example.employeeshiftmanagement.validation.NewsFieldRules;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
 
 @Service
 public class NewsItemService {
@@ -61,6 +65,16 @@ public class NewsItemService {
     public NewsItem updateNewsItem(NewsItem details,Integer id) {
         NewsItem newsItem = newsItemRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("News item", id));
+
+        // The edit carries no type - it cannot be changed - so the stored
+        // one decides which extra fits (B74). Checked before anything is set:
+        // a changed entity inside a transaction can still be written at commit.
+        Map<String, String> mismatches = NewsFieldRules.mismatches(
+                newsItem.getType(), details.getDeadline(), details.getTargetValue());
+        if (!mismatches.isEmpty()) {
+            throw new FieldValidationException(mismatches);
+        }
+
         newsItem.setTitle(details.getTitle());
         newsItem.setDescription(details.getDescription());
         newsItem.setDeadline(details.getDeadline());

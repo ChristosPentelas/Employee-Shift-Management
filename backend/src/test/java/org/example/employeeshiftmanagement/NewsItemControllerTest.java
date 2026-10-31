@@ -3,6 +3,7 @@ package org.example.employeeshiftmanagement;
 import org.example.employeeshiftmanagement.config.JwtConfig;
 import org.example.employeeshiftmanagement.config.SecurityConfig;
 import org.example.employeeshiftmanagement.controller.NewsItemController;
+import org.example.employeeshiftmanagement.exception.FieldValidationException;
 import org.example.employeeshiftmanagement.exception.ResourceNotFoundException;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
@@ -21,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -373,6 +375,26 @@ class NewsItemControllerTest {
         assertEquals("Meeting moved", details.getValue().getTitle());
         assertEquals("Tuesday 09:00", details.getValue().getDescription());
         assertEquals(5, details.getValue().getTargetValue());
+    }
+
+    // B74: the service refuses an extra the stored type does not have. The
+    // client gets the same body as a failed @Valid, so it reads both alike.
+    @Test
+    void anEditTheServiceRefusesIsABadRequestNamingTheField() throws Exception {
+        when(newsItemService.updateNewsItem(any(NewsItem.class), eq(1)))
+                .thenThrow(new FieldValidationException(
+                        Map.of("targetValue", "Only a goal can have a target value")));
+
+        mockMvc.perform(put("/api/v1/news/1")
+                        .with(TestTokens.supervisor())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"Inventory","description":"Count the stock","targetValue":50}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Validation failed"))
+                .andExpect(jsonPath("$.errors.targetValue")
+                        .value("Only a goal can have a target value"));
     }
 
     @Test

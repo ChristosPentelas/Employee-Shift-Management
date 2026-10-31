@@ -66,6 +66,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    /**
+     * A rule a service checked against stored data (B74). The same body as
+     * handleMethodArgumentNotValid below, so the client cannot tell - and
+     * need not care - which layer refused the request.
+     */
+    @ExceptionHandler(FieldValidationException.class)
+    public ProblemDetail handleFieldValidation(FieldValidationException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        problem.setProperty("errors", e.getErrors());
+        return problem;
+    }
+
     /** A failed login (F16 step 16b; until then the controller built this 401 itself). */
     @ExceptionHandler(InvalidCredentialsException.class)
     public ProblemDetail handleInvalidCredentials(InvalidCredentialsException e) {

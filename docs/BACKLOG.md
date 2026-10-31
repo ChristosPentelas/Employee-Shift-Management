@@ -564,57 +564,6 @@ A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
 
-**B74 · LOW · A news post keeps the target or deadline of a type it no longer has** — found 2026-10-30
-Where: `widgets/add_news_dialog.dart`. Switching the type only hides the
-target field (GOAL) or the deadline row (TASK); `_targetController` and
-`_selectedDeadline` keep their values, and `_post` sends both whatever the
-type. `CreateNewsRequest` accepts any combination.
-Why it matters: choose GOAL, type 50, switch to TASK and post - the server
-stores a task with `targetValue` 50. The app shows the target only on goals,
-so it stays hidden, but it is wrong data, and any other client or a later
-screen would show it.
-Relates to: B35 (found while moving the dialog).
-Fix idea: send `targetValue` only for GOAL and `deadline` only for TASK in
-`_post` (keeping what was typed, in case the user switches back). The server
-should refuse the mismatch too, with a 400 and a test - a separate,
-backend change.
-Plan (2026-10-31), three change sets, the app first so the server's new rule
-never refuses what today's app sends: **74a** the dialog, **74b**
-`CreateNewsRequest` (a class-level `@ValidNewsFields`, like
-`@ValidShiftTimes`), **74c** `PUT /news/{id}` (`UpdateNewsRequest` has no
-type, so the service checks the stored one; the app does not call it).
-Decided the same day: a GOAL does not have to have a target, nor a TASK a
-deadline - B74 only forbids the wrong pairing.
-- **74a done:** `_post` sends `deadline` only for TASK and `targetValue`
-  only for GOAL; the controller and `_selectedDeadline` keep their values.
-  A "switching the type" group in `news_screen_test.dart`: a goal switched
-  to a task, and a task switched to a goal, failed before (the 50 and the
-  date were sent) and pass after; "switching back to goal keeps the typed
-  target" passed before too, and guards against clearing the field instead.
-  `flutter test`: 218 passing; `flutter analyze`: 24 before and after.
-- **74b done:** `validation/ValidNewsFields` + `ValidNewsFieldsValidator` on
-  `CreateNewsRequest`. Unlike `ValidShiftTimesValidator` it can report two
-  violations, one per field that does not belong, each with its own message
-  ("Only a task can have a deadline", "Only a goal can have a target value"),
-  so an announcement with both is told about both at once. Four
-  `@WebMvcTest` tests in `NewsItemControllerTest`: a task with a target, a
-  goal with a deadline, and an announcement with both failed before (the
-  request reached the service) and pass after; a goal with its target and a
-  task with its deadline passed before too, and guard against a rule that is
-  too strict. `mvnw test`: 315 passing, four of them new.
-- 74c in two change sets: the rule moves to one place first (74c1), then
-  `updateNewsItem` uses it through a new `FieldValidationException`, a 400
-  with the same `errors` body as `@Valid` (74c2). Not
-  `ResponseStatusException`: no `errors` map, and an HTTP status inside the
-  service. Not a check in the controller: business logic belongs in services.
-- **74c1 done:** `validation/NewsFieldRules.mismatches(type, deadline,
-  targetValue)` returns field to message for each extra that does not fit,
-  in field order. `ValidNewsFieldsValidator` turns each entry into a
-  violation instead of holding the rule itself. A refactor: the four 74b
-  tests pass unchanged. `NewsFieldRulesTest`, plain JUnit, six tests. `mvnw
-  test`: 321 passing.
-- Left: 74c2.
-
 **B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
 Where: `widgets/add_leave_dialog.dart` `_submit` and
 `widgets/assign_shift_dialog.dart` `_save` (`else if (mounted)`). Both show a refusal
@@ -1852,3 +1801,67 @@ Progress (2026-10-30):
 Fixed by: `b6dc2f8` and
 `fix(frontend): stop a double tap from saving a profile twice`, 2026-10-30.
 Every dialog that sends something now turns its button off while it waits.
+
+**B74 · LOW · A news post keeps the target or deadline of a type it no longer has** — found 2026-10-30
+Where: `widgets/add_news_dialog.dart`. Switching the type only hides the
+target field (GOAL) or the deadline row (TASK); `_targetController` and
+`_selectedDeadline` keep their values, and `_post` sends both whatever the
+type. `CreateNewsRequest` accepts any combination.
+Why it matters: choose GOAL, type 50, switch to TASK and post - the server
+stores a task with `targetValue` 50. The app shows the target only on goals,
+so it stays hidden, but it is wrong data, and any other client or a later
+screen would show it.
+Relates to: B35 (found while moving the dialog).
+Fix idea: send `targetValue` only for GOAL and `deadline` only for TASK in
+`_post` (keeping what was typed, in case the user switches back). The server
+should refuse the mismatch too, with a 400 and a test - a separate,
+backend change.
+Plan (2026-10-31), three change sets, the app first so the server's new rule
+never refuses what today's app sends: **74a** the dialog, **74b**
+`CreateNewsRequest` (a class-level `@ValidNewsFields`, like
+`@ValidShiftTimes`), **74c** `PUT /news/{id}` (`UpdateNewsRequest` has no
+type, so the service checks the stored one; the app does not call it).
+Decided the same day: a GOAL does not have to have a target, nor a TASK a
+deadline - B74 only forbids the wrong pairing.
+- **74a done:** `_post` sends `deadline` only for TASK and `targetValue`
+  only for GOAL; the controller and `_selectedDeadline` keep their values.
+  A "switching the type" group in `news_screen_test.dart`: a goal switched
+  to a task, and a task switched to a goal, failed before (the 50 and the
+  date were sent) and pass after; "switching back to goal keeps the typed
+  target" passed before too, and guards against clearing the field instead.
+  `flutter test`: 218 passing; `flutter analyze`: 24 before and after.
+- **74b done:** `validation/ValidNewsFields` + `ValidNewsFieldsValidator` on
+  `CreateNewsRequest`. Unlike `ValidShiftTimesValidator` it can report two
+  violations, one per field that does not belong, each with its own message
+  ("Only a task can have a deadline", "Only a goal can have a target value"),
+  so an announcement with both is told about both at once. Four
+  `@WebMvcTest` tests in `NewsItemControllerTest`: a task with a target, a
+  goal with a deadline, and an announcement with both failed before (the
+  request reached the service) and pass after; a goal with its target and a
+  task with its deadline passed before too, and guard against a rule that is
+  too strict. `mvnw test`: 315 passing, four of them new.
+- 74c in two change sets: the rule moves to one place first (74c1), then
+  `updateNewsItem` uses it through a new `FieldValidationException`, a 400
+  with the same `errors` body as `@Valid` (74c2). Not
+  `ResponseStatusException`: no `errors` map, and an HTTP status inside the
+  service. Not a check in the controller: business logic belongs in services.
+- **74c1 done:** `validation/NewsFieldRules.mismatches(type, deadline,
+  targetValue)` returns field to message for each extra that does not fit,
+  in field order. `ValidNewsFieldsValidator` turns each entry into a
+  violation instead of holding the rule itself. A refactor: the four 74b
+  tests pass unchanged. `NewsFieldRulesTest`, plain JUnit, six tests. `mvnw
+  test`: 321 passing.
+- **74c2 done:** `exception/FieldValidationException` (field to message)
+  and `ApiExceptionHandler.handleFieldValidation`, a 400 with
+  "Validation failed" and the `errors` map, as for `@Valid`. 400 and not
+  `ConflictException`'s 409: a news item's type never changes, so the edit
+  is wrong for that item at any time. `updateNewsItem` checks
+  `NewsFieldRules` against the stored type right after `findById`, before
+  any setter. Tests: two refusals in `NewsItemServiceTest` (nothing saved,
+  the stored item untouched) and `anEditTheServiceRefusesIsABadRequestNamingTheField`
+  in `NewsItemControllerTest` failed before (no exception; a 500) and pass
+  after; `editingATasksDeadlineIsSaved` passed before too. `mvnw test`: 325
+  passing.
+Fixed by: `492fb82`, `2d2d09e`, `c47c2e9` and
+`fix(backend): refuse an edit that gives a news item the wrong extra`,
+2026-10-31.
