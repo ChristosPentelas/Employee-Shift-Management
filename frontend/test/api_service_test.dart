@@ -70,6 +70,29 @@ void main() {
     expect(sent!.body, isNot(contains('userId')));
   });
 
+  // B77: the server reads both as a LocalDate, a day with no time. A full
+  // timestamp only got in because Jackson is lenient by default.
+  test('filing leave sends its days as YYYY-MM-DD', () async {
+    http.Request? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response('', 201);
+    }));
+
+    await api.submitLeaveRequest(LeaveRequest(
+      id: 0,
+      employee: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+      startDate: DateTime(2026, 3, 5),
+      endDate: DateTime(2026, 3, 9),
+      status: 'PENDING',
+      reason: 'Surgery',
+    ));
+
+    final body = jsonDecode(sent!.body) as Map<String, dynamic>;
+    expect(body['startDate'], '2026-03-05');
+    expect(body['endDate'], '2026-03-09');
+  });
+
   test('a message no longer names its sender', () async {
     http.BaseRequest? sent;
     final api = ApiService(client: MockClient((request) async {

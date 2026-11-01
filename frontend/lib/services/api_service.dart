@@ -97,7 +97,8 @@ class ApiService {
       ListPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>, itemFromJson);
 
   // YYYY-MM-DD, how the server reads a day (a Java LocalDate): ?start= and
-  // &end=, and a shift's "date". The one place that format is written (B36).
+  // &end=, a shift's "date" and a leave request's days. The one place that
+  // format is written (B36, B77).
   static String _isoDate(DateTime day) =>
       "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
 
@@ -295,8 +296,8 @@ class ApiService {
         headers: {"Content-Type" : "application/json"},
         body: jsonEncode({
           // No userId: the server files it for whoever the token says we are.
-          "startDate": leave.startDate.toIso8601String(),
-          "endDate": leave.endDate.toIso8601String(),
+          "startDate": _isoDate(leave.startDate),
+          "endDate": _isoDate(leave.endDate),
           "reason": leave.reason
         }),
       );

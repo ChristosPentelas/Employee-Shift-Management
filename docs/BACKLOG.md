@@ -585,20 +585,6 @@ still there. One dialog per change set. A widget test can reach the window
 by closing the dialog and completing the reply with a `pump()` shorter than
 150 ms in between.
 
-**B77 · LOW · A leave request sends its days as full timestamps** — found 2026-11-01
-Where: `api_service.dart` `submitLeaveRequest` sends `startDate` and
-`endDate` with `toIso8601String()`, e.g. `"2026-10-01T00:00:00.000"`. The
-backend's `CreateLeaveRequest` fields are `LocalDate`s - a day, no time.
-Why it matters: it works today only because Jackson's `LocalDate` reader
-drops a time part after the `T`; the contract says a day and the app sends
-something else. It is also B36's problem again: `_isoDate` is the one place
-the `YYYY-MM-DD` format should be written, and this bypasses it.
-Relates to: B36 (found while fixing it).
-Fix idea: `_isoDate(leave.startDate)` and `_isoDate(leave.endDate)`. Unlike
-B36 this changes what goes over the network, so a test pinning
-`"startDate": "2026-10-01"` fails before and passes after. Not the news
-`deadline`: that one is a `LocalDateTime`, so the full timestamp is right.
-
 ---
 
 ## Done
@@ -1942,5 +1928,30 @@ test "assigning a shift sends its day as YYYY-MM-DD" (2026-03-05, so both
 zero pads show) passed before and after; with the pads removed on purpose
 it failed (`2026-3-5`). `flutter test`: 219 passing; `flutter analyze`: 24
 before and after. Found while doing it: B77.
-Fixed by: `refactor(frontend): format a shift's day with _isoDate (B36)`,
+Fixed by: `1ffbbcd`, 2026-11-01.
+
+**B77 · LOW · A leave request sends its days as full timestamps** — found 2026-11-01
+Where: `api_service.dart` `submitLeaveRequest` sends `startDate` and
+`endDate` with `toIso8601String()`, e.g. `"2026-10-01T00:00:00.000"`. The
+backend's `CreateLeaveRequest` fields are `LocalDate`s - a day, no time.
+Why it matters: it works today only because Jackson's `LocalDate` reader
+drops a time part after the `T`; the contract says a day and the app sends
+something else. It is also B36's problem again: `_isoDate` is the one place
+the `YYYY-MM-DD` format should be written, and this bypasses it.
+Relates to: B36 (found while fixing it).
+Fix idea: `_isoDate(leave.startDate)` and `_isoDate(leave.endDate)`. Unlike
+B36 this changes what goes over the network, so a test pinning
+`"startDate": "2026-10-01"` fails before and passes after. Not the news
+`deadline`: that one is a `LocalDateTime`, so the full timestamp is right.
+Done: `submitLeaveRequest` sends `_isoDate(leave.startDate)` and
+`_isoDate(leave.endDate)`, and `_isoDate`'s comment lists the leave days.
+Checked in Jackson 3.0.2's `LocalDateDeserializer`: a string with a `T` at
+index 10 is parsed as a date-time only when the property is lenient (the
+default); in strict mode it is refused. So one leniency switch would have
+turned every leave request into a 400. The backend tests in
+`LeaveRequestControllerTest` all send `"2026-10-01"`, which is why none of
+them noticed. The new test "filing leave sends its days as YYYY-MM-DD"
+failed before (`2026-03-05T00:00:00.000`) and passes after. `flutter test`:
+220 passing; `flutter analyze`: 24 before and after. No backend change.
+Fixed by: `fix(frontend): send a leave request's days as YYYY-MM-DD (B77)`,
 2026-11-01.
