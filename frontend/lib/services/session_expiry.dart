@@ -17,10 +17,7 @@ void handleRejectedToken(AuthNotifier auth, String sentToken) {
     return;
   }
 
-  // Remove every open screen, so "back" cannot return to a page that needs
-  // the session we just cleared.
-  navigatorKey.currentState
-      ?.pushNamedAndRemoveUntil('/login', (route) => false);
+  navigatorKey.currentState?.returnToLogin();
 
   scaffoldMessengerKey.currentState?.showSnackBar(
     const SnackBar(content: Text("Η σύνδεση έληξε, συνδεθείτε ξανά")),

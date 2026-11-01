@@ -6,6 +6,7 @@
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/home_screen.dart';
 import 'package:employee_shift_management_ui/screens/login_screen.dart';
+import 'package:employee_shift_management_ui/screens/profile_screen.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
 import 'package:employee_shift_management_ui/state/auth_session.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,27 @@ void main() {
     expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
     expect(navigator(tester).canPop(), isFalse,
         reason: '"back" must not return to the dashboard');
+  });
+
+  testWidgets('logging out from the profile clears the session and all screens',
+      (WidgetTester tester) async {
+    final container = testContainer(
+        user: User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE'),
+        token: 'abc');
+
+    await tester.pumpWidget(appStartingAt(container, ProfileScreen()));
+    await tester.tap(find.byIcon(Icons.logout));
+    await tester.pumpAndSettle();
+
+    expect(container.read(authProvider)?.user, isNull);
+    expect(container.read(authProvider)?.token, isNull, reason: 'a logged-out app must not keep a working token');
+    expect(find.widgetWithText(TextFormField, 'Email'), findsOneWidget);
+    expect(navigator(tester).canPop(), isFalse,
+        reason: '"back" must not return to the profile');
+    // B38: the same named route as every other way back to login, not a
+    // LoginScreen the profile built for itself.
+    expect(ModalRoute.of(tester.element(find.byType(LoginScreen)))!.settings.name,
+        '/login');
   });
 
   testWidgets('after logging in, "back" cannot return to the login screen',

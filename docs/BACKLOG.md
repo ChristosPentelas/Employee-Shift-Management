@@ -123,16 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B38 · LOW · The two logout buttons return to login in two different ways** — found 2026-09-24
-Where: `home_screen.dart` goes to the named route
-`pushNamedAndRemoveUntil('/login', ...)`; `profile_screen.dart` builds the page
-itself, `pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LoginScreen()), ...)`.
-Why it matters: both work today, but a change to how the login screen is
-opened (e.g. passing it an argument) has to be made twice, and the profile
-screen imports `LoginScreen` only for this.
-Fix idea: use the named route in both. Better, one `logOut` helper that clears
-the session and navigates, used by both buttons and by `handleRejectedToken`.
-
 **B39 · LOW · The Android build pins Kotlin 1.8.22, which Flutter will soon stop supporting** — found 2026-09-24
 Where: `frontend/android/settings.gradle.kts` -
 `id("org.jetbrains.kotlin.android") version "1.8.22"`. Every Android build
@@ -1954,4 +1944,34 @@ them noticed. The new test "filing leave sends its days as YYYY-MM-DD"
 failed before (`2026-03-05T00:00:00.000`) and passes after. `flutter test`:
 220 passing; `flutter analyze`: 24 before and after. No backend change.
 Fixed by: `fix(frontend): send a leave request's days as YYYY-MM-DD (B77)`,
+2026-11-01.
+
+**B38 · LOW · The two logout buttons return to login in two different ways** — found 2026-09-24
+Where: `home_screen.dart` goes to the named route
+`pushNamedAndRemoveUntil('/login', ...)`; `profile_screen.dart` builds the page
+itself, `pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LoginScreen()), ...)`.
+Why it matters: both work today, but a change to how the login screen is
+opened (e.g. passing it an argument) has to be made twice, and the profile
+screen imports `LoginScreen` only for this.
+Fix idea: use the named route in both. Better, one `logOut` helper that clears
+the session and navigates, used by both buttons and by `handleRejectedToken`.
+Done: there were three copies, not two - `session_expiry.dart` had the
+dashboard's line too. `utils/navigation.dart` now has
+`extension ReturnToLogin on NavigatorState` with `returnToLogin()`, the
+`'/login'` route plus removing every other screen. Both buttons call
+`Navigator.of(context).returnToLogin()`, `handleRejectedToken` calls
+`navigatorKey.currentState?.returnToLogin()`, and the profile screen no
+longer imports `LoginScreen`. Navigation only, not the fix idea's helper
+that also logs out: the buttons call `logOut()`, an expired token calls
+`logOutIfCurrent(token)`, which may decide not to (the late-401 race), and
+shows a snackbar; one helper for both would need flags. An extension and not
+a plain function, so session expiry keeps its `?.`. Named routes are no
+longer Flutter's advice for most apps (deep links, the web's forward
+button); this app uses neither, and `'/login'` already exists so the network
+layer need not import a screen. The new test "logging out from the profile
+clears the session and all screens" failed before only on its last check,
+the route's name (`null`: a hand-built `MaterialPageRoute`), and passes
+after; the dashboard logout and session expiry tests pass unchanged.
+`flutter test`: 221 passing; `flutter analyze`: 24 before and after.
+Fixed by: `refactor(frontend): return to login one way from every logout (B38)`,
 2026-11-01.

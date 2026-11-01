@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth_session.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
-import '../screens/login_screen.dart';
+import '../utils/navigation.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/edit_profile_dialog.dart';
 
@@ -87,11 +87,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: Icon(Icons.logout),
             onPressed: () {
               ref.read(authProvider.notifier).logOut(); // the user and the token together
-
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => LoginScreen()),
-                    (Route<dynamic> route) => false,
-              );
+              Navigator.of(context).returnToLogin();
             },
           )
         ],

@@ -7,6 +7,7 @@ import '../screens/profile_screen.dart';
 import '../screens/shifts_screen.dart';
 import '../screens/messages_list_screen.dart';
 import '../state/auth_session.dart';
+import '../utils/navigation.dart';
 
 class HomeScreen extends ConsumerWidget {
   @override
@@ -24,8 +25,7 @@ class HomeScreen extends ConsumerWidget {
               // Logging out means forgetting the user and the token. Only
               // leaving the screen (the old Navigator.pop) kept both in memory.
               ref.read(authProvider.notifier).logOut();
-              // Remove every screen, so "back" cannot return to the dashboard.
-              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+              Navigator.of(context).returnToLogin();
             },
           ),
         ],
