@@ -363,6 +363,29 @@ void main() {
     expect(await assignAnswered(500), AssignShiftResult.failed);
   });
 
+  // B36: pins the wire format of the shift's day. A single-digit month and
+  // day, so a lost zero pad would show.
+  test('assigning a shift sends its day as YYYY-MM-DD', () async {
+    http.Request? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response('{}', 201);
+    }));
+
+    await api.assignShift(
+        Shift(
+          id: 0,
+          date: DateTime(2026, 3, 5),
+          startTime: '08:00',
+          endTime: '16:00',
+          position: 'Ταμείο',
+        ),
+        7);
+
+    final body = jsonDecode(sent!.body) as Map<String, dynamic>;
+    expect(body['date'], '2026-03-05');
+  });
+
   // B31: two different 409s. The server tells them apart by the body's
   // "type" (RFC 9457), never by its English "detail" text.
   group('a refused shift', () {

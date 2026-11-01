@@ -123,14 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
-Where: `api_service.dart` `assignShift` sends
-`shift.date.toIso8601String().split('T')[0]`; `_isoDate()` in the same class
-exists for exactly this.
-Why it matters: both give `YYYY-MM-DD` today, but two ways of writing the same
-format drift apart when one is changed.
-Fix idea: use `_isoDate(shift.date)`.
-
 **B38 · LOW · The two logout buttons return to login in two different ways** — found 2026-09-24
 Where: `home_screen.dart` goes to the named route
 `pushNamedAndRemoveUntil('/login', ...)`; `profile_screen.dart` builds the page
@@ -592,6 +584,20 @@ time picker opened over the dialog would make it false while the dialog is
 still there. One dialog per change set. A widget test can reach the window
 by closing the dialog and completing the reply with a `pump()` shorter than
 150 ms in between.
+
+**B77 · LOW · A leave request sends its days as full timestamps** — found 2026-11-01
+Where: `api_service.dart` `submitLeaveRequest` sends `startDate` and
+`endDate` with `toIso8601String()`, e.g. `"2026-10-01T00:00:00.000"`. The
+backend's `CreateLeaveRequest` fields are `LocalDate`s - a day, no time.
+Why it matters: it works today only because Jackson's `LocalDate` reader
+drops a time part after the `T`; the contract says a day and the app sends
+something else. It is also B36's problem again: `_isoDate` is the one place
+the `YYYY-MM-DD` format should be written, and this bypasses it.
+Relates to: B36 (found while fixing it).
+Fix idea: `_isoDate(leave.startDate)` and `_isoDate(leave.endDate)`. Unlike
+B36 this changes what goes over the network, so a test pinning
+`"startDate": "2026-10-01"` fails before and passes after. Not the news
+`deadline`: that one is a `LocalDateTime`, so the full timestamp is right.
 
 ---
 
@@ -1922,3 +1928,19 @@ the only way out of a request that never gets an answer.
 Fixed by: `ed89f03` and
 `fix(frontend): report a shift refused after its dialog closed`,
 2026-11-01. Found while doing it: B76.
+
+**B36 · LOW · `assignShift` formats the date by hand next to `_isoDate`** — found 2026-09-23
+Where: `api_service.dart` `assignShift` sends
+`shift.date.toIso8601String().split('T')[0]`; `_isoDate()` in the same class
+exists for exactly this.
+Why it matters: both give `YYYY-MM-DD` today, but two ways of writing the same
+format drift apart when one is changed.
+Fix idea: use `_isoDate(shift.date)`.
+Done: `assignShift` sends `_isoDate(shift.date)`, and `_isoDate`'s comment
+names it as the one place a day's format is written. A refactor: the new
+test "assigning a shift sends its day as YYYY-MM-DD" (2026-03-05, so both
+zero pads show) passed before and after; with the pads removed on purpose
+it failed (`2026-3-5`). `flutter test`: 219 passing; `flutter analyze`: 24
+before and after. Found while doing it: B77.
+Fixed by: `refactor(frontend): format a shift's day with _isoDate (B36)`,
+2026-11-01.

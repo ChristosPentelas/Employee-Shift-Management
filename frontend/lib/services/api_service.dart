@@ -96,7 +96,8 @@ class ApiService {
           http.Response response, T Function(Map<String, dynamic>) itemFromJson) =>
       ListPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>, itemFromJson);
 
-  // YYYY-MM-DD, the date format of ?start= and &end=.
+  // YYYY-MM-DD, how the server reads a day (a Java LocalDate): ?start= and
+  // &end=, and a shift's "date". The one place that format is written (B36).
   static String _isoDate(DateTime day) =>
       "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
 
@@ -444,7 +445,7 @@ class ApiService {
         Uri.parse("$baseUrl/users/$userId/shifts"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "date": shift.date.toIso8601String().split('T')[0], // YYYY-MM-DD
+          "date": _isoDate(shift.date),
           "startTime": shift.startTime,
           "endTime": shift.endTime,
           "position": shift.position,
