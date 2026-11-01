@@ -564,6 +564,35 @@ A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
 
+**B76 · LOW · A reply during a dialog's closing animation can close the screen behind it** — found 2026-11-01
+Where: `if (mounted) Navigator.pop(context)` after the await in
+`widgets/add_leave_dialog.dart` `_submit`, `assign_shift_dialog.dart`
+`_save`, `add_news_dialog.dart` `_post` and `edit_profile_dialog.dart`
+`_save`; `if (!mounted) return;` before `Navigator.pop(context, true)` in
+`change_password_dialog.dart` `_submit`. The refusal branches of the leave
+and assign dialogs check `mounted` the same way (B75).
+Why it matters: `mounted` does not mean "still on screen". A tap outside or
+back takes the dialog's route off the navigator at once, but its State stays
+mounted for the 150 ms fade-out (`showDialog`'s `transitionDuration`). The
+SDK's `navigator.dart` counts a route that is `popping` as no longer
+present, and `pop` removes the last present route. So if the reply lands in
+that window:
+- on success, the dialog's `Navigator.pop` removes the screen underneath
+  (Leave Requests, Shifts, News or Profile), and the user is dropped on Home
+  with no reason given. What was sent was saved, so nothing is lost.
+- on a leave or shift refusal, the error is drawn into the fading dialog
+  instead of going to `onFailed`, so B75's silence comes back in that window.
+The confirm dialogs in `news_screen.dart`, `shifts_screen.dart` and
+`employee_details_screen.dart` pop before their await, so they are not
+affected (F25).
+Relates to: F25, B75 (found while fixing it), B35.
+Fix idea: ask the route, not the State: `ModalRoute.of(context)?.isActive`
+is false from the moment the route is popped. Not `isCurrent`: a date or
+time picker opened over the dialog would make it false while the dialog is
+still there. One dialog per change set. A widget test can reach the window
+by closing the dialog and completing the reply with a `pump()` shorter than
+150 ms in between.
+
 ---
 
 ## Done
