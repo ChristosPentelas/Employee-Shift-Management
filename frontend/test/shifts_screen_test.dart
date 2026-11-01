@@ -95,6 +95,9 @@ void main() {
         find.text('Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.'),
         findsOneWidget);
     expect(find.text('Αποθήκευση'), findsOneWidget); // still open
+    // B75: the screen reports a refusal only once the dialog is gone; an
+    // open dialog says it already.
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   // B31: the server refuses a shift on a day of approved leave with a 409 of
@@ -204,10 +207,11 @@ void main() {
       expect(shiftLoads, hasLength(loadsBefore + 1));
     });
 
-    // The refusal is shown inside the dialog, which is gone (B75). What
-    // matters is that nothing touches the closed dialog: a setState on a
-    // State that was disposed throws.
-    testWidgets('a shift refused after its dialog was closed breaks nothing',
+    // B75: this used to pin silence - the refusal went to the dialog, which
+    // was gone, so the supervisor was left thinking the shift was in. The
+    // screen says it now, with the dialog's reason. A setState on the
+    // disposed State would throw, hence takeException.
+    testWidgets('a shift refused after its dialog was closed still says so',
         (WidgetTester tester) async {
       final held = <Completer<http.Response>>[];
       final shiftLoads = <String>[];
@@ -220,6 +224,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+      expect(
+          find.text('Η βάρδια δεν αποθηκεύτηκε. '
+              'Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.'),
+          findsOneWidget);
       expect(shiftLoads, hasLength(loadsBefore));
     });
   });

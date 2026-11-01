@@ -10,9 +10,10 @@ import '../services/api_service.dart';
 ///
 /// A saved shift goes to [onSaved] rather than out through Navigator.pop: a
 /// tap outside can close the dialog while the shift is on its way, and the
-/// screen must still reload its calendar (F25). A refusal has no callback -
-/// it is shown inside the dialog, which stays open so the supervisor can fix
-/// the times and save again.
+/// screen must still reload its calendar (F25). A refusal is shown inside the
+/// dialog, which stays open so the supervisor can fix the times and save
+/// again; only when the dialog is already gone does it go to [onFailed], with
+/// the same text, for the screen to show (B75).
 class AssignShiftDialog extends StatefulWidget {
   // Passed in rather than read from apiServiceProvider, so the screen can
   // hand over the one it has - in tests, one with a fake client.
@@ -22,6 +23,7 @@ class AssignShiftDialog extends StatefulWidget {
   // load is reported without an empty dialog first (B34).
   final List<User> employees;
   final VoidCallback onSaved;
+  final ValueChanged<String> onFailed;
 
   const AssignShiftDialog({
     super.key,
@@ -29,6 +31,7 @@ class AssignShiftDialog extends StatefulWidget {
     required this.date,
     required this.employees,
     required this.onSaved,
+    required this.onFailed,
   });
 
   @override
@@ -79,6 +82,10 @@ class _AssignShiftDialogState extends State<AssignShiftDialog> {
         _saving = false;
         _saveError = _assignErrorText(result);
       });
+    } else {
+      // Closed while saving: the supervisor likely thinks the shift is in,
+      // so the screen must say it is not (B75).
+      widget.onFailed(_assignErrorText(result));
     }
   }
 

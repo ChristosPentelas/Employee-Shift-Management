@@ -204,6 +204,13 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
         onSaved: () {
           if (mounted) _loadShifts();
         },
+        // Only called once the dialog is gone, so the message must say what
+        // was refused (B75).
+        onFailed: (message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Η βάρδια δεν αποθηκεύτηκε. $message")));
+        },
       ),
     );
   }

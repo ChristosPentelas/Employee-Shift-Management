@@ -564,39 +564,6 @@ A `TimeoutException` is thrown like any network failure, so the callers'
 existing `catch` blocks already turn it into their "failed" message.
 Pick the length with care: a POST that timed out may still have been saved.
 
-**B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
-Where: `widgets/add_leave_dialog.dart` `_submit` and
-`widgets/assign_shift_dialog.dart` `_save` (`else if (mounted)`). Both show a refusal
-only inside the dialog. A tap outside or the back button closes it while the
-request is on its way; the refusal then goes nowhere.
-Why it matters: the user closed the dialog after tapping Submit, so they
-likely think it went through. For leave that is B19's risk again - an
-employee may not show up for work believing their leave is pending - only
-rarer, since it takes a closed dialog and a refusal. The test "a request
-refused after its dialog was closed breaks nothing" pins today's silence.
-Relates to: B19, B35 (found while moving the leave dialog), F25.
-Fix idea: an `onFailed` callback the screen turns into a snackbar when the
-dialog is gone, as the profile and news dialogs do; or keep the dialog from
-closing while it sends (`barrierDismissible: false` plus a `PopScope`), at
-the cost of the Cancel B72 relies on. That test then changes on purpose.
-Plan (2026-11-01): the `onFailed` callback, one dialog per change set, leave
-first. It carries the text the dialog already writes (`_submitErrorText`,
-`_assignErrorText`), so the wording stays in one place, and it is called
-only when the dialog is gone: an open dialog shows the refusal inline and
-stays open for a fix, and a snackbar behind it would say the same thing
-twice. News and profile call `onFailed` every time because they have no
-inline error. Not the `PopScope` idea: with no timeout yet (B72), Cancel is
-the only way out of a request that never gets an answer.
-- **Leave done:** `AddLeaveDialog.onFailed`, called in `_submit` when the
-  refusal comes after `mounted` is false; `leave_requests_screen.dart`
-  shows "Η αίτηση αδείας δεν υποβλήθηκε. " plus the dialog's text, because
-  the dialog that gave the text context is gone. The test "a request refused
-  after its dialog was closed breaks nothing" became "...still says so" and
-  checks the snackbar text for a 400. It failed before and passes after.
-  "A refused request keeps the dialog open and says why" now also checks
-  that no snackbar is shown. `flutter test`: 218 passing; `flutter analyze`:
-  24 before and after.
-
 ---
 
 ## Done
@@ -1882,3 +1849,47 @@ deadline - B74 only forbids the wrong pairing.
 Fixed by: `492fb82`, `2d2d09e`, `c47c2e9` and
 `fix(backend): refuse an edit that gives a news item the wrong extra`,
 2026-10-31.
+
+**B75 · LOW · A leave request or shift refused after its dialog closed is never reported** — found 2026-10-30
+Where: `widgets/add_leave_dialog.dart` `_submit` and
+`widgets/assign_shift_dialog.dart` `_save` (`else if (mounted)`). Both show a refusal
+only inside the dialog. A tap outside or the back button closes it while the
+request is on its way; the refusal then goes nowhere.
+Why it matters: the user closed the dialog after tapping Submit, so they
+likely think it went through. For leave that is B19's risk again - an
+employee may not show up for work believing their leave is pending - only
+rarer, since it takes a closed dialog and a refusal. The test "a request
+refused after its dialog was closed breaks nothing" pins today's silence.
+Relates to: B19, B35 (found while moving the leave dialog), F25.
+Fix idea: an `onFailed` callback the screen turns into a snackbar when the
+dialog is gone, as the profile and news dialogs do; or keep the dialog from
+closing while it sends (`barrierDismissible: false` plus a `PopScope`), at
+the cost of the Cancel B72 relies on. That test then changes on purpose.
+Plan (2026-11-01): the `onFailed` callback, one dialog per change set, leave
+first. It carries the text the dialog already writes (`_submitErrorText`,
+`_assignErrorText`), so the wording stays in one place, and it is called
+only when the dialog is gone: an open dialog shows the refusal inline and
+stays open for a fix, and a snackbar behind it would say the same thing
+twice. News and profile call `onFailed` every time because they have no
+inline error. Not the `PopScope` idea: with no timeout yet (B72), Cancel is
+the only way out of a request that never gets an answer.
+- **Leave done:** `AddLeaveDialog.onFailed`, called in `_submit` when the
+  refusal comes after `mounted` is false; `leave_requests_screen.dart`
+  shows "Η αίτηση αδείας δεν υποβλήθηκε. " plus the dialog's text, because
+  the dialog that gave the text context is gone. The test "a request refused
+  after its dialog was closed breaks nothing" became "...still says so" and
+  checks the snackbar text for a 400. It failed before and passes after.
+  "A refused request keeps the dialog open and says why" now also checks
+  that no snackbar is shown. `flutter test`: 218 passing; `flutter analyze`:
+  24 before and after.
+- **Assign done:** the same in `AssignShiftDialog._save` and
+  `shifts_screen.dart`, with "Η βάρδια δεν αποθηκεύτηκε. " in front of the
+  dialog's text. The test "a shift refused after its dialog was closed breaks
+  nothing" became "...still says so" and checks the snackbar text for an
+  overlap 409. It failed before and passes after. "An overlapping shift
+  keeps the dialog open and says why" now also checks that no snackbar is
+  shown. `flutter test`: 218 passing; `flutter analyze`: 24 before and
+  after.
+Fixed by: `ed89f03` and
+`fix(frontend): report a shift refused after its dialog closed`,
+2026-11-01. Found while doing it: B76.
