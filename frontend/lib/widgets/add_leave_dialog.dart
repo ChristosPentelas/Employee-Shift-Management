@@ -12,8 +12,10 @@ import '../utils/date_limits.dart';
 ///
 /// A filed request goes to [onFiled] rather than out through Navigator.pop: a
 /// tap outside can close the dialog while the request is on its way, and the
-/// screen must still reload its list (F25). A refusal has no callback - it is
-/// shown inside the dialog, which stays open so nothing typed is lost (B19).
+/// screen must still reload its list (F25). A refusal is shown inside the
+/// dialog, which stays open so nothing typed is lost (B19); only when the
+/// dialog is already gone does it go to [onFailed], with the same text, for
+/// the screen to show (B75).
 class AddLeaveDialog extends StatefulWidget {
   // Passed in rather than read from apiServiceProvider, so the screen can
   // hand over the one it has - in tests, one with a fake client.
@@ -21,12 +23,14 @@ class AddLeaveDialog extends StatefulWidget {
   // The logged-in employee, read by the screen when it opens the dialog.
   final User employee;
   final VoidCallback onFiled;
+  final ValueChanged<String> onFailed;
 
   const AddLeaveDialog({
     super.key,
     required this.apiService,
     required this.employee,
     required this.onFiled,
+    required this.onFailed,
   });
 
   @override
@@ -83,6 +87,10 @@ class _AddLeaveDialogState extends State<AddLeaveDialog> {
         _saving = false;
         _saveError = _submitErrorText(result);
       });
+    } else {
+      // Closed while sending: the user likely thinks it went through, so the
+      // screen must say it did not (B75).
+      widget.onFailed(_submitErrorText(result));
     }
   }
 

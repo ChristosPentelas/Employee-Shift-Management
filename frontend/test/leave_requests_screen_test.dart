@@ -137,6 +137,9 @@ void main() {
       expect(find.text('Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
       expect(submitButton(), findsOneWidget); // still open
       expect(listLoads, hasLength(1)); // nothing was filed, so no reload
+      // B75: the screen reports a refusal only once the dialog is gone; an
+      // open dialog says it already.
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('a filed request closes the dialog and reloads the list',
@@ -243,19 +246,24 @@ void main() {
         expect(listLoads, hasLength(2));
       });
 
-      // The refusal is shown inside the dialog, which is gone. What matters
-      // is that nothing touches the closed dialog: a setState on a State
-      // that was disposed throws.
-      testWidgets('a request refused after its dialog was closed breaks nothing',
+      // B75: this used to pin silence - the refusal went to the dialog, which
+      // was gone, so the employee was left thinking it was filed. The screen
+      // says it now, with the dialog's reason. A setState on the disposed
+      // State would throw, hence takeException.
+      testWidgets('a request refused after its dialog was closed still says so',
           (WidgetTester tester) async {
         final held = <Completer<http.Response>>[];
         final listLoads = await openDialogWithDates(tester, 0, held: held);
         await submitAndCloseTheDialog(tester);
 
-        held.single.complete(http.Response('{}', 500));
+        held.single.complete(http.Response('{}', 400));
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
+        expect(
+            find.text('Η αίτηση αδείας δεν υποβλήθηκε. '
+                'Ελέγξτε τις ημερομηνίες και τον λόγο.'),
+            findsOneWidget);
         expect(listLoads, hasLength(1));
       });
     });

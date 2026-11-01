@@ -217,6 +217,13 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
           if (!mounted) return;
           _leaves.reload();
         },
+        // Only called once the dialog is gone, so the message must say what
+        // was refused (B75).
+        onFailed: (message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Η αίτηση αδείας δεν υποβλήθηκε. $message")));
+        },
       ),
     );
   }

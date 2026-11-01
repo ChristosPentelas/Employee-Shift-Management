@@ -579,6 +579,23 @@ Fix idea: an `onFailed` callback the screen turns into a snackbar when the
 dialog is gone, as the profile and news dialogs do; or keep the dialog from
 closing while it sends (`barrierDismissible: false` plus a `PopScope`), at
 the cost of the Cancel B72 relies on. That test then changes on purpose.
+Plan (2026-11-01): the `onFailed` callback, one dialog per change set, leave
+first. It carries the text the dialog already writes (`_submitErrorText`,
+`_assignErrorText`), so the wording stays in one place, and it is called
+only when the dialog is gone: an open dialog shows the refusal inline and
+stays open for a fix, and a snackbar behind it would say the same thing
+twice. News and profile call `onFailed` every time because they have no
+inline error. Not the `PopScope` idea: with no timeout yet (B72), Cancel is
+the only way out of a request that never gets an answer.
+- **Leave done:** `AddLeaveDialog.onFailed`, called in `_submit` when the
+  refusal comes after `mounted` is false; `leave_requests_screen.dart`
+  shows "Η αίτηση αδείας δεν υποβλήθηκε. " plus the dialog's text, because
+  the dialog that gave the text context is gone. The test "a request refused
+  after its dialog was closed breaks nothing" became "...still says so" and
+  checks the snackbar text for a 400. It failed before and passes after.
+  "A refused request keeps the dialog open and says why" now also checks
+  that no snackbar is shown. `flutter test`: 218 passing; `flutter analyze`:
+  24 before and after.
 
 ---
 
