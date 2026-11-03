@@ -9,6 +9,7 @@ import org.example.employeeshiftmanagement.dto.UpdateNewsRequest;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.service.NewsItemService;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,13 +42,21 @@ public class NewsItemController {
      * (defaults 0 and 20), and a size above 100 is lowered to 100 - see
      * spring.data.web.pageable.* in application.properties. A {@code sort}
      * parameter is accepted but ignored; the service fixes the order (F9).
+     *
+     * {@code ?type=GOAL} keeps only posts of that type. Optional, like every
+     * list filter (B49): no type, or an empty one, is every post. A word that
+     * is not a NewsType is a 400, before this method runs.
      */
     @GetMapping
-    public ResponseEntity<PageResponse<NewsItemResponse>> getAllNews(Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                newsItemService.getAllNews(pageable), NewsItemResponse::from));
+    public ResponseEntity<PageResponse<NewsItemResponse>> getAllNews(@RequestParam(required = false) NewsType type,
+                                                                     Pageable pageable) {
+        Page<NewsItem> news = type == null
+                ? newsItemService.getAllNews(pageable)
+                : newsItemService.getNewsByType(type, pageable);
+        return ResponseEntity.ok(PageResponse.from(news, NewsItemResponse::from));
     }
 
+    /** Old shape, kept until the app asks for /news?type= (B49 step 49b), then removed (49c). */
     @GetMapping("/type/{type}")
     public ResponseEntity<PageResponse<NewsItemResponse>> getAllNewsByType(@PathVariable NewsType type,
                                                                            Pageable pageable) {

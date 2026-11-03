@@ -36,4 +36,6 @@ The owner of this repo is a junior developer using this project to learn.
 - Controllers never expose JPA entities. DTOs only.
 - Business logic lives in services, not controllers or repositories.
 - Every new endpoint needs at least one test.
+- List filters are optional query parameters on the collection (`/news?type=`),
+  never path segments or a `/filter` sub-path.
 - Conventional Commits.

@@ -230,6 +230,35 @@ Fix idea: query parameters on the collection everywhere (`/news?type=`,
 `/leaves?status=&userId=`), each optional. The app calls none of the three
 filter routes (checked 2026-10-05), so they can move without
 expand-then-contract.
+Out of date since B26: the app's news filter calls `/news/type/{type}`
+(`ApiService.getNews`), so that one needs expand-then-contract. Re-checked
+2026-11-03: `/news/author/{authorId}` and `/leaves/filter` still have no
+caller.
+Decided 2026-11-03: a filter is an optional query parameter on the
+collection; written into `CLAUDE.md`'s Conventions, so the next filter
+follows it. News type moves to `/news?type=`; the author and leave filters
+are removed, not moved (no caller; YAGNI, as B48 did with the inbox). A
+future "pending leave only" is `/leaves?status=`, and one user's by status
+`/users/{userId}/leaves?status=` (the F16 rule), never `/leaves?userId=`.
+Once a list has two optional filters, Spring Data JPA `Specification`s
+combine them instead of one query method per combination. One commit per
+step: 49a the backend accepts `?type=`, 49b the app asks for it, 49c the
+three old routes go.
+Progress: 49a, `feat(backend): filter the news list by an optional type
+parameter (B49)`, 2026-11-03. `GET /news` takes `@RequestParam(required =
+false) NewsType type` and calls `getNewsByType` when it is set, else
+`getAllNews`; `/news/type/{type}` still answers, for the app. The choice
+stays in the controller: it picks which service method a request means,
+which is routing, like `filterLeaves`. Not chosen: one service method
+`getNews(type, pageable)`, which would change the service and its query
+counts in the same step (rule 2). New tests in `NewsItemControllerTest`:
+`?type=ANNOUNCEMENT` calls the type filter with the page; `?type=` is every
+post (Spring turns "" into a null enum - pinned so it is decided, not an
+accident); `PARTY` and `goal` are 400 (enum names are case-sensitive). Run
+against the controller before this step, the first and third failed (500:
+the parameter was ignored, so the unstubbed `getAllNews` ran); the second
+passed there too, since it pins what both do.
+`CLAUDE.md` gained the rule in the same commit.
 
 **B50 · LOW · A failed login's 401 has no `WWW-Authenticate` header** — found 2026-10-05
 Where: `POST /users/login` with a wrong email or password. Every other 401

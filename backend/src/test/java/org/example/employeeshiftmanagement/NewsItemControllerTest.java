@@ -27,6 +27,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -318,6 +319,52 @@ class NewsItemControllerTest {
                 .andExpect(jsonPath("$.detail").value("News item not found: 99"));
     }
 
+    // B49: the type is an optional query parameter on the list itself.
+    @Test
+    void newsCanBeFilteredByTypeOnTheList() throws Exception {
+        when(newsItemService.getNewsByType(eq(NewsType.ANNOUNCEMENT), any(Pageable.class)))
+                .thenReturn(onePage());
+
+        mockMvc.perform(get("/api/v1/news")
+                        .param("type", "ANNOUNCEMENT")
+                        .param("page", "1")
+                        .with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].type").value("ANNOUNCEMENT"))
+                .andExpect(jsonPath("$.content[0].author.password").doesNotExist());
+
+        verify(newsItemService).getNewsByType(eq(NewsType.ANNOUNCEMENT),
+                argThat(pageable -> pageable.getPageNumber() == 1));
+        verify(newsItemService, never()).getAllNews(any());
+    }
+
+    @Test
+    void anEmptyTypeFilterIsEveryPost() throws Exception {
+        // Spring turns "" into a null enum, so ?type= is the same as no type.
+        // Pinned here so that it is a decision, not an accident.
+        when(newsItemService.getAllNews(any(Pageable.class))).thenReturn(onePage());
+
+        mockMvc.perform(get("/api/v1/news").param("type", "").with(TestTokens.employee()))
+                .andExpect(status().isOk());
+
+        verify(newsItemService).getAllNews(any(Pageable.class));
+        verify(newsItemService, never()).getNewsByType(any(), any());
+    }
+
+    @Test
+    void anUnknownTypeFilterIsABadRequest() throws Exception {
+        // Enum names are case-sensitive: "goal" is as unknown as "PARTY".
+        for (String type : new String[]{"PARTY", "goal"}) {
+            mockMvc.perform(get("/api/v1/news").param("type", type).with(TestTokens.employee()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        verify(newsItemService, never()).getNewsByType(any(), any());
+        verify(newsItemService, never()).getAllNews(any());
+    }
+
+    // The old shape, until B49 step 49c removes it.
     @Test
     void newsCanBeListedByType() throws Exception {
         when(newsItemService.getNewsByType(eq(NewsType.ANNOUNCEMENT), any(Pageable.class)))
