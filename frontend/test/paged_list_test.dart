@@ -130,6 +130,28 @@ void main() {
     expect(list.items, [1]);
   });
 
+  // B41: the screen shows the error, not rows, so keeping "what is on screen"
+  // until the page arrives would leave a "try again" looking as if it did
+  // nothing.
+  test('a reload after a failure is loading again until the page arrives', () async {
+    final first = list.reload();
+    server.fail(0);
+    await first;
+    var told = 0;
+    list.addListener(() => told++);
+
+    final again = list.reload();
+
+    expect(list.loading, isTrue);
+    expect(list.error, isNull);
+    expect(told, 1, reason: 'the screen must redraw to show the spinner');
+
+    server.answer(1, [1], page: 0, totalPages: 1);
+    await again;
+    expect(list.loading, isFalse);
+    expect(list.items, [1]);
+  });
+
   test('a failed later page says so and keeps the rows', () async {
     final first = list.reload();
     server.answer(0, [1], page: 0, totalPages: 2);

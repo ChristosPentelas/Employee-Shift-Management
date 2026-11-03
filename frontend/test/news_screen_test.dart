@@ -437,6 +437,29 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
     });
 
+    // B41: a failed first page used to show "Σφάλμα: Exception: Σφάλμα
+    // σύνδεσης: Exception: Αποτυχία φόρτωσης ειδήσεων" in place of the tab.
+    testWidgets('a tab that fails to load says so in Greek and can be tried again',
+        (WidgetTester tester) async {
+      var failing = true;
+      final asked = await openNews(tester, worker, (path, _) {
+        if (path != all) return newsPage(0, 0, []);
+        return failing ? http.Response('', 500) : newsPage(0, 1, [1]);
+      });
+
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση.'), findsOneWidget);
+      expect(find.textContaining('Exception'), findsNothing);
+
+      failing = false;
+      asked.clear();
+      await tester.tap(find.text('Δοκιμάστε ξανά'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Post 1'), findsOneWidget);
+      // Only the tab that failed: the others had loaded.
+      expect(asked, ['$all 0']);
+    });
+
     testWidgets('posting reloads every tab from page 0',
         (WidgetTester tester) async {
       final asked = await openNews(tester, boss, (path, page) => path == all

@@ -479,6 +479,32 @@ void main() {
       expect(shown(2), findsOneWidget);
     });
 
+    // B41: a failed first page used to replace the list with the exception's
+    // text, "Σφάλμα: Exception: Σφάλμα φόρτωσης αδειών", and no way back.
+    testWidgets('a list that fails to load says so in Greek and can be tried again',
+        (WidgetTester tester) async {
+      var failing = true;
+      final reply = Completer<http.Response>();
+      await openAs(tester, worker, (_) async {
+        if (failing) return http.Response('', 500);
+        return reply.future;
+      });
+
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση.'), findsOneWidget);
+      expect(find.textContaining('Exception'), findsNothing);
+
+      failing = false;
+      await tester.tap(find.text('Δοκιμάστε ξανά'));
+      await tester.pump();
+      // Trying again shows that it is trying: a spinner, not the same error.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Δεν ήταν δυνατή η φόρτωση.'), findsNothing);
+
+      reply.complete(http.Response(leavePage(0, 1, [1]), 200));
+      await tester.pumpAndSettle();
+      expect(shown(1), findsOneWidget);
+    });
+
     testWidgets('a request already shown is not shown twice',
         (WidgetTester tester) async {
       // Request 2 was last on page 0; a newer one filed in between pushed it

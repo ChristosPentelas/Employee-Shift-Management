@@ -142,4 +142,30 @@ void main() {
     expect(find.text('Δεν βρέθηκαν υπάλληλοι.'), findsOneWidget); // reloaded
     expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsOneWidget);
   });
+
+  // B41: a failed load used to show "Σφάλμα: Exception: Σφάλμα δικτύου: ..."
+  // and offer no way to try again but leaving the screen.
+  testWidgets('a list that fails to load says so in Greek and can be tried again',
+      (WidgetTester tester) async {
+    var failing = true;
+    final api = ApiService(client: MockClient((_) async => failing
+        ? http.Response('', 500)
+        : http.Response(
+            '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+            '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+            200)));
+
+    await tester.pumpWidget(appWith(testContainer(user: supervisor()), api));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Δεν ήταν δυνατή η φόρτωση.'), findsOneWidget);
+    expect(find.textContaining('Exception'), findsNothing);
+
+    failing = false;
+    await tester.tap(find.text('Δοκιμάστε ξανά'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Worker'), findsOneWidget);
+    expect(find.text('Δεν ήταν δυνατή η φόρτωση.'), findsNothing);
+  });
 }

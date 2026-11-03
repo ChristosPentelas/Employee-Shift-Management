@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:employee_shift_management_ui/screens/employee_details_screen.dart';
 import 'package:employee_shift_management_ui/screens/register_screen.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import '../state/auth_session.dart';
 import '../services/api_service.dart';
 import '../services/api_providers.dart';
 import '../models/user_model.dart';
+import '../widgets/load_error_view.dart';
 
 class EmployeeListScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
@@ -24,7 +27,28 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   @override
   void initState() {
     super.initState();
-    _employeesFuture = _apiService.getAllEmployees();
+    _employeesFuture = _loadEmployees();
+  }
+
+  // Logs a failure here, once, then passes it on to the FutureBuilder, which
+  // shows only that it failed (B41). Not in the builder: that runs on every
+  // rebuild and would log the same error again each time.
+  Future<List<User>> _loadEmployees() async {
+    try {
+      return await _apiService.getAllEmployees();
+    } catch (e, stackTrace) {
+      developer.log("Loading the employees failed",
+          name: "EmployeeListScreen", error: e, stackTrace: stackTrace);
+      // rethrow, not `throw e`: it keeps the original stack trace.
+      rethrow;
+    }
+  }
+
+  // A new future starts the FutureBuilder over, spinner first.
+  void _reload() {
+    setState(() {
+      _employeesFuture = _loadEmployees();
+    });
   }
 
   Future<void> _addEmployee() async {
@@ -36,9 +60,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
     );
 
     if (created == true && mounted) {
-      setState(() {
-        _employeesFuture = _apiService.getAllEmployees();
-      });
+      _reload();
     }
   }
 
@@ -57,9 +79,7 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
     // true means the details screen deleted this employee. That screen is
     // closed by now, so this one, the screen on display, says so.
     if (deleted == true && mounted) {
-      setState(() {
-        _employeesFuture = _apiService.getAllEmployees();
-      });
+      _reload();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text("Ο υπάλληλος διαγράφηκε επιτυχώς"),
@@ -89,8 +109,8 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
           // Waiting for data
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) { //if error corrupt
-            return Center(child: Text("Σφάλμα: ${snapshot.error}"));
+          } else if (snapshot.hasError) {
+            return LoadErrorView(onRetry: _reload);
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(child: Text("Δεν βρέθηκαν υπάλληλοι."));
           }

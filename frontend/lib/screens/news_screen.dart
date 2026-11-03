@@ -6,6 +6,7 @@ import '../models/news_model.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
 import '../widgets/add_news_dialog.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/paged_list_footer.dart';
 
 /// One tab: its label, and the NewsType it shows as the server spells it,
@@ -109,7 +110,8 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     if (list.loading) {
       return Center(child: CircularProgressIndicator());
     } else if (list.error != null) {
-      return Center(child: Text("Σφάλμα: ${list.error}"));
+      // Only this tab's list: the others may have loaded fine.
+      return LoadErrorView(onRetry: list.reload);
     } else if (list.items.isEmpty) {
       return Center(child: Text(tab.type == null
           ? "Δεν υπάρχουν νέα."

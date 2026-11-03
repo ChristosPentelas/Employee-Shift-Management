@@ -7,6 +7,7 @@ import '../models/page_model.dart';
 import '../state/auth_session.dart';
 import '../state/paged_list.dart';
 import '../widgets/add_leave_dialog.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/paged_list_footer.dart';
 
 class LeaveRequestsScreen extends ConsumerStatefulWidget {
@@ -74,7 +75,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
           if (_leaves.loading){
             return Center(child: CircularProgressIndicator());
           } else if (_leaves.error != null) {
-            return Center(child: Text("Σφάλμα: ${_leaves.error}"));
+            return LoadErrorView(onRetry: _leaves.reload);
           } else if (_leaves.items.isEmpty) {
             return Center(child: Text("Δεν υπάρχουν αιτήματα."));
           }

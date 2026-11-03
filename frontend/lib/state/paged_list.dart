@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 
 import '../models/page_model.dart';
@@ -51,6 +53,14 @@ class PagedList<T> extends ChangeNotifier {
   /// stay until the new ones arrive.
   Future<void> reload() async {
     final generation = ++_generation;
+    // After a failure the error is what is on screen, not rows. Left there,
+    // a "try again" that is still waiting would look like it did nothing, and
+    // a second failure exactly like the first (B41). So: loading again.
+    if (_error != null) {
+      _error = null;
+      _loading = true;
+      notifyListeners();
+    }
     try {
       final first = await _fetch(0);
       if (_disposed || generation != _generation) return;
@@ -58,8 +68,12 @@ class PagedList<T> extends ChangeNotifier {
       _page = first.page;
       _hasMore = first.hasMore;
       _error = null;
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (_disposed || generation != _generation) return;
+      // Kept for whoever debugs it; the screen shows only that it failed.
+      // developer.log, not print: it reaches only a debugger (F26).
+      developer.log("Loading the list failed",
+          name: "PagedList", error: e, stackTrace: stackTrace);
       _error = e;
     }
     _loading = false;

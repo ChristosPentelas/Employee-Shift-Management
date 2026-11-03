@@ -127,7 +127,8 @@ travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
 `news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
 Snackbars do the same with `Text("Σφάλμα: $e")` (seen in F25 step 25b): news
-post and delete, employee delete, and leave approve/reject. Since B35
+post and delete, and employee delete. (Leave approve/reject was on this list
+too; B42 replaced its exception with fixed Greek texts on 2026-10-18.) Since B35
 (2026-10-30) the news post's snackbar is in the `onFailed` that
 `_showAddNewsDialog` hands to `AddNewsDialog`; `postNews` wraps its own
 exception again, so the text reads `Exception: Σφάλμα: Exception: Αποτυχία
@@ -140,6 +141,32 @@ Relates to: F29 (the audit's example), F26 (the same failures are also
 `print`ed).
 Fix idea: show a short Greek message and a "retry" button, and keep the
 technical detail for the debug log.
+Progress: split in two on 2026-11-03, one concept each: 41a the three
+failed-load screens, 41b the snackbars.
+**41a done** (`fix(frontend): offer a retry when a list fails to load (B41)`):
+the three screens show `LoadErrorView` (`widgets/load_error_view.dart`):
+"Δεν ήταν δυνατή η φόρτωση." and "Δοκιμάστε ξανά", the same words as
+`PagedListFooter` when a later page fails. The error itself goes to
+`developer.log` where it is caught, as F26 did: in `PagedList.reload`, and in
+the employee list's new `_loadEmployees` (logs, then `rethrow`s to the
+`FutureBuilder`; not in `builder`, which would log on every rebuild). Its
+retry is a new future, which puts the `FutureBuilder` back to its spinner.
+`PagedList.reload` now goes back to `loading` when it starts after an error:
+it kept what was on screen until the page came, and after a failure that is
+the error, so a retry on a slow network looked like it did nothing. Not
+chosen: the error text small under the message (still developer detail), a
+spinner inside `LoadErrorView` (it would need state `PagedList` already has).
+Tests: "a list/tab that fails to load says so in Greek and can be tried
+again" in the three screen tests, "a reload after a failure is loading again
+until the page arrives" in `paged_list_test.dart`; all four fail on the old
+code, and the leave test's spinner check fails with only `PagedList` old.
+`flutter test`: 225 passing.
+Still open for 41b: the snackbars above, and `postNews` wrapping its own
+exception (`catch (e) { throw Exception("Σφάλμα: $e"); }` around a throw in
+its own `try`). Noticed in 41a: `PagedList.loadMore` and `refresh` swallow
+their error without logging it (the footer and chat tell the user, so only
+the debug log is missing it); `PagedListFooter` could show `LoadErrorView`
+instead of its own copy of the same two widgets.
 
 **B43 · LOW · A delete can be started twice** — found 2026-09-29
 Where: `employee_details_screen.dart`, `news_screen.dart` and
