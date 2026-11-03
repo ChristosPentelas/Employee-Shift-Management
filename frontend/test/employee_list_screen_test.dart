@@ -143,6 +143,38 @@ void main() {
     expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsOneWidget);
   });
 
+  // B41: it used to read "Σφάλμα: Exception: Σφάλμα κατά τη διαγραφή:
+  // Exception: Αποτυχία διαγραφής: 500".
+  testWidgets('a failed delete says so in Greek and stays on the details screen',
+      (WidgetTester tester) async {
+    final network = MockClient((request) async {
+      if (request.method == 'DELETE') return http.Response('', 500);
+      return http.Response(
+          '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+          '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+          200);
+    });
+    final container = testContainer(
+        user: supervisor(),
+        overrides: [networkClientProvider.overrideWithValue(network)]);
+
+    await tester.pumpWidget(
+        withAppState(container, MaterialApp(home: EmployeeListScreen())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Worker'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή Υπαλλήλου'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+    await tester.pumpAndSettle();
+
+    expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+    expect(find.textContaining('Exception'), findsNothing);
+    // Still on the details screen: nothing was deleted to go back and show.
+    expect(find.text('Διαγραφή Υπαλλήλου'), findsOneWidget);
+    expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsNothing);
+  });
+
   // B41: a failed load used to show "Σφάλμα: Exception: Σφάλμα δικτύου: ..."
   // and offer no way to try again but leaving the screen.
   testWidgets('a list that fails to load says so in Greek and can be tried again',

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_providers.dart';
@@ -86,10 +88,15 @@ class EmployeeDetailsScreen extends ConsumerWidget {
                   // true tells the employee list to reload and to say the
                   // employee was deleted (it is the screen on display then).
                   Navigator.pop(context,true);
-                } catch (e) {
+                } catch (e, stackTrace) {
+                  // The detail is for whoever debugs it, not the supervisor
+                  // (B41). Logged before the mounted check: it failed either way.
+                  developer.log("Deleting the employee failed",
+                      name: "EmployeeDetailsScreen", error: e, stackTrace: stackTrace);
                   if (!context.mounted) return;
+                  // The shifts screen's words for the same failure (B33).
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Σφάλμα: $e")),
+                    const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
                   );
                 }
 

@@ -118,7 +118,10 @@ void main() {
       postReply.complete(http.Response('', 400));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Σφάλμα'), findsOneWidget);
+      // The exact words, not just "some error": it used to read "Σφάλμα:
+      // Exception: Σφάλμα: Exception: Αποτυχία δημιουργίας: 400" (B41).
+      expect(find.text('Η ανάρτηση δεν δημοσιεύτηκε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(find.textContaining('Exception'), findsNothing);
     });
 
     // Choosing GOAL rebuilds the dialog with the target field; what is typed
@@ -349,12 +352,14 @@ void main() {
 
     /// Opens the news screen as [user]. [answer] replies to each GET, given
     /// its path and ?page=. Returns every GET as "<path> <page>", in order.
+    /// [deleteStatus] answers a DELETE.
     Future<List<String>> openNews(WidgetTester tester, User user,
-        http.Response Function(String path, String? page) answer) async {
+        http.Response Function(String path, String? page) answer,
+        {int deleteStatus = 204}) async {
       final asked = <String>[];
       final network = MockClient((request) async {
         if (request.method == 'POST') return http.Response('{}', 201);
-        if (request.method == 'DELETE') return http.Response('', 204);
+        if (request.method == 'DELETE') return http.Response('', deleteStatus);
         final page = request.url.queryParameters['page'];
         asked.add('${request.url.path} $page');
         return answer(request.url.path, page);
@@ -494,6 +499,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(asked, unorderedEquals(everyList));
+    });
+
+    // B41: it used to read "Σφάλμα διαγραφής: Exception: Σφάλμα κατά τη
+    // διαγραφή: Exception: Αποτυχία διαγραφής: 500".
+    testWidgets('a failed delete says so in Greek and keeps the post',
+        (WidgetTester tester) async {
+      await openNews(tester, boss,
+          (path, _) => path == all ? newsPage(0, 1, [1]) : newsPage(0, 0, []),
+          deleteStatus: 500);
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+      await tester.pumpAndSettle();
+
+      expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(find.textContaining('Exception'), findsNothing);
+      expect(find.text('Post 1'), findsOneWidget);
     });
 
     testWidgets('a tab keeps its loaded posts and its place after switching away',

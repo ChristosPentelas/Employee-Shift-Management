@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
@@ -194,9 +196,10 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
           if (!mounted) return;
           _reloadAll();
         },
-        onFailed: (e) {
+        onFailed: () {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Σφάλμα: $e")));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text("Η ανάρτηση δεν δημοσιεύτηκε. Δοκιμάστε ξανά.")));
         },
       ),
     );
@@ -223,10 +226,14 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Η ανάρτηση διαγράφηκε")),
                 );
-              } catch (e) {
+              } catch (e, stackTrace) {
+                // Logged before the mounted check: it failed either way.
+                developer.log("Deleting the news post failed",
+                    name: "NewsScreen", error: e, stackTrace: stackTrace);
                 if (!mounted) return;
+                // The shifts screen's words for the same failure (B33).
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Σφάλμα διαγραφής: $e")),
+                  const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
                 );
               }
             },

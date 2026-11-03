@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import '../models/news_model.dart';
 import '../models/user_model.dart';
@@ -20,7 +22,10 @@ class AddNewsDialog extends StatefulWidget {
   // The logged-in supervisor, read by the screen when it opens the dialog.
   final User author;
   final VoidCallback onPosted;
-  final ValueChanged<Object> onFailed;
+  // No error passed on: the screen only says that it failed, and what it
+  // cannot see it cannot show by accident (B41). The error is logged here,
+  // where it is caught.
+  final VoidCallback onFailed;
 
   const AddNewsDialog({
     super.key,
@@ -86,9 +91,11 @@ class _AddNewsDialogState extends State<AddNewsDialog> {
     // them even when this dialog is already gone.
     try {
       await widget.apiService.postNews(newItem);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      developer.log("Posting the news failed",
+          name: "AddNewsDialog", error: e, stackTrace: stackTrace);
       // The dialog stays open, so what was typed can be corrected.
-      widget.onFailed(e);
+      widget.onFailed();
       if (mounted) setState(() => _saving = false);
       return;
     }
