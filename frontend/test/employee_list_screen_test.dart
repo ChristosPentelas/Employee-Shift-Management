@@ -1,6 +1,8 @@
 // Account creation lives in the supervisor's employee list (F1 step 5).
 // The screens get an ApiService with a fake server, so no backend is needed.
 
+import 'dart:async';
+
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/screens/employee_list_screen.dart';
 import 'package:employee_shift_management_ui/services/api_providers.dart';
@@ -173,6 +175,97 @@ void main() {
     // Still on the details screen: nothing was deleted to go back and show.
     expect(find.text('Διαγραφή Υπαλλήλου'), findsOneWidget);
     expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsNothing);
+  });
+
+  // B43: the dialog closes before the DELETE is sent, and nothing stopped the
+  // supervisor from deleting the same employee again meanwhile. pump, not
+  // pumpAndSettle, while a reply is held: the spinner never settles.
+  group('while a delete is on its way', () {
+    // bySubtype: OutlinedButton.icon builds a private subclass, which
+    // find.byType (an exact type match) would miss.
+    final deleteButton = find.ancestor(
+        of: find.text('Διαγραφή Υπαλλήλου'),
+        matching: find.bySubtype<OutlinedButton>());
+    final spinner = find.descendant(
+        of: deleteButton, matching: find.byType(CircularProgressIndicator));
+    final confirm = find.text('Διαγραφή'); // the dialog's confirm button
+
+    /// Opens Worker's details as a supervisor, each DELETE held in [held],
+    /// and opens the delete question.
+    Future<void> askToDelete(
+        WidgetTester tester, List<Completer<http.Response>> held) async {
+      final network = MockClient((request) {
+        if (request.method == 'DELETE') {
+          final reply = Completer<http.Response>();
+          held.add(reply);
+          return reply.future;
+        }
+        return Future.value(http.Response(
+            '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+            '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+            200));
+      });
+      final container = testContainer(
+          user: supervisor(),
+          overrides: [networkClientProvider.overrideWithValue(network)]);
+      await tester.pumpWidget(
+          withAppState(container, MaterialApp(home: EmployeeListScreen())));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Worker'));
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
+    }
+
+    VoidCallback? onPressed(WidgetTester tester) =>
+        tester.widget<ButtonStyleButton>(deleteButton).onPressed;
+
+    testWidgets('the delete button is off and spins',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await askToDelete(tester, held);
+
+      await tester.tap(confirm);
+      await tester.pump();
+
+      expect(spinner, findsOneWidget);
+      expect(onPressed(tester), isNull);
+      held.single.complete(http.Response('', 204));
+      await tester.pumpAndSettle();
+    });
+
+    // The bug itself: the question closes at once, so the same employee could
+    // be deleted again while the first DELETE was on its way.
+    testWidgets('the question cannot be opened again until the reply arrives',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await askToDelete(tester, held);
+
+      await tester.tap(confirm);
+      // Long enough for the question to finish closing.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(deleteButton);
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(held, hasLength(1));
+      held.single.complete(http.Response('', 204));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a failed delete turns the delete button back on',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await askToDelete(tester, held);
+
+      await tester.tap(confirm);
+      await tester.pump();
+      held.single.complete(http.Response('', 500));
+      await tester.pumpAndSettle();
+
+      expect(spinner, findsNothing);
+      expect(onPressed(tester), isNotNull);
+    });
   });
 
   // B41: a failed load used to show "Σφάλμα: Exception: Σφάλμα δικτύου: ..."

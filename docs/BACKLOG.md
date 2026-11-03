@@ -141,8 +141,8 @@ Where: `ApiService.deleteNews` and `deleteUser` throw on every status but
 Why it matters: if another supervisor deleted it first, the server answers
 404. The post or employee stays on screen, and every retry is another 404.
 B33 solved the same thing for shifts.
-Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ends here
-too), B41.
+Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ended
+here too, until B43 was fixed), B41.
 Fix idea: a `deleted` / `notFound` / `failed` enum result like
 `DeleteShiftResult`; on `notFound` say it was already deleted and reload.
 
@@ -155,19 +155,15 @@ two copies drift apart when one is changed.
 Fix idea: the footer returns `Padding(..., child: LoadErrorView(onRetry:
 list.loadMore))`; its widget tests should pass unchanged.
 
-**B43 · LOW · A delete can be started twice** — found 2026-09-29
-Where: `employee_details_screen.dart`, `news_screen.dart` and
-`shifts_screen.dart` close their confirmation dialog before the delete request
-(F25), and nothing is disabled or shown while it runs.
-Why it matters: on a slow network the supervisor can press delete and confirm
-again. The second request finds nothing and fails, so an error snackbar appears
-although the delete worked.
-Relates to: F25 (why the dialog closes first).
-Fix idea: a "deleting" flag in the screen's state that disables the button and
-shows a small progress indicator until the reply arrives.
-Model (2026-10-14): the change-password dialog (B8) disables its save
-button with a `_saving` flag while the request runs, and a widget test taps
-it twice to check only one request goes out.
+**B82 · LOW · The employee details screen spells "Emaill"** — found 2026-11-03
+Where: `employee_details_screen.dart`, the first `ListTile`'s title.
+Why it matters: a typo every supervisor sees on every employee. The same
+screen's constructor also has no `key` and is not `const`
+(`use_key_in_widget_constructors`, `prefer_const_constructors_in_immutables`
+in `flutter analyze`), unlike `ShiftsScreen`.
+Relates to: B43 (found while making this screen stateful).
+Fix idea: "Email"; `const EmployeeDetailsScreen({super.key, required
+this.user})`, and `const` where it is built if the analyzer then asks.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
@@ -2103,3 +2099,43 @@ Left as their own entries: B79, B80, B81.
 Fixed by: `fix(frontend): offer a retry when a list fails to load (B41)`
 (`c11faae`), `fix(frontend): say in Greek that a post or delete failed (B41)`,
 `refactor(frontend): let service errors through unwrapped (B41)`, 2026-11-03.
+
+**B43 · LOW · A delete can be started twice** — found 2026-09-29
+Where: `employee_details_screen.dart`, `news_screen.dart` and
+`shifts_screen.dart` close their confirmation dialog before the delete request
+(F25), and nothing is disabled or shown while it runs.
+Why it matters: on a slow network the supervisor can press delete and confirm
+again. The second request finds nothing and fails, so an error snackbar appears
+although the delete worked.
+Relates to: F25 (why the dialog closes first).
+Fix idea: a "deleting" flag in the screen's state that disables the button and
+shows a small progress indicator until the reply arrives.
+Model (2026-10-14): the change-password dialog (B8) disables its save
+button with a `_saving` flag while the request runs, and a widget test taps
+it twice to check only one request goes out.
+Fixed by: `fix(frontend): stop a delete from being started twice (B43)`,
+2026-11-03. One commit for the three screens, at the owner's request (rule 2
+would have split it). The news and shifts screens keep `int? _deletingId`:
+null when no delete is on its way, else the row being deleted. While it is
+set every delete button is off (`onPressed: null`), so one delete at a time,
+and that row's button shows the dialogs' 16 px spinner. It is set before the
+`await`, so the next frame already shows it. News clears it in a `finally`
+(after success and failure); shifts clears it after the `await`, because
+`deleteShift` never throws (B33). The employee details screen became a
+`ConsumerStatefulWidget` to hold a `bool _deleting`; it stays true after a
+successful delete, since the screen is then on its way out.
+Not chosen: a `Set<int>` of rows being deleted (two deletes at once is rare,
+and more state to keep right); a provider (only this screen cares, so it is
+ephemeral state).
+Checked and dropped: a guard at the top of the confirm handler against a
+double tap on the dialog's button. Flutter already stops that: on a route
+change the Navigator absorbs every further pointer for the rest of the frame
+(`NavigatorState._cancelActivePointers`), and from the next frame a closing
+route ignores taps (`_ModalScopeState._shouldIgnoreFocusRequest`). A test
+that tapped confirm twice passed without the guard, so it proved nothing.
+Tests, three per screen (news, shifts, employee list): the buttons are off
+and the row spins while the reply is held (a `Completer`); the question
+cannot be opened again until the reply arrives; a failed delete turns the
+buttons back on. The first two fail on the old code (6 of 9); the third
+passes there, since nothing was ever turned off, and guards the reset.
+`flutter test`: 246 passing. `flutter analyze`: 24 issues before and after.

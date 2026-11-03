@@ -352,13 +352,20 @@ void main() {
 
     /// Opens the news screen as [user]. [answer] replies to each GET, given
     /// its path and ?page=. Returns every GET as "<path> <page>", in order.
-    /// [deleteStatus] answers a DELETE.
+    /// [deleteStatus] answers a DELETE. With [heldDeletes], each DELETE
+    /// instead waits for the test to complete the Completer it adds there.
     Future<List<String>> openNews(WidgetTester tester, User user,
         http.Response Function(String path, String? page) answer,
-        {int deleteStatus = 204}) async {
+        {int deleteStatus = 204,
+        List<Completer<http.Response>>? heldDeletes}) async {
       final asked = <String>[];
       final network = MockClient((request) async {
         if (request.method == 'POST') return http.Response('{}', 201);
+        if (request.method == 'DELETE' && heldDeletes != null) {
+          final reply = Completer<http.Response>();
+          heldDeletes.add(reply);
+          return reply.future;
+        }
         if (request.method == 'DELETE') return http.Response('', deleteStatus);
         final page = request.url.queryParameters['page'];
         asked.add('${request.url.path} $page');
@@ -517,6 +524,84 @@ void main() {
       expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
       expect(find.textContaining('Exception'), findsNothing);
       expect(find.text('Post 1'), findsOneWidget);
+    });
+
+    // B43: the dialog closes before the DELETE is sent, and nothing stopped
+    // the supervisor from deleting the same post again meanwhile. pump, not
+    // pumpAndSettle, while a reply is held: the spinner never settles.
+    group('while a delete is on its way', () {
+      final spinner = find.descendant(
+          of: find.byType(IconButton),
+          matching: find.byType(CircularProgressIndicator));
+      final confirm = find.text('Διαγραφή'); // the dialog's confirm button
+
+      /// Opens the news as a supervisor with posts 1 and 2, each DELETE held
+      /// in [held], and opens the delete question for post 1.
+      Future<void> askToDeleteFirst(
+          WidgetTester tester, List<Completer<http.Response>> held) async {
+        await openNews(tester, boss,
+            (path, _) => path == all ? newsPage(0, 1, [1, 2]) : newsPage(0, 0, []),
+            heldDeletes: held);
+        await tester.tap(find.byIcon(Icons.delete).first);
+        await tester.pumpAndSettle();
+      }
+
+      // Each post is a Card, with its delete button inside.
+      List<IconButton> deleteButtons(WidgetTester tester) => tester
+          .widgetList<IconButton>(find.descendant(
+              of: find.byType(Card), matching: find.byType(IconButton)))
+          .toList();
+
+      testWidgets('every delete button is off and the post deleted spins',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        await tester.pump();
+
+        expect(spinner, findsOneWidget);
+        expect(deleteButtons(tester), hasLength(2));
+        // Post 2's too: one delete at a time.
+        expect(deleteButtons(tester).map((b) => b.onPressed), everyElement(isNull));
+        held.single.complete(http.Response('', 204));
+        await tester.pumpAndSettle();
+      });
+
+      // The bug itself: the question closes at once, so the same post could
+      // be deleted again while the first DELETE was on its way.
+      testWidgets('the question cannot be opened again until the reply arrives',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        // Long enough for the question to finish closing.
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find
+            .descendant(of: find.byType(Card), matching: find.byType(IconButton))
+            .first);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(held, hasLength(1));
+        held.single.complete(http.Response('', 204));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a failed delete turns the delete buttons back on',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        await tester.pump();
+        held.single.complete(http.Response('', 500));
+        await tester.pumpAndSettle();
+
+        expect(spinner, findsNothing);
+        expect(deleteButtons(tester).map((b) => b.onPressed), everyElement(isNotNull));
+      });
     });
 
     testWidgets('a tab keeps its loaded posts and its place after switching away',

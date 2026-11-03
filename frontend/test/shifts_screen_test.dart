@@ -416,5 +416,102 @@ void main() {
       expect(monthLoads, hasLength(1)); // nothing changed, so no reload
       expect(find.text('Cashier'), findsOneWidget); // still listed
     });
+
+    // B43: the dialog closes before the DELETE is sent, and nothing stopped
+    // the supervisor from deleting the same shift again meanwhile. pump, not
+    // pumpAndSettle, while a reply is held: the spinner never settles.
+    group('while it is on its way', () {
+      final spinner = find.descendant(
+          of: find.byType(IconButton),
+          matching: find.byType(CircularProgressIndicator));
+      final confirm = find.text('Διαγραφή'); // the dialog's confirm button
+
+      /// Opens the calendar as a supervisor with two shifts on the 15th, each
+      /// DELETE held in [held]; selects the 15th and asks to delete the first.
+      Future<void> askToDeleteFirst(
+          WidgetTester tester, List<Completer<http.Response>> held) async {
+        final now = DateTime.now();
+        final day = '${now.year}-${now.month.toString().padLeft(2, '0')}-15';
+        final api = ApiService(client: MockClient((request) {
+          if (request.method == 'DELETE') {
+            final reply = Completer<http.Response>();
+            held.add(reply);
+            return reply.future;
+          }
+          return Future.value(http.Response(
+              '[{"id":3,"date":"$day","startTime":"08:00","endTime":"12:00","position":"Cashier"},'
+              '{"id":4,"date":"$day","startTime":"13:00","endTime":"17:00","position":"Stock"}]',
+              200));
+        }));
+        final boss = User(
+            id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+        await tester.pumpWidget(withAppState(testContainer(user: boss),
+            MaterialApp(home: ShiftsScreen(apiService: api))));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('15'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.delete_sweep).first);
+        await tester.pumpAndSettle();
+      }
+
+      // Each shift is a Card; the calendar's own buttons are outside them.
+      List<IconButton> deleteButtons(WidgetTester tester) => tester
+          .widgetList<IconButton>(find.descendant(
+              of: find.byType(Card), matching: find.byType(IconButton)))
+          .toList();
+
+      testWidgets('every delete button is off and the shift deleted spins',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        await tester.pump();
+
+        expect(spinner, findsOneWidget);
+        expect(deleteButtons(tester), hasLength(2));
+        // The other shift's too: one delete at a time.
+        expect(deleteButtons(tester).map((b) => b.onPressed), everyElement(isNull));
+        held.single.complete(http.Response('', 204));
+        await tester.pumpAndSettle();
+      });
+
+      // The bug itself: the question closes at once, so the same shift could
+      // be deleted again while the first DELETE was on its way.
+      testWidgets('the question cannot be opened again until the reply arrives',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        // Long enough for the question to finish closing.
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find
+            .descendant(of: find.byType(Card), matching: find.byType(IconButton))
+            .first);
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(held, hasLength(1));
+        held.single.complete(http.Response('', 204));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a failed delete turns the delete buttons back on',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await askToDeleteFirst(tester, held);
+
+        await tester.tap(confirm);
+        await tester.pump();
+        held.single.complete(http.Response('', 500));
+        await tester.pumpAndSettle();
+
+        expect(spinner, findsNothing);
+        expect(deleteButtons(tester), hasLength(2));
+        expect(deleteButtons(tester).map((b) => b.onPressed), everyElement(isNotNull));
+      });
+    });
   });
 }

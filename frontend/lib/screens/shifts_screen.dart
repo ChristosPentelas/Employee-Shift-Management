@@ -23,6 +23,10 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
   DateTime? _selectedDay;
   List<Shift> _allShifts = [];
   bool _isLoading = true;
+  // The shift being deleted, or null when no delete is on its way. While set,
+  // every delete button is off, so the same shift cannot be deleted twice
+  // (B43); that shift's button spins.
+  int? _deletingId;
   late final ApiService _apiService = widget.apiService ?? ref.read(apiServiceProvider);
 
   @override
@@ -167,8 +171,13 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
 
                 if (isSupervisor)
                   IconButton(
-                    icon: Icon(Icons.delete_sweep, color: Colors.redAccent),
-                    onPressed: () => _confirmDelete(s.id),
+                    icon: _deletingId == s.id
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(Icons.delete_sweep, color: Colors.redAccent),
+                    onPressed: _deletingId == null ? () => _confirmDelete(s.id) : null,
                   ),
               ],
             ),
@@ -239,17 +248,21 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
+              // Before the await: from the next frame on, every delete button
+              // is off until the reply arrives (B43).
+              setState(() => _deletingId = shiftId);
               Navigator.pop(dialogContext);
+              // No try/finally: deleteShift never throws, every outcome is a
+              // DeleteShiftResult (B33).
               final result = await _apiService.deleteShift(shiftId);
               if (!mounted) return;
-              // Reload unless nothing changed: after a 404 the calendar on
-              // screen is out of date, and the reload shows what is stored.
-              if (result != DeleteShiftResult.failed) {
-                _loadShifts();
-                setState(() {
-                  _selectedDay = null;
-                });
-              }
+              setState(() {
+                _deletingId = null;
+                // Reload unless nothing changed: after a 404 the calendar on
+                // screen is out of date, and the reload shows what is stored.
+                if (result != DeleteShiftResult.failed) _selectedDay = null;
+              });
+              if (result != DeleteShiftResult.failed) _loadShifts();
               // Every outcome says something: a failure used to say nothing
               // at all (B33).
               ScaffoldMessenger.of(context)

@@ -46,6 +46,11 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
       ),
   ];
 
+  // The post being deleted, or null when no delete is on its way. While set,
+  // every delete button is off, so the same post cannot be deleted twice
+  // (B43); that post's button spins.
+  int? _deletingId;
+
   // All four, after a post or a delete: a post is in "all" and in its own
   // type's tab, and reloading only those would need its type here too.
   void _reloadAll() {
@@ -150,8 +155,13 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             subtitle: Text("Από: ${item.author?.name ?? 'Άγνωστος'}"),
             trailing: isSupervisor
               ? IconButton(
-                  icon: Icon(Icons.delete, color: Colors.red[300]),
-                  onPressed: () => _confirmDelete(item.id),
+                  icon: _deletingId == item.id
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.delete, color: Colors.red[300]),
+                  onPressed: _deletingId == null ? () => _confirmDelete(item.id) : null,
                 )
               : null,
             children: [
@@ -215,6 +225,9 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text("Ακύρωση")),
           TextButton(
             onPressed: () async {
+              // Before the await: from the next frame on, every delete button
+              // is off until the reply arrives (B43).
+              setState(() => _deletingId = newsId);
               // Close the question first: after the await only the screen
               // matters, and it must not pop again - `Navigator.pop` removes
               // whatever is on top, which would then be this screen (F25).
@@ -235,6 +248,10 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
                 );
+              } finally {
+                // On success and failure alike; the guard is for a screen
+                // closed meanwhile, whose setState would throw.
+                if (mounted) setState(() => _deletingId = null);
               }
             },
             child: Text("Διαγραφή", style: TextStyle(color: Colors.red)),
