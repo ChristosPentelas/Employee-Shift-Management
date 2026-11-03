@@ -123,17 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B40 · LOW · `LeaveRequestResponse`'s comment still describes F7 as open** — found 2026-09-25
-Where: the Javadoc on `LeaveRequestResponse.java` says the response "still
-carries every employee's leave to every caller - that is F7, and it needs the
-authenticated principal from F1 to fix properly".
-Why it matters: F7 was closed on 2026-09-16 (F1 step 7d): employees only get
-their own requests, and the full list is supervisor-only. A comment that states
-old behaviour as current misleads the next reader into "fixing" something that
-is already fixed, or into trusting the wrong picture of who sees leave reasons.
-Fix idea: keep the first sentence (leave reasons are health and family
-information) and replace the F7 part with where the rule is now enforced.
-
 **B41 · LOW · Three screens show raw Dart exceptions to the user** — found 2026-09-25
 Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
 `news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
@@ -2007,4 +1996,27 @@ Done: all three set to `JavaVersion.VERSION_17`. Only `MainActivity.kt` and
 the generated `GeneratedPluginRegistrant.java` are compiled with it. The Dart
 code is not affected. `flutter build apk --debug` passed after the change.
 Fixed by: `build(android): raise Kotlin to 2.2.20 and Java to 17 (B39, B78)`,
+2026-11-03.
+
+**B40 · LOW · `LeaveRequestResponse`'s comment still describes F7 as open** — found 2026-09-25
+Where: the Javadoc on `LeaveRequestResponse.java` says the response "still
+carries every employee's leave to every caller - that is F7, and it needs the
+authenticated principal from F1 to fix properly".
+Why it matters: F7 was closed on 2026-09-16 (F1 step 7d): employees only get
+their own requests, and the full list is supervisor-only. A comment that states
+old behaviour as current misleads the next reader into "fixing" something that
+is already fixed, or into trusting the wrong picture of who sees leave reasons.
+Fix idea: keep the first sentence (leave reasons are health and family
+information) and replace the F7 part with where the rule is now enforced.
+Done in two parts. The stale F7 text was already replaced on 2026-10-25 in
+`aa86682` (`fix(backend): turn off open session in view`, B28), which touched
+the file for another reason and did not close this entry. That rewrite said
+"the endpoints decide", but not which ones. Checked against the code: the two
+list endpoints for everyone's requests and the status change are
+`hasRole('SUPERVISOR')`, `/users/{userId}/leaves` is your own or a
+supervisor's, and `createLeave` has no `@PreAuthorize` but always files for
+the caller. The comment now names `LeaveRequestController` and both
+mechanisms, so the next reader knows where to look and that the record itself
+filters nothing. Comment only; `mvnw compile` passes, no tests needed.
+Fixed by: `docs(backend): say where the leave privacy rule is enforced (B40)`,
 2026-11-03.

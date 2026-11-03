@@ -8,7 +8,9 @@ import java.time.LocalDate;
 /**
  * Leave reasons are health and family information, so the endpoints decide who
  * sees which requests: everyone's only for supervisors, otherwise only your own
- * (F7). The nested UserResponse keeps the employee's password out (F3).
+ * (F7). That rule lives in LeaveRequestController - its @PreAuthorize checks, and
+ * createLeave filing for the caller - not in this record. The nested UserResponse
+ * keeps the employee's password out (F3).
  */
 public record LeaveRequestResponse(
         Integer id,
