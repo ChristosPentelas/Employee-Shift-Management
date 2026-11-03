@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:employee_shift_management_ui/models/leave_request_model.dart';
+import 'package:employee_shift_management_ui/models/news_model.dart';
 import 'package:employee_shift_management_ui/models/shift_model.dart';
 import 'package:employee_shift_management_ui/models/user_model.dart';
 import 'package:employee_shift_management_ui/services/api_service.dart';
@@ -619,6 +620,46 @@ void main() {
 
     expect(await api.changePassword('old-secret', 'new-secret'),
         ChangePasswordResult.failed);
+  });
+
+  // B41: these five caught their own error and threw Exception("...: $e")
+  // around it, so the caller got text: "Exception: Σφάλμα: Exception:
+  // Αποτυχία δημιουργίας: 500", with no way to tell a lost network from a
+  // refusal, and a stack trace that started at the catch.
+  group('a failure reaches the caller as it happened', () {
+    final calls = <String, Future<void> Function(ApiService)>{
+      'getAllEmployees': (api) => api.getAllEmployees(),
+      'deleteUser': (api) => api.deleteUser(7),
+      'getNews': (api) => api.getNews(),
+      'postNews': (api) => api.postNews(NewsItem(
+            id: 0,
+            title: 'Απογραφή',
+            description: 'Την Παρασκευή',
+            type: 'ANNOUNCEMENT',
+            createdAt: DateTime(2026, 11, 3),
+          )),
+      'deleteNews': (api) => api.deleteNews(1),
+    };
+
+    for (final MapEntry(key: name, value: call) in calls.entries) {
+      test('$name without a network throws the network error itself', () async {
+        final api = ApiService(client: MockClient((_) async {
+          throw http.ClientException('no network');
+        }));
+
+        await expectLater(call(api), throwsA(isA<http.ClientException>()));
+      });
+
+      test('$name refused by the server says so once, not once per layer',
+          () async {
+        final api = ApiService(client: MockClient((_) async => http.Response('', 500)));
+
+        await expectLater(
+            call(api),
+            throwsA(predicate((e) => 'Exception: '.allMatches('$e').length == 1,
+                'an exception that is not wrapped in another')));
+      });
+    }
   });
 
   // F26: print() goes to the device log in release builds too, so nothing the

@@ -62,7 +62,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F26 | MEDIUM | Debug `print`s ship in the app | Done | `fix(frontend): keep debug output out of the device log` | Checked 2026-10-01: 11 `print`s, not the audit's 10 (line numbers had moved). The six traces are deleted, including the inbox response body. The five in `catch` blocks that swallow their error (`getInbox`, `getSent`, `markAsRead`, the chat and login screens) became `developer.log` with a `name` and `error:`, which only reaches a debugger and so is silent in release. `api_service_test.dart` fails if `ApiService` prints anything, on success or without a network. The swallowed errors themselves are B44 |
 | F27 | LOW | Hard-coded backend base URL | Done | `feat(frontend): choose the backend address at build time` | `ApiService.baseUrl` now comes from `--dart-define=API_BASE_URL=...`, defaulting to the emulator's `http://10.0.2.2:8080/api/v1`, so `flutter run` works unchanged. `frontend/README.md` lists the command for the emulator, iOS simulator and a physical phone. Still plain HTTP (B14) |
 | F28 | LOW | Chat polls every 3 s | Done | `feat(backend): mark a whole chat read in one request`, `fix(frontend): mark a chat read with one request`, `perf(frontend): poll the chat every 5 s, one load at a time` | Done in three steps (2026-10-13). **28a:** `PUT /api/v1/messages/chat/{otherUserId}/read` marks every unread message the other person sent to the caller with one JPQL `UPDATE` and answers 204; the receiver comes from the token, so it needs no `@PreAuthorize`. Covered by V3's `idx_messages_chat`, so no migration. **28b:** the chat shows the messages, then sends that one request only if something to the caller is unread (closes B27). **28c:** the chat polls every 5 s instead of 3; a load never starts while one is on its way, and one asked for meanwhile (after sending) runs right after; an `AppLifecycleListener` stops the timer `onHide` and reloads `onShow` (not `onPause`: desktop and web never reach paused). The audit's "only messages after the last known id" was not done: F9 already caps a load at 50 messages. Still polling, not push (B55) |
-| F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41) |
+| F29 | LOW | `fromJson` assumes every field is present | Done | `fix(frontend): show news posts that have no author` | Checked every model against the response records and the V1 columns on 2026-09-25: the only field the server can send as `null` that a model required was `NewsItem.author` (`author_id` is `DEFAULT NULL`). It is now `User?`, and the news list shows "Από: Άγνωστος". The unused and broken `NewsItem.toJson` is deleted. The rest of the audit's text was already out of date: `User.fromJson` no longer reads a password (F3), and a message's `sender`/`receiver` are `NOT NULL`. The raw `Σφάλμα: ${snapshot.error}` the audit mentions is still shown by three screens (B41, fixed 2026-11-03) |
 | F30 | LOW | No shift-overlap constraint | Done | `feat(backend): refuse overlapping shifts for the same employee` | Rule decided 2026-09-23: an employee's shifts may not overlap, counting overnight shifts into the next day; a shift ending when the next starts is allowed. Checked in `ShiftService` on create and update, answered with 409 (`ConflictException`). Not enforced by the database, so two requests at the same moment can both pass (B30). Shifts during approved leave are refused since B31 step 31a, with their own problem type so the app can tell the two 409s apart. The app's assign dialog shows its own Greek text for the 409 since `feat(frontend): show why a shift could not be assigned` |
 
 Totals: 30 done · 0 partial · 0 open.
@@ -123,50 +123,37 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B41 · LOW · Three screens show raw Dart exceptions to the user** — found 2026-09-25
-Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
-`news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
-Snackbars do the same with `Text("Σφάλμα: $e")` (seen in F25 step 25b): news
-post and delete, and employee delete. (Leave approve/reject was on this list
-too; B42 replaced its exception with fixed Greek texts on 2026-10-18.) Since B35
-(2026-10-30) the news post's snackbar is in the `onFailed` that
-`_showAddNewsDialog` hands to `AddNewsDialog`; `postNews` wraps its own
-exception again, so the text reads `Exception: Σφάλμα: Exception: Αποτυχία
-δημιουργίας: 400`.
-Why it matters: the user sees the exception's text, e.g. `Exception: Σφάλμα
-σύνδεσης: ` followed by the underlying Dart error in English: developer
-detail, and no hint of what to do. F29 removed the most likely cause on the
-news screen (a null author), but any network failure still shows this.
-Relates to: F29 (the audit's example), F26 (the same failures are also
-`print`ed).
-Fix idea: show a short Greek message and a "retry" button, and keep the
-technical detail for the debug log.
-Progress: split in two on 2026-11-03, one concept each: 41a the three
-failed-load screens, 41b the snackbars.
-**41a done** (`fix(frontend): offer a retry when a list fails to load (B41)`):
-the three screens show `LoadErrorView` (`widgets/load_error_view.dart`):
-"Δεν ήταν δυνατή η φόρτωση." and "Δοκιμάστε ξανά", the same words as
-`PagedListFooter` when a later page fails. The error itself goes to
-`developer.log` where it is caught, as F26 did: in `PagedList.reload`, and in
-the employee list's new `_loadEmployees` (logs, then `rethrow`s to the
-`FutureBuilder`; not in `builder`, which would log on every rebuild). Its
-retry is a new future, which puts the `FutureBuilder` back to its spinner.
-`PagedList.reload` now goes back to `loading` when it starts after an error:
-it kept what was on screen until the page came, and after a failure that is
-the error, so a retry on a slow network looked like it did nothing. Not
-chosen: the error text small under the message (still developer detail), a
-spinner inside `LoadErrorView` (it would need state `PagedList` already has).
-Tests: "a list/tab that fails to load says so in Greek and can be tried
-again" in the three screen tests, "a reload after a failure is loading again
-until the page arrives" in `paged_list_test.dart`; all four fail on the old
-code, and the leave test's spinner check fails with only `PagedList` old.
-`flutter test`: 225 passing.
-Still open for 41b: the snackbars above, and `postNews` wrapping its own
-exception (`catch (e) { throw Exception("Σφάλμα: $e"); }` around a throw in
-its own `try`). Noticed in 41a: `PagedList.loadMore` and `refresh` swallow
-their error without logging it (the footer and chat tell the user, so only
-the debug log is missing it); `PagedListFooter` could show `LoadErrorView`
-instead of its own copy of the same two widgets.
+**B79 · LOW · A later page that fails leaves nothing in the debug log** — found 2026-11-03
+Where: `PagedList.loadMore` and `PagedList.refresh` (`state/paged_list.dart`)
+catch their error and keep only a flag; `reload` logs it since B41 step 41a.
+Why it matters: the user is told (the footer's "Δοκιμάστε ξανά", the chat's
+next poll), but whoever debugs a list that stops growing has no error to
+look at. `refresh` runs every 5 s in a chat, so logging there needs care not
+to repeat the same error on every poll.
+Relates to: B41, F26.
+Fix idea: `developer.log(..., error: e, stackTrace: st)` in `loadMore`'s
+catch; in `refresh`, only when it sets `_error` (nothing on screen yet).
+
+**B80 · LOW · Deleting a news post or employee that is already gone says "try again" for ever** — found 2026-11-03
+Where: `ApiService.deleteNews` and `deleteUser` throw on every status but
+200/204; `news_screen.dart` and `employee_details_screen.dart` show "Η
+διαγραφή απέτυχε. Δοκιμάστε ξανά." and do not reload.
+Why it matters: if another supervisor deleted it first, the server answers
+404. The post or employee stays on screen, and every retry is another 404.
+B33 solved the same thing for shifts.
+Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ends here
+too), B41.
+Fix idea: a `deleted` / `notFound` / `failed` enum result like
+`DeleteShiftResult`; on `notFound` say it was already deleted and reload.
+
+**B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
+Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η
+φόρτωση." text and "Δοκιμάστε ξανά" button; `widgets/load_error_view.dart`
+(B41) is the same two widgets.
+Why it matters: the wording is meant to be one (B41 chose it to match), and
+two copies drift apart when one is changed.
+Fix idea: the footer returns `Padding(..., child: LoadErrorView(onRetry:
+list.loadMore))`; its widget tests should pass unchanged.
 
 **B43 · LOW · A delete can be started twice** — found 2026-09-29
 Where: `employee_details_screen.dart`, `news_screen.dart` and
@@ -2047,3 +2034,72 @@ mechanisms, so the next reader knows where to look and that the record itself
 filters nothing. Comment only; `mvnw compile` passes, no tests needed.
 Fixed by: `docs(backend): say where the leave privacy rule is enforced (B40)`,
 2026-11-03.
+
+**B41 · LOW · Three screens show raw Dart exceptions to the user** — found 2026-09-25
+Where: `employee_list_screen.dart`, `leave_requests_screen.dart` and
+`news_screen.dart` show `Text("Σφάλμα: ${snapshot.error}")` when loading fails.
+Snackbars do the same with `Text("Σφάλμα: $e")` (seen in F25 step 25b): news
+post and delete, and employee delete. (Leave approve/reject was on this list
+too; B42 replaced its exception with fixed Greek texts on 2026-10-18.) Since B35
+(2026-10-30) the news post's snackbar is in the `onFailed` that
+`_showAddNewsDialog` hands to `AddNewsDialog`; `postNews` wraps its own
+exception again, so the text reads `Exception: Σφάλμα: Exception: Αποτυχία
+δημιουργίας: 400`.
+Why it matters: the user sees the exception's text, e.g. `Exception: Σφάλμα
+σύνδεσης: ` followed by the underlying Dart error in English: developer
+detail, and no hint of what to do. F29 removed the most likely cause on the
+news screen (a null author), but any network failure still shows this.
+Relates to: F29 (the audit's example), F26 (the same failures are also
+`print`ed).
+Fix idea: show a short Greek message and a "retry" button, and keep the
+technical detail for the debug log.
+Done in three steps on 2026-11-03, one concept each: 41a the three
+failed-load screens, 41b the snackbars (UI), 41c the service that wrapped
+every error in another (service layer, its own commit by rule 2).
+**41a done** (`fix(frontend): offer a retry when a list fails to load (B41)`):
+the three screens show `LoadErrorView` (`widgets/load_error_view.dart`):
+"Δεν ήταν δυνατή η φόρτωση." and "Δοκιμάστε ξανά", the same words as
+`PagedListFooter` when a later page fails. The error itself goes to
+`developer.log` where it is caught, as F26 did: in `PagedList.reload`, and in
+the employee list's new `_loadEmployees` (logs, then `rethrow`s to the
+`FutureBuilder`; not in `builder`, which would log on every rebuild). Its
+retry is a new future, which puts the `FutureBuilder` back to its spinner.
+`PagedList.reload` now goes back to `loading` when it starts after an error:
+it kept what was on screen until the page came, and after a failure that is
+the error, so a retry on a slow network looked like it did nothing. Not
+chosen: the error text small under the message (still developer detail), a
+spinner inside `LoadErrorView` (it would need state `PagedList` already has).
+Tests: "a list/tab that fails to load says so in Greek and can be tried
+again" in the three screen tests, "a reload after a failure is loading again
+until the page arrives" in `paged_list_test.dart`; all four fail on the old
+code, and the leave test's spinner check fails with only `PagedList` old.
+`flutter test`: 225 passing.
+**41b done** (`fix(frontend): say in Greek that a post or delete failed (B41)`):
+news post "Η ανάρτηση δεν δημοσιεύτηκε. Δοκιμάστε ξανά.", news and employee
+delete "Η διαγραφή απέτυχε. Δοκιμάστε ξανά." (the shifts screen's words,
+B33). Each `catch` logs the error with `developer.log` before its `mounted`
+check. `AddNewsDialog.onFailed` is a `VoidCallback` now, as in
+`EditProfileDialog`: the dialog logs, and the screen gets only "it failed",
+so it cannot show the error by accident. Tests: "a failed delete says so in
+Greek and keeps the post" (news), "a failed delete says so in Greek and stays
+on the details screen" (employee list); "a post that fails after its dialog
+was closed still says so" now expects the exact sentence and no "Exception"
+instead of any text containing "Σφάλμα" - stricter, the word is gone. All
+three fail on the old code.
+**41c done** (`refactor(frontend): let service errors through unwrapped (B41)`):
+`getAllEmployees`, `deleteUser`, `getNews`, `postNews` and `deleteNews` no
+longer `catch (e) { throw Exception("...: $e"); }`. That turned every error
+into text: the caller could not tell a lost network from a refusal, the stack
+trace started at the catch, and each layer added an "Exception: ". Their own
+"refused" exceptions stay; `getNews`'s now names the status, as the other
+four did. Every caller catches everything (`catch (e)`, `FutureBuilder`,
+`PagedList`), checked before the change, so nothing new escapes. Not chosen:
+a typed exception (`ApiException(statusCode)`): no caller needs the status
+yet, and those that do use an enum result (B80). Tests: "a failure reaches
+the caller as it happened" in `api_service_test.dart`, two per method (no
+network throws the `ClientException` itself; a 500 has one "Exception: ");
+all ten fail on the old code. `flutter test`: 237 passing.
+Left as their own entries: B79, B80, B81.
+Fixed by: `fix(frontend): offer a retry when a list fails to load (B41)`
+(`c11faae`), `fix(frontend): say in Greek that a post or delete failed (B41)`,
+`refactor(frontend): let service errors through unwrapped (B41)`, 2026-11-03.

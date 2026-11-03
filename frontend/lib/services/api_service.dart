@@ -152,57 +152,54 @@ class ApiService {
   // time - the largest page the server allows. All or nothing: if one page
   // fails, so does the list, since a picker silently missing people is the
   // very bug this fixes.
+  //
+  // Like every method below that throws, it lets an error out as it came: no
+  // catch that wraps it in a new Exception("...: $e"). That turned it into
+  // text - the caller could no longer tell a lost network from a refusal, the
+  // stack trace now pointed at the catch, and each layer added one more
+  // "Exception: " (B41).
   Future<List<User>> getAllEmployees() async {
-    try{
-      // Keyed by id: someone added between two requests pushes everyone after
-      // them down one place, so the last person of a page comes back first on
-      // the next. A Dart map keeps insertion order, so the list stays by name.
-      // Someone deleted mid-way does the opposite and skips a person, which
-      // paging by offset cannot prevent.
-      final employees = <int, User>{};
-      var page = 0;
-      int totalPages;
-      do {
-        final response = await _client.get(
-          Uri.parse("$baseUrl/users?page=$page&size=100"),
-          headers: {"Content-Type": "application/json"},
-        );
-        if (response.statusCode != 200) {
-          throw Exception("Αποτυχία φόρτωσης υπαλλήλων: ${response.statusCode}");
-        }
+    // Keyed by id: someone added between two requests pushes everyone after
+    // them down one place, so the last person of a page comes back first on
+    // the next. A Dart map keeps insertion order, so the list stays by name.
+    // Someone deleted mid-way does the opposite and skips a person, which
+    // paging by offset cannot prevent.
+    final employees = <int, User>{};
+    var page = 0;
+    int totalPages;
+    do {
+      final response = await _client.get(
+        Uri.parse("$baseUrl/users?page=$page&size=100"),
+        headers: {"Content-Type": "application/json"},
+      );
+      if (response.statusCode != 200) {
+        throw Exception("Αποτυχία φόρτωσης υπαλλήλων: ${response.statusCode}");
+      }
 
-        // Decoded once, for both the people and the page count.
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        for (final item in body['content'] as List<dynamic>) {
-          final user = User.fromJson(item);
-          employees.putIfAbsent(user.id, () => user);
-        }
-        // The server's count, never one worked out from size=100: it lowers a
-        // larger size instead of refusing it. 0 when there is nobody, so an
-        // empty list is still one request.
-        totalPages = body['totalPages'] as int;
-        page++;
-      } while (page < totalPages);
+      // Decoded once, for both the people and the page count.
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      for (final item in body['content'] as List<dynamic>) {
+        final user = User.fromJson(item);
+        employees.putIfAbsent(user.id, () => user);
+      }
+      // The server's count, never one worked out from size=100: it lowers a
+      // larger size instead of refusing it. 0 when there is nobody, so an
+      // empty list is still one request.
+      totalPages = body['totalPages'] as int;
+      page++;
+    } while (page < totalPages);
 
-      return employees.values.toList();
-    }catch (e) {
-      throw Exception("Σφάλμα δικτύου: $e");
-    }
+    return employees.values.toList();
   }
 
   Future<void> deleteUser(int userId) async {
-    try{
+    final response = await _client.delete(
+      Uri.parse("$baseUrl/users/$userId"),
+      headers: {"Content-Type" : "application/json"},
+    );
 
-      final response = await _client.delete(
-        Uri.parse("$baseUrl/users/$userId"),
-        headers: {"Content-Type" : "application/json"},
-      );
-
-      if(response.statusCode != 200 && response.statusCode != 204) {
-        throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
-      }
-    }catch (e){
-      throw Exception("Σφάλμα κατά τη διαγραφή: $e");
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
     }
   }
 
@@ -211,57 +208,43 @@ class ApiService {
   // the server spells it, e.g. 'GOAL'; any other word is a 400.
   Future<ListPage<NewsItem>> getNews({String? type, int page = 0, int size = 20}) async {
     final path = type == null ? "news" : "news/type/$type";
-    try{
-      final response = await _client.get(
-        Uri.parse("$baseUrl/$path?page=$page&size=$size"),
-        headers: {"Content-Type" : "application/json"},
-      );
+    final response = await _client.get(
+      Uri.parse("$baseUrl/$path?page=$page&size=$size"),
+      headers: {"Content-Type" : "application/json"},
+    );
 
-      if (response.statusCode == 200) {
-        return _page(response, NewsItem.fromJson);
-      }else{
-        throw Exception("Αποτυχία φόρτωσης ειδήσεων");
+    if (response.statusCode == 200) {
+      return _page(response, NewsItem.fromJson);
     }
-    } catch (e) {
-      throw Exception("Σφάλμα σύνδεσης: $e");
-    }
+    throw Exception("Αποτυχία φόρτωσης ειδήσεων: ${response.statusCode}");
   }
 
   Future<void> postNews(NewsItem item) async {
-    try{
-      final response = await _client.post(
-        Uri.parse("$baseUrl/news"),
-        headers: {"Content-Type" : "application/json"},
-        body: jsonEncode({
-          "title": item.title,
-          "description": item.description,
-          "type": item.type,
-          // No authorId: the server records the supervisor posting it (F1 step 7b).
-          "deadline": item.deadline?.toIso8601String(),
-          "targetValue": item.targetValue,
-        }
-        ),
-      );
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception("Αποτυχία δημιουργίας: ${response.statusCode}");
-      }
-    } catch (e) {
-      throw Exception("Σφάλμα: $e");
+    final response = await _client.post(
+      Uri.parse("$baseUrl/news"),
+      headers: {"Content-Type" : "application/json"},
+      body: jsonEncode({
+        "title": item.title,
+        "description": item.description,
+        "type": item.type,
+        // No authorId: the server records the supervisor posting it (F1 step 7b).
+        "deadline": item.deadline?.toIso8601String(),
+        "targetValue": item.targetValue,
+      }),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception("Αποτυχία δημιουργίας: ${response.statusCode}");
     }
   }
 
   Future<void> deleteNews(int id) async {
-    try{
-      final response = await _client.delete(
-        Uri.parse("$baseUrl/news/$id"),
-        headers: {"Content-Type" : "application/json"},
-      );
+    final response = await _client.delete(
+      Uri.parse("$baseUrl/news/$id"),
+      headers: {"Content-Type" : "application/json"},
+    );
 
-      if(response.statusCode != 200 && response.statusCode != 204) {
-        throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
-      }
-    }catch (e){
-      throw Exception("Σφάλμα κατά τη διαγραφή: $e");
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
     }
   }
 
