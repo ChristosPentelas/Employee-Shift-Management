@@ -60,11 +60,14 @@ class MessageControllerTest {
         return message;
     }
 
+    // B48: the chat with one person, the caller taken from the token.
     @Test
-    void theInboxLeaksNeitherSenderNorReceiverPassword() throws Exception {
-        when(messageService.getInbox(eq(7), any(Pageable.class))).thenReturn(TestPages.of(message()));
+    void aChatIsTheCallersWithTheOtherPersonAndLeaksNoPassword() throws Exception {
+        when(messageService.getChatHistory(eq(7), eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
 
-        mockMvc.perform(get("/api/v1/messages/inbox/7").with(TestTokens.employee()))
+        mockMvc.perform(get("/api/v1/messages/chat/9")
+                        .param("page", "1")
+                        .with(TestTokens.employee()))
                 .andExpect(status().isOk())
                 // Message.fromJson reads sender.id, sender.name and the "read" key
                 .andExpect(jsonPath("$.content[0].sender.id").value(9))
@@ -72,6 +75,27 @@ class MessageControllerTest {
                 .andExpect(jsonPath("$.content[0].read").value(false))
                 .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
                 .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist());
+
+        // 7 is the token's subject: the URL names only the other person.
+        verify(messageService).getChatHistory(eq(7), eq(9), argThat(pageable -> pageable.getPageNumber() == 1));
+    }
+
+    @Test
+    void aChatWithoutATokenIsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/messages/chat/9"))
+                .andExpect(status().isUnauthorized());
+
+        verify(messageService, never()).getChatHistory(anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void theInboxSentAndUnreadListsAreGone() throws Exception {
+        // Removed in B48: no app version called them since B26 step 26c2,
+        // which switched the list screen to /messages/conversations.
+        for (String path : new String[]{"/inbox/7", "/sent/7", "/unread/7"}) {
+            mockMvc.perform(get("/api/v1/messages" + path).with(TestTokens.employee()))
+                    .andExpect(status().isNotFound());
+        }
     }
 
     @Test
@@ -162,38 +186,7 @@ class MessageControllerTest {
         verify(messageService, never()).getConversations(anyInt(), any());
     }
 
-    @Test
-    void theInboxWithoutATokenIsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/inbox/7"))
-                .andExpect(status().isUnauthorized());
-
-        verify(messageService, never()).getInbox(anyInt(), any());
-    }
-
-    @Test
-    void anEmployeeCannotReadSomeoneElsesInbox() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/inbox/9").with(TestTokens.employee()))
-                .andExpect(status().isForbidden());
-
-        verify(messageService, never()).getInbox(anyInt(), any());
-    }
-
-    @Test
-    void aSupervisorCannotReadAnEmployeesInboxEither() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/inbox/7").with(TestTokens.supervisor()))
-                .andExpect(status().isForbidden());
-
-        verify(messageService, never()).getInbox(anyInt(), any());
-    }
-
-    @Test
-    void anEmployeeCannotReadSomeoneElsesSentMessages() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/sent/9").with(TestTokens.employee()))
-                .andExpect(status().isForbidden());
-
-        verify(messageService, never()).getSendMessages(anyInt(), any());
-    }
-
+    // The old chat shape, until B48 step 48d removes it.
     @Test
     void aChatYouArePartOfCanBeRead() throws Exception {
         when(messageService.getChatHistory(eq(7), eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
@@ -276,40 +269,6 @@ class MessageControllerTest {
 
         mockMvc.perform(delete("/api/v1/messages/1").with(TestTokens.employee()))
                 .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void youCanReadYourOwnUnreadMessages() throws Exception {
-        when(messageService.getUnreadMessages(eq(7), any(Pageable.class))).thenReturn(TestPages.of(message()));
-
-        mockMvc.perform(get("/api/v1/messages/unread/7").with(TestTokens.employee()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].read").value(false))
-                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
-                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist())
-                .andExpect(jsonPath("$.page").value(0));
-    }
-
-    @Test
-    void youCannotReadSomeoneElsesUnreadMessages() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/unread/9").with(TestTokens.employee()))
-                .andExpect(status().isForbidden());
-
-        verify(messageService, never()).getUnreadMessages(anyInt(), any());
-    }
-
-    @Test
-    void youCanReadYourOwnSentMessages() throws Exception {
-        // message() goes from the supervisor (9) to the employee (7), so it is
-        // in the supervisor's sent list.
-        when(messageService.getSendMessages(eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
-
-        mockMvc.perform(get("/api/v1/messages/sent/9").with(TestTokens.supervisor()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].sender.id").value(9))
-                .andExpect(jsonPath("$.content[0].receiver.id").value(7))
-                .andExpect(jsonPath("$.content[0].sender.password").doesNotExist())
-                .andExpect(jsonPath("$.content[0].receiver.password").doesNotExist());
     }
 
     @Test

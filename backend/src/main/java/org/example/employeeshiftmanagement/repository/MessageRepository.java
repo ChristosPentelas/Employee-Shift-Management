@@ -27,20 +27,11 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
     @Override
     Optional<Message> findById(Integer id);
 
-    @EntityGraph(attributePaths = {"sender", "receiver"})
-    Page<Message> findByReceiverId(Integer receiverId, Pageable pageable); //Every message a user receives
-
-    @EntityGraph(attributePaths = {"sender", "receiver"})
-    Page<Message> findBySenderId(Integer senderId, Pageable pageable); //Every message a user sends
-
     //Conversation between two users
     @EntityGraph(attributePaths = {"sender", "receiver"})
     Page<Message> findBySenderIdAndReceiverIdOrSenderIdAndReceiverId(Integer senderId1, Integer receiverId1,
                                                                      Integer senderId2, Integer receiverId2,
                                                                      Pageable pageable);
-
-    @EntityGraph(attributePaths = {"sender", "receiver"})
-    Page<Message> findByReceiverIdAndIsReadFalse(Integer receiverId, Pageable pageable);
 
     // One row per person the user has messaged or been messaged by: the newest
     // message between them, whoever sent it (B26). The CASE is "the other

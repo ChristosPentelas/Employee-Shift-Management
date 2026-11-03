@@ -100,44 +100,6 @@ class QueryCountIntegrationTest {
     }
 
     @Test
-    void inboxLoadsTheSendersWithTheMessagesInOneStatement() {
-        User receiver = user("receiver");
-        send(user("sender-a"), receiver);
-        send(user("sender-b"), receiver);
-        send(user("sender-c"), receiver);
-
-        long statements = countStatements(() ->
-                messageService.getInbox(receiver.getId(), PageRequest.of(0, 20)).map(MessageResponse::from));
-
-        assertEquals(1, statements);
-    }
-
-    @Test
-    void sentMessagesLoadTheReceiversWithTheMessagesInOneStatement() {
-        User sender = user("sender");
-        send(sender, user("receiver-a"));
-        send(sender, user("receiver-b"));
-        send(sender, user("receiver-c"));
-
-        long statements = countStatements(() ->
-                messageService.getSendMessages(sender.getId(), PageRequest.of(0, 20)).map(MessageResponse::from));
-
-        assertEquals(1, statements);
-    }
-
-    @Test
-    void unreadMessagesLoadTheSendersWithTheMessagesInOneStatement() {
-        User receiver = user("receiver");
-        send(user("sender-a"), receiver);
-        send(user("sender-b"), receiver);
-
-        long statements = countStatements(() ->
-                messageService.getUnreadMessages(receiver.getId(), PageRequest.of(0, 20)).map(MessageResponse::from));
-
-        assertEquals(1, statements);
-    }
-
-    @Test
     void conversationsLoadBothUsersWithTheMessagesInOneStatement() {
         // The subquery that picks each conversation's newest message is part
         // of the same statement, so it costs nothing extra here (B26).

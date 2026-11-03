@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -191,23 +192,48 @@ class SecurityIntegrationTest {
         assertEquals(401, getShifts(expiredToken).value());
     }
 
+    /**
+     * B48: the chat URL names only the other person, and the token says who
+     * is asking. Carol names Bob, exactly as Alice does, and still gets only
+     * her own chat with him - proving the real token's subject decides, not
+     * anything in the URL.
+     */
     @Test
-    void aRealTokenOpensOnlyItsOwnInbox() {
-        User alice = registeredUser("it-alice@example.com", "EMPLOYEE");
-        User bob = registeredUser("it-bob@example.com", "EMPLOYEE");
-        String aliceToken = login("it-alice@example.com");
+    void aRealTokenReadsOnlyItsOwnChatWithSomeone() {
+        registeredUser("it-chat-alice@example.com", "EMPLOYEE");
+        User bob = registeredUser("it-chat-bob@example.com", "EMPLOYEE");
+        registeredUser("it-chat-carol@example.com", "EMPLOYEE");
+        String aliceToken = login("it-chat-alice@example.com");
+        String carolToken = login("it-chat-carol@example.com");
 
-        HttpStatusCode own = client().get().uri("/messages/inbox/" + alice.getId())
-                .header("Authorization", "Bearer " + aliceToken)
-                .exchange((req, response) -> response.getStatusCode());
-        HttpStatusCode someoneElses = client().get().uri("/messages/inbox/" + bob.getId())
-                .header("Authorization", "Bearer " + aliceToken)
-                .exchange((req, response) -> response.getStatusCode());
+        sendMessage(aliceToken, bob.getId(), "Alice to Bob");
 
-        // Proves the token's subject really is the user id that
-        // "authentication.name" is compared with in @PreAuthorize.
-        assertEquals(200, own.value());
-        assertEquals(403, someoneElses.value());
+        assertEquals(List.of("Alice to Bob"), chatContents(aliceToken, bob.getId()));
+        assertEquals(List.of(), chatContents(carolToken, bob.getId()));
+    }
+
+    private void sendMessage(String token, Integer receiverId, String content) {
+        client().post().uri("/messages?receiverId=" + receiverId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"content":"%s"}
+                        """.formatted(content))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    /** The text of each message on page 0 of the caller's chat with otherUserId. */
+    private List<String> chatContents(String token, Integer otherUserId) {
+        Map<?, ?> page = client().get().uri("/messages/chat/" + otherUserId)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .body(Map.class);
+
+        assertNotNull(page);
+        return ((List<?>) page.get("content")).stream()
+                .map(message -> (String) ((Map<?, ?>) message).get("content"))
+                .toList();
     }
 
     @Test
@@ -216,6 +242,9 @@ class SecurityIntegrationTest {
         User dave = registeredUser("it-dave@example.com", "EMPLOYEE");
         String carolToken = login("it-carol@example.com");
 
+        // Proves the token's subject really is the user id that
+        // "authentication.name" is compared with in @PreAuthorize. The inbox
+        // test checked this too, until B48 removed the inbox.
         assertEquals(200, schedule(carolToken, carol.getId()).value());
         assertEquals(403, schedule(carolToken, dave.getId()).value());
     }

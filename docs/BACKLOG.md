@@ -217,6 +217,41 @@ expand-then-contract change, since the app calls inbox, sent and chat.
 Since B26 step 26c1 (2026-10-22) there is one more data point: the new
 `GET /messages/conversations` takes the user from the token only, and from
 26c2 the app no longer calls inbox or sent.
+Decided 2026-11-03: token only, as `/messages/chat/{otherUserId}`, matching
+`PUT /messages/chat/{otherUserId}/read`, `/conversations` and `POST
+/messages`. The F16 rule (`/users/{userId}/...`) is for lists a supervisor
+may read for someone else; messages are private even from supervisors, so
+the id could only ever be the caller's own. Four steps, expand then contract:
+48a remove inbox, sent and unread (no caller); 48b add the new chat route;
+48c the app switches; 48d the old chat route goes.
+Progress: 48a and 48b in one commit at the owner's request (rule 2 would
+have split them), `feat(backend)!: drop the unused message lists and read a
+chat by the other person only (B48)`, 2026-11-03.
+- 48a: `GET /messages/inbox/{userId}`, `/sent/{userId}` and
+  `/unread/{userId}` are gone and answer 404, with their `MessageService`
+  methods and the three derived queries in `MessageRepository`. Their tests
+  went with them, not to make anything pass: the controller tests for each
+  route (8), the three statement counts in `QueryCountIntegrationTest`, and
+  `SecurityIntegrationTest.aRealTokenOpensOnlyItsOwnInbox`, whose point (the
+  token's subject is what `@PreAuthorize` compares with) the schedule test
+  next to it already proves; its comment moved there. The password checks
+  moved to the new chat test. V3's indexes stay: `idx_messages_receiver_timestamp`
+  is the only index MySQL can use for the `receiver_id` foreign key, so it
+  cannot be dropped without another, and the conversations query filters on
+  `sender_id` or `receiver_id`. V3's comments still name the old lists and
+  stay as they are: an applied migration is never edited (Flyway checksum).
+- 48b: `GET /messages/chat/{otherUserId}` reads the caller's chat with one
+  person; the caller comes from the token, so no `@PreAuthorize`. The old
+  `GET /messages/chat?user1Id=&user2Id=` still answers, for the app.
+  `SecurityIntegrationTest.aRealTokenReadsOnlyItsOwnChatWithSomeone`: Alice
+  messages Bob, then Carol asks for her chat with Bob through the same URL
+  and gets an empty page. `MessageControllerTest` checks the service gets the
+  token's id and the page, a request with no token is 401, and the three old
+  lists are 404. All of them fail on the code before, where the route did not
+  exist (or, for the 404 test, the lists did). Backend suite: 318 passing.
+Left: 48c (the app's `getChatHistory` drops `currentUserId` and calls the new
+URL), 48d (remove the old chat route and its tests, then close this entry and
+fix the B48 note in `MessageController.getConversations`).
 
 **B49 · LOW · List filters are written three different ways** — found 2026-10-05
 Where: path segments (`/news/type/{type}`, `/news/author/{authorId}`), a

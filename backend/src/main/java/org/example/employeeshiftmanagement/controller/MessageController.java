@@ -48,6 +48,9 @@ public class MessageController {
     /**
      * Only a chat you are part of. Newest first, like every list here: page 0
      * is the latest messages, which the app shows oldest-to-newest.
+     *
+     * Old shape, kept until the app has moved to GET /chat/{otherUserId}
+     * (B48 step 48c), then removed (48d).
      */
     @GetMapping("/chat")
     @PreAuthorize("#user1Id.toString() == authentication.name or #user2Id.toString() == authentication.name")
@@ -58,25 +61,19 @@ public class MessageController {
                 messageService.getChatHistory(user1Id, user2Id, pageable), MessageResponse::from));
     }
 
-    @GetMapping("/inbox/{userId}")
-    @PreAuthorize("#userId.toString() == authentication.name")
-    public ResponseEntity<PageResponse<MessageResponse>> getInbox(@PathVariable Integer userId, Pageable pageable) {
+    /**
+     * The caller's chat with otherUserId. The caller comes from the token, so
+     * there is no @PreAuthorize: otherUserId only picks which of the caller's
+     * own chats to read, and no value of it reaches anyone else's (B48).
+     * Like PUT /chat/{otherUserId}/read.
+     */
+    @GetMapping("/chat/{otherUserId}")
+    public ResponseEntity<PageResponse<MessageResponse>> getChatWith(Authentication authentication,
+                                                                     @PathVariable Integer otherUserId,
+                                                                     Pageable pageable) {
         return ResponseEntity.ok(PageResponse.from(
-                messageService.getInbox(userId, pageable), MessageResponse::from));
-    }
-
-    @GetMapping("/sent/{userId}")
-    @PreAuthorize("#userId.toString() == authentication.name")
-    public ResponseEntity<PageResponse<MessageResponse>> getSent(@PathVariable Integer userId, Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                messageService.getSendMessages(userId, pageable), MessageResponse::from));
-    }
-
-    @GetMapping("/unread/{userId}")
-    @PreAuthorize("#userId.toString() == authentication.name")
-    public ResponseEntity<PageResponse<MessageResponse>> getUnread(@PathVariable Integer userId, Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                messageService.getUnreadMessages(userId, pageable), MessageResponse::from));
+                messageService.getChatHistory(CurrentUser.id(authentication), otherUserId, pageable),
+                MessageResponse::from));
     }
 
     /**

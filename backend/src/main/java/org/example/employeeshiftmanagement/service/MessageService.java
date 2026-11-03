@@ -49,18 +49,6 @@ public class MessageService {
                 user2Id, user1Id, Paging.withSort(pageable, NEWEST_FIRST));
     }
 
-    public Page<Message> getInbox(Integer userId, Pageable pageable) {
-        return messageRepository.findByReceiverId(userId, Paging.withSort(pageable, NEWEST_FIRST));
-    }
-
-    public Page<Message> getSendMessages(Integer userId, Pageable pageable) {
-        return messageRepository.findBySenderId(userId, Paging.withSort(pageable, NEWEST_FIRST));
-    }
-
-    public Page<Message> getUnreadMessages(Integer userId, Pageable pageable) {
-        return messageRepository.findByReceiverIdAndIsReadFalse(userId, Paging.withSort(pageable, NEWEST_FIRST));
-    }
-
     /**
      * The newest message with each person, one per conversation. Sorted like
      * every other list, so the conversation with the latest message comes first.
