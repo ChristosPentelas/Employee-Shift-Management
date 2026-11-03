@@ -46,7 +46,8 @@ public class Message {
     // forgets it fails when the response is built: Open Session In View is off (B28).
     // CASCADE: deleting either user deletes the message, from both inboxes.
     // MySQL does it, from the foreign keys' ON DELETE rule (V5); these
-    // annotations only state the rule here.
+    // annotations only state the rule here. On purpose, for GDPR: a departed
+    // user's messages are not kept for the colleague still here (B47).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id",nullable = false)
     @OnDelete(action = OnDeleteAction.CASCADE)

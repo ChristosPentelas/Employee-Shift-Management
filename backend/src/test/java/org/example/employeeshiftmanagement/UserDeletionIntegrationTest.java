@@ -81,6 +81,10 @@ class UserDeletionIntegrationTest {
         }
     }
 
+    /**
+     * The messages go both ways: the ones they sent and the ones sent to them.
+     * Not kept for the colleague, on purpose: GDPR (B47, decided 2026-11-03).
+     */
     @Test
     void deletingAUserDeletesTheirShiftsLeaveRequestsAndMessages() {
         User employee = user("leaving");

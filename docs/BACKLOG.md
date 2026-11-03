@@ -45,7 +45,7 @@ commit mentions means nothing has changed it, not that its code was re-read.
 | F9 | HIGH | No pagination | Done | `6049f24`, `feat: page the message, leave, shift and user lists` | Every list is a `PageResponse` with a fixed server-side sort and at most 100 rows, except the two shift calendars (`GET /shifts`, `/users/{id}/schedule`), which need a date range of at most 366 days instead (decided 2026-09-22: a calendar needs every shift of its month). Since B26 (2026-10-24) the app reaches every page: the staff list reads all of them, every other list scrolls through them |
 | F10 | MEDIUM | N+1 queries on list endpoints | Done | `80af758`, `perf(backend): load shift, leave and news users in the list query` | Measured before the fix: an inbox of 3 messages from 3 senders took 5 statements; now every list page is 1 (`QueryCountIntegrationTest`). Single-item endpoints still load their users lazily after the query, and a list query without `@EntityGraph` would quietly bring the N+1 back (B28). Since B28 closed, a forgotten one throws `LazyInitializationException` instead, and the single-item loads join their users too |
 | F11 | MEDIUM | Writes without a transaction boundary | Done | `fix(backend): run each service write in one transaction`, `fix(backend): lock the employee while checking shift overlaps` | Step 11a, 2026-10-01: every service method that writes (15) has Spring's `@Transactional`; the repositories' `jakarta` ones are gone, so the boundary is only on the service (B6 closed with it). `TransactionBoundaryIntegrationTest` records the transactions each call starts: before, 2-3 per write (derived queries like the overlap check ran in none); now exactly one. Not fixed by this, despite the audit's "why it matters": two edits of the same row still overwrite each other (B45), and the overlap check raced (B30). **Step 11b**, 2026-10-03: closed B30 - `createShift` and `updateShift` lock the employee's row and run at READ COMMITTED |
-| F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Left: deleting a user deletes the messages they sent to others (B47) |
+| F12 | MEDIUM | `deleteUser` cascades by hand | Done | `db74c1f`, `refactor(backend): stop deleting a user's rows by hand` | Done in two steps on 2026-10-04. **12a:** V5 gives every foreign key to `users` an `ON DELETE` rule: shifts, leave requests and messages (both ways) `CASCADE`; news posts `SET NULL`, kept with no author (decided 2026-10-04), which closed B7. `@OnDelete` on each `@ManyToOne` states the rule in the entity. **12b:** `deleteUser` only deletes the user; the four `deleteBy...` methods and three repositories are gone from `UserService`. `UserDeletionIntegrationTest` (not `@Transactional`, so the DELETE really reaches MySQL) checks the outcome, and fails if a foreign key to `users` has no delete rule - the audit's "next entity" risk. The audit was wrong on one point, measured before the fix: `@Modifying` does nothing on a *derived* delete, which ran 1 SELECT + 1 DELETE per row (3 shifts: 4 statements), through the persistence context, not as a bulk delete. Deleting a user also deletes the messages they sent to others: kept on purpose, for GDPR (B47, decided 2026-11-03) |
 | F13 | LOW | No indexes; misspelled column | Done | `5ceb207`, `perf(backend): index each list query's filter and sort` | Column renamed by V2. V3 indexes every list query except the unfiltered leave list; checked with EXPLAIN on seeded data, not by a test (on small tables MySQL rightly prefers a full scan). The chat still sorts its own rows, since it reads two ranges (7→8, 8→7) |
 | F14 | HIGH | Every exception becomes a 404 | Done | `071e61f`, `0449aaa`, `e5f9e0a`, `d06629a` | B1 and B2 closed with it |
 | F15 | MEDIUM | No input validation | Done | `a97a5b0`, `c39d4c8`, `d48a52e`, `140a27c`, `a3ad93f`, `feat(backend): cap free-text fields at the column length` | Overnight shifts are allowed (decided 2026-09-18): only equal start and end is rejected. Free text is capped at 255 characters to match the `VARCHAR(255)` columns; a longer limit needs a migration first (F8) |
@@ -199,20 +199,6 @@ Fix idea: catch `DataIntegrityViolationException` around the save in
 same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
-
-**B47 · LOW · Deleting a user also deletes the messages they sent to others** — found 2026-10-04
-Where: V5's `ON DELETE CASCADE` on `messages.sender_id` and `receiver_id`.
-Why it matters: when an employee leaves, every message they ever sent
-disappears from their colleagues' inboxes and chats too, and so do the
-messages colleagues sent them. This is what the hand-written `deleteUser` did
-before F12 as well; F12 only moved the rule into the schema. Whether it is
-wrong is a product decision: a conversation's history may matter to the
-person still here.
-Relates to: F12, B7 (news posts are kept with no author instead).
-Fix idea: the same as news: `ON DELETE SET NULL`, which first needs both
-columns to allow `NULL` (a migration), `Message.sender`/`receiver` to be
-optional, `MessageResponse` and the app to cope with a missing user, and a
-decision on what a chat with a deleted user looks like.
 
 **B48 · LOW · Message lists put the caller's own id in the URL** — found 2026-10-05
 Where: `MessageController` - `GET /messages/inbox/{userId}`,
@@ -2139,3 +2125,46 @@ cannot be opened again until the reply arrives; a failed delete turns the
 buttons back on. The first two fail on the old code (6 of 9); the third
 passes there, since nothing was ever turned off, and guards the reset.
 `flutter test`: 246 passing. `flutter analyze`: 24 issues before and after.
+
+**B47 · LOW · Deleting a user also deletes the messages they sent to others** — found 2026-10-04
+Where: V5's `ON DELETE CASCADE` on `messages.sender_id` and `receiver_id`.
+Why it seemed to matter: when an employee leaves, every message they ever
+sent disappears from their colleagues' inboxes and chats too, and so do the
+messages colleagues sent them. This is what the hand-written `deleteUser` did
+before F12 as well; F12 only moved the rule into the schema. Whether it is
+wrong was a product decision: a conversation's history may matter to the
+person still here.
+Relates to: F12, B7 (news posts are kept with no author instead).
+Closed with no code change: `docs: close B47 — messages are deleted with
+their user on purpose`. Decided 2026-11-03: messages keep being deleted with
+either user, on purpose, for GDPR. A message is personal data of the person
+who wrote it, and "a colleague might want to read it again" is a weak reason
+to keep it once they have left: data minimisation and storage limitation
+(Art. 5(1)(c), (e)), and the right to erasure (Art. 17). The messages
+colleagues sent them go too: half a conversation is not much use.
+`Message.java` and `UserDeletionIntegrationTest` (which already checks the
+messages are deleted) now point here, so nobody "fixes" it later. V5's
+comment gives only the technical reason (the columns are `NOT NULL`) and is
+left as it is: Flyway checks every applied migration's checksum at startup,
+so editing an applied file stops the app on every database that ran it.
+Not chosen:
+- `ON DELETE SET NULL`, the fix idea first written here. It does not keep the
+  history readable, which was its point. `findLatestPerConversation` groups by
+  the other person's id, so every departed colleague would fall into one
+  `NULL` group, shown as one row; that row could not be opened, since the chat
+  endpoint needs the other person's id; a message whose two users are both
+  deleted (or one sent to oneself) would belong to nobody, and MySQL forbids a
+  `CHECK` on a column with an `ON DELETE` rule, so only `deleteUser` could
+  clean it up. It would also have needed null checks in `MessageService`
+  (`markAsRead`, `deleteMessage`) and a nullable sender and receiver in the app.
+- Soft delete (a `users.deleted_at` column; the user stays, marked as gone).
+  Keeps the chat working, but keeps the departed person's messages too, which
+  is what this decision is against. It is a sizeable feature as well: login
+  and every request must refuse a departed user, whose token the server
+  never checks against the database.
+Left, not part of this: the right to erasure has exceptions. Art. 17(3)(b)
+allows keeping data a law requires, and labour and tax law usually require
+an employer to keep shift (working-time) records for years. V5 deletes a
+departed user's shifts with them, which a real company would probably have
+to change. Not logged as its own entry while the project does not go to
+production.
