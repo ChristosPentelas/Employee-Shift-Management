@@ -54,8 +54,11 @@ class NewsPagingIntegrationTest {
         // id tie-breaker is what keeps the order stable then.
         List<Integer> ids = List.of(post(author, "first"), post(author, "second"), post(author, "third"));
 
-        Page<NewsItem> first = newsItemService.getNewsItemsByAuthor(author.getId(), PageRequest.of(0, 2));
-        Page<NewsItem> second = newsItemService.getNewsItemsByAuthor(author.getId(), PageRequest.of(1, 2));
+        // The whole feed: every other test rolls its rows back or deletes
+        // them, so these three are the only posts. Until B49 this read the
+        // author's list, which is gone.
+        Page<NewsItem> first = newsItemService.getAllNews(PageRequest.of(0, 2));
+        Page<NewsItem> second = newsItemService.getAllNews(PageRequest.of(1, 2));
 
         assertEquals(3, first.getTotalElements());
         assertEquals(2, first.getTotalPages());

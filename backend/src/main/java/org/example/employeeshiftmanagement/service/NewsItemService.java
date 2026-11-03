@@ -48,10 +48,6 @@ public class NewsItemService {
         return newsItemRepository.findAll(Paging.withSort(pageable, NEWEST_FIRST));
     }
 
-    public Page<NewsItem> getNewsItemsByAuthor(Integer authorId, Pageable pageable) {
-        return newsItemRepository.findByAuthorId(authorId, Paging.withSort(pageable, NEWEST_FIRST));
-    }
-
     public Page<NewsItem> getNewsByType(NewsType type, Pageable pageable) {
         return newsItemRepository.findByType(type, Paging.withSort(pageable, NEWEST_FIRST));
     }

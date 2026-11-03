@@ -45,7 +45,8 @@ public class NewsItemController {
      *
      * {@code ?type=GOAL} keeps only posts of that type. Optional, like every
      * list filter (B49): no type, or an empty one, is every post. A word that
-     * is not a NewsType is a 400, before this method runs.
+     * is not a NewsType is a 400, before this method runs. It replaced
+     * /news/type/{type}; /news/author/{authorId} went with it, unused.
      */
     @GetMapping
     public ResponseEntity<PageResponse<NewsItemResponse>> getAllNews(@RequestParam(required = false) NewsType type,
@@ -56,24 +57,9 @@ public class NewsItemController {
         return ResponseEntity.ok(PageResponse.from(news, NewsItemResponse::from));
     }
 
-    /** Old shape, kept until the app asks for /news?type= (B49 step 49b), then removed (49c). */
-    @GetMapping("/type/{type}")
-    public ResponseEntity<PageResponse<NewsItemResponse>> getAllNewsByType(@PathVariable NewsType type,
-                                                                           Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                newsItemService.getNewsByType(type, pageable), NewsItemResponse::from));
-    }
-
     @GetMapping("/{id}")
     public ResponseEntity<NewsItemResponse> getNewsById(@PathVariable Integer id) {
         return ResponseEntity.ok(NewsItemResponse.from(newsItemService.getNewsItemById(id)));
-    }
-
-    @GetMapping("/author/{authorId}")
-    public ResponseEntity<PageResponse<NewsItemResponse>> getNewsAuthorById(@PathVariable Integer authorId,
-                                                                            Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                newsItemService.getNewsItemsByAuthor(authorId, pageable), NewsItemResponse::from));
     }
 
     @PutMapping("/{id}")

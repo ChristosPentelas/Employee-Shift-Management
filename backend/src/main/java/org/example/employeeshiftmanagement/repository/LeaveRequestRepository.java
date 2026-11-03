@@ -33,12 +33,6 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Inte
     @EntityGraph(attributePaths = "user")
     Page<LeaveRequest> findByUserId(Integer userId, Pageable pageable);
 
-    @EntityGraph(attributePaths = "user")
-    Page<LeaveRequest> findByStatus(LeaveStatus status, Pageable pageable);
-
-    @EntityGraph(attributePaths = "user")
-    Page<LeaveRequest> findByUserIdAndStatus(Integer userId, LeaveStatus status, Pageable pageable);
-
     // "select ... from leave_requests where id = ? for update", as
     // UserRepository.findLockedById: two supervisors deciding the same request
     // at once take turns, so the second sees the first's answer (B63).

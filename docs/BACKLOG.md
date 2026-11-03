@@ -218,63 +218,6 @@ same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
-**B49 · LOW · List filters are written three different ways** — found 2026-10-05
-Where: path segments (`/news/type/{type}`, `/news/author/{authorId}`), a
-`/filter` sub-path with query parameters (`/leaves/filter?status=&userId=`),
-and query parameters on the collection itself (`/shifts?start=&end=`).
-Why it matters: a client has to learn each resource's way of narrowing a list,
-and path-segment filters cannot be combined (news by type *and* author would
-need a third route). It also sets the pattern for the next filter someone adds.
-Relates to: F16 (found while planning it, not one of its bullets).
-Fix idea: query parameters on the collection everywhere (`/news?type=`,
-`/leaves?status=&userId=`), each optional. The app calls none of the three
-filter routes (checked 2026-10-05), so they can move without
-expand-then-contract.
-Out of date since B26: the app's news filter calls `/news/type/{type}`
-(`ApiService.getNews`), so that one needs expand-then-contract. Re-checked
-2026-11-03: `/news/author/{authorId}` and `/leaves/filter` still have no
-caller.
-Decided 2026-11-03: a filter is an optional query parameter on the
-collection; written into `CLAUDE.md`'s Conventions, so the next filter
-follows it. News type moves to `/news?type=`; the author and leave filters
-are removed, not moved (no caller; YAGNI, as B48 did with the inbox). A
-future "pending leave only" is `/leaves?status=`, and one user's by status
-`/users/{userId}/leaves?status=` (the F16 rule), never `/leaves?userId=`.
-Once a list has two optional filters, Spring Data JPA `Specification`s
-combine them instead of one query method per combination. One commit per
-step: 49a the backend accepts `?type=`, 49b the app asks for it, 49c the
-three old routes go.
-Progress: 49a, `feat(backend): filter the news list by an optional type
-parameter (B49)`, 2026-11-03. `GET /news` takes `@RequestParam(required =
-false) NewsType type` and calls `getNewsByType` when it is set, else
-`getAllNews`; `/news/type/{type}` still answers, for the app. The choice
-stays in the controller: it picks which service method a request means,
-which is routing, like `filterLeaves`. Not chosen: one service method
-`getNews(type, pageable)`, which would change the service and its query
-counts in the same step (rule 2). New tests in `NewsItemControllerTest`:
-`?type=ANNOUNCEMENT` calls the type filter with the page; `?type=` is every
-post (Spring turns "" into a null enum - pinned so it is decided, not an
-accident); `PARTY` and `goal` are 400 (enum names are case-sensitive). Run
-against the controller before this step, the first and third failed (500:
-the parameter was ignored, so the unstubbed `getAllNews` ran); the second
-passed there too, since it pins what both do.
-`CLAUDE.md` gained the rule in the same commit.
-Progress: 49b, `feat(frontend): ask for one type of news with ?type= (B49)`,
-2026-11-03. `ApiService.getNews(type:)` asks for `/news?type=GOAL&page=..`;
-with no type, no `type` parameter at all (the server would read an empty
-one as "all" too, but leaving it out is what "no filter" means). The query
-is still built as a string, like the rest of `ApiService`; safe here since
-a type is an enum name, but a value a user types would need encoding
-(`Uri.replace(queryParameters:)`). Tests: `api_service_test` checks the path
-and the query for one type, and that no type sends no `type`;
-`news_screen_test`'s fake server names a list by its path plus `?type=`, so
-a tab asking the old path no longer matches any list. Run against the
-`api_service.dart` before this step, 6 failed (the type test and 5 tab
-tests); the no-type test passed there too, since that request did not
-change. `flutter test`: 247 passing; `flutter analyze`: 24 issues before and
-after. From here no app code calls `/news/type/{type}`; it must not reach
-phones before a backend with 49a runs.
-
 **B50 · LOW · A failed login's 401 has no `WWW-Authenticate` header** — found 2026-10-05
 Where: `POST /users/login` with a wrong email or password. Every other 401
 comes from Spring Security's entry point, which sends the header
@@ -2288,3 +2231,94 @@ request, `feat!: read a chat by the other person only, everywhere (B48)`,
   service's parameters is a second layer for no change in behaviour.
 Backend suite: 317 passing. `flutter test`: 246 passing. `flutter analyze`:
 24 issues before and after.
+
+**B49 · LOW · List filters are written three different ways** — found 2026-10-05
+Where: path segments (`/news/type/{type}`, `/news/author/{authorId}`), a
+`/filter` sub-path with query parameters (`/leaves/filter?status=&userId=`),
+and query parameters on the collection itself (`/shifts?start=&end=`).
+Why it matters: a client has to learn each resource's way of narrowing a list,
+and path-segment filters cannot be combined (news by type *and* author would
+need a third route). It also sets the pattern for the next filter someone adds.
+Relates to: F16 (found while planning it, not one of its bullets).
+Fix idea: query parameters on the collection everywhere (`/news?type=`,
+`/leaves?status=&userId=`), each optional. The app calls none of the three
+filter routes (checked 2026-10-05), so they can move without
+expand-then-contract.
+Out of date since B26: the app's news filter calls `/news/type/{type}`
+(`ApiService.getNews`), so that one needs expand-then-contract. Re-checked
+2026-11-03: `/news/author/{authorId}` and `/leaves/filter` still have no
+caller.
+Decided 2026-11-03: a filter is an optional query parameter on the
+collection; written into `CLAUDE.md`'s Conventions, so the next filter
+follows it. News type moves to `/news?type=`; the author and leave filters
+are removed, not moved (no caller; YAGNI, as B48 did with the inbox). A
+future "pending leave only" is `/leaves?status=`, and one user's by status
+`/users/{userId}/leaves?status=` (the F16 rule), never `/leaves?userId=`.
+Once a list has two optional filters, Spring Data JPA `Specification`s
+combine them instead of one query method per combination. One commit per
+step: 49a the backend accepts `?type=`, 49b the app asks for it, 49c the
+three old routes go.
+Progress: 49a, `feat(backend): filter the news list by an optional type
+parameter (B49)`, 2026-11-03. `GET /news` takes `@RequestParam(required =
+false) NewsType type` and calls `getNewsByType` when it is set, else
+`getAllNews`; `/news/type/{type}` still answers, for the app. The choice
+stays in the controller: it picks which service method a request means,
+which is routing, like `filterLeaves`. Not chosen: one service method
+`getNews(type, pageable)`, which would change the service and its query
+counts in the same step (rule 2). New tests in `NewsItemControllerTest`:
+`?type=ANNOUNCEMENT` calls the type filter with the page; `?type=` is every
+post (Spring turns "" into a null enum - pinned so it is decided, not an
+accident); `PARTY` and `goal` are 400 (enum names are case-sensitive). Run
+against the controller before this step, the first and third failed (500:
+the parameter was ignored, so the unstubbed `getAllNews` ran); the second
+passed there too, since it pins what both do.
+`CLAUDE.md` gained the rule in the same commit.
+Progress: 49b, `feat(frontend): ask for one type of news with ?type= (B49)`,
+2026-11-03. `ApiService.getNews(type:)` asks for `/news?type=GOAL&page=..`;
+with no type, no `type` parameter at all (the server would read an empty
+one as "all" too, but leaving it out is what "no filter" means). The query
+is still built as a string, like the rest of `ApiService`; safe here since
+a type is an enum name, but a value a user types would need encoding
+(`Uri.replace(queryParameters:)`). Tests: `api_service_test` checks the path
+and the query for one type, and that no type sends no `type`;
+`news_screen_test`'s fake server names a list by its path plus `?type=`, so
+a tab asking the old path no longer matches any list. Run against the
+`api_service.dart` before this step, 6 failed (the type test and 5 tab
+tests); the no-type test passed there too, since that request did not
+change. `flutter test`: 247 passing; `flutter analyze`: 24 issues before and
+after. From here no app code calls `/news/type/{type}`; it must not reach
+phones before a backend with 49a runs.
+Fixed by: 49c, `feat(backend)!: remove the path and /filter list filters
+(B49)`, 2026-11-03. Removed straight after 49b on the same assumption as
+F16 16d3 and B48 48d: no phone runs an app from before it.
+- Gone, each answering 404 (checked by a test, not assumed - see B83):
+  `GET /news/type/{type}`, `/news/author/{authorId}`, `/leaves/filter`.
+  With them `NewsItemService.getNewsItemsByAuthor`,
+  `LeaveRequestService.getLeavesByStatus` and `getLeavesByUserAndStatus`,
+  and the repository queries `findByAuthorId`, `findByStatus`,
+  `findByUserIdAndStatus`.
+- Tests removed with the code they tested: the type, unknown-type and
+  author tests in `NewsItemControllerTest` (the first two now live on
+  `/news?type=`, from 49a); the three `/leaves/filter` tests in
+  `LeaveRequestControllerTest`; the by-status and by-author statement counts
+  in `QueryCountIntegrationTest`, whose note about `getLeavesByUserAndStatus`
+  went too. New: `theOldNewsFilterPathsAreGone`, `theStatusFilterPathIsGone`.
+- Changed, not weakened: `NewsPagingIntegrationTest` paged through the
+  author's list to see only its own three posts; it now pages through the
+  whole feed (`getAllNews`), which holds only those three, since every other
+  test rolls back or deletes its rows. It checks the same thing (valid sort
+  properties, clean pages) on the list the app uses.
+  `TransactionBoundaryIntegrationTest` cleaned up with `findByAuthorId`;
+  keeping that query for a test alone would be test-only code in
+  production, so it deletes with plain SQL through `JdbcTemplate`, as
+  `UserDeletionIntegrationTest` does. Not the plan's "remember the ids": its
+  create test makes the post inside the measured call, where the id is out
+  of reach.
+- Backend suite: 314 passing.
+Left, not worth its own entry: V3's `idx_leaves_status_start` (`status`,
+`start_date`) has no query now (`existsCovering` filters by `user_id`
+first, which `idx_leaves_user_start` serves). An unused index only costs
+on writes and disk; dropping it is a V6 migration, best done when a
+migration is needed anyway, or reused if `/leaves?status=` arrives.
+`idx_news_author_created` stays: it is the index the `author_id` foreign key
+uses.

@@ -7,7 +7,6 @@ import org.example.employeeshiftmanagement.dto.MessageResponse;
 import org.example.employeeshiftmanagement.dto.NewsItemResponse;
 import org.example.employeeshiftmanagement.dto.ShiftResponse;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
-import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.model.NewsItem;
 import org.example.employeeshiftmanagement.model.NewsType;
 import org.example.employeeshiftmanagement.model.Shift;
@@ -46,8 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code count(*)} query - it already knows the total. That is why the
  * expected count is 1, not 2.
  *
- * <p>Not tested here: ShiftService.getSchedule and
- * LeaveRequestService.getLeavesByUserAndStatus. Both first check that the user
+ * <p>Not tested here: ShiftService.getSchedule. It first checks that the user
  * exists, which puts that user in the first-level cache - so the rows find
  * their user in memory, and the count is the same with or without the entity
  * graph. A test there could never fail, so it would prove nothing.
@@ -166,18 +164,6 @@ class QueryCountIntegrationTest {
     }
 
     @Test
-    void leaveRequestsByStatusLoadTheEmployeesInOneStatement() {
-        leave(user("employee-a"));
-        leave(user("employee-b"));
-
-        long statements = countStatements(() ->
-                leaveRequestService.getLeavesByStatus(LeaveStatus.PENDING, PageRequest.of(0, 20))
-                        .map(LeaveRequestResponse::from));
-
-        assertEquals(1, statements);
-    }
-
-    @Test
     void oneEmployeesLeaveRequestsLoadTheEmployeeInOneStatement() {
         User employee = user("employee");
         leave(employee);
@@ -209,18 +195,6 @@ class QueryCountIntegrationTest {
 
         long statements = countStatements(() ->
                 newsItemService.getNewsByType(NewsType.TASK, PageRequest.of(0, 20)).map(NewsItemResponse::from));
-
-        assertEquals(1, statements);
-    }
-
-    @Test
-    void newsByAuthorLoadsTheAuthorInOneStatement() {
-        User author = user("author");
-        post(author, NewsType.ANNOUNCEMENT);
-        post(author, NewsType.GOAL);
-
-        long statements = countStatements(() ->
-                newsItemService.getNewsItemsByAuthor(author.getId(), PageRequest.of(0, 20)).map(NewsItemResponse::from));
 
         assertEquals(1, statements);
     }

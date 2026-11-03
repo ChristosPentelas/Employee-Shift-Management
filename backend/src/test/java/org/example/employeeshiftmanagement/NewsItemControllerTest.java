@@ -364,39 +364,17 @@ class NewsItemControllerTest {
         verify(newsItemService, never()).getAllNews(any());
     }
 
-    // The old shape, until B49 step 49c removes it.
     @Test
-    void newsCanBeListedByType() throws Exception {
-        when(newsItemService.getNewsByType(eq(NewsType.ANNOUNCEMENT), any(Pageable.class)))
-                .thenReturn(onePage());
-
-        mockMvc.perform(get("/api/v1/news/type/ANNOUNCEMENT").with(TestTokens.employee()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].type").value("ANNOUNCEMENT"))
-                .andExpect(jsonPath("$.content[0].author.password").doesNotExist())
-                .andExpect(jsonPath("$.page").value(0));
-    }
-
-    @Test
-    void anUnknownNewsTypeIsABadRequest() throws Exception {
-        // The path segment is turned into a NewsType before the method runs.
-        // A word that is not one of its values is the caller's mistake (400),
-        // not a missing page (404) and not a crash (500).
-        mockMvc.perform(get("/api/v1/news/type/PARTY").with(TestTokens.employee()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+    void theOldNewsFilterPathsAreGone() throws Exception {
+        // B49: /news?type= replaced the type path (49a, the app switched in
+        // 49b); the author path had no caller and was removed with it (49c).
+        for (String path : new String[]{"/type/ANNOUNCEMENT", "/author/9"}) {
+            mockMvc.perform(get("/api/v1/news" + path).with(TestTokens.employee()))
+                    .andExpect(status().isNotFound());
+        }
 
         verify(newsItemService, never()).getNewsByType(any(), any());
-    }
-
-    @Test
-    void newsCanBeListedByAuthor() throws Exception {
-        when(newsItemService.getNewsItemsByAuthor(eq(9), any(Pageable.class))).thenReturn(onePage());
-
-        mockMvc.perform(get("/api/v1/news/author/9").with(TestTokens.employee()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].author.id").value(9))
-                .andExpect(jsonPath("$.content[0].author.password").doesNotExist());
+        verify(newsItemService, never()).getAllNews(any());
     }
 
     @Test

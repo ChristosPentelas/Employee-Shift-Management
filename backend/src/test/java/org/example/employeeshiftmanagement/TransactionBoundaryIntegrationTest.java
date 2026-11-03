@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.ConfigurableTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionExecution;
@@ -86,6 +86,7 @@ class TransactionBoundaryIntegrationTest {
     @Autowired private LeaveRequestRepository leaveRequestRepository;
     @Autowired private MessageRepository messageRepository;
     @Autowired private NewsItemRepository newsItemRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @Autowired private PlatformTransactionManager transactionManager;
 
@@ -98,9 +99,10 @@ class TransactionBoundaryIntegrationTest {
             userRepository.findByEmail(email).ifPresent(user -> {
                 // Deleting the author keeps their news posts, with no author
                 // (V5), and a leftover post would show up in other tests'
-                // "all news" lists. So the posts go first, by hand.
-                newsItemRepository.deleteAll(
-                        newsItemRepository.findByAuthorId(user.getId(), Pageable.unpaged()).getContent());
+                // "all news" lists. So the posts go first, by hand. Plain
+                // SQL, not a repository method: the app has no use for "news
+                // by author" since B49, so only a test would keep one alive.
+                jdbcTemplate.update("DELETE FROM news_items WHERE author_id = ?", user.getId());
                 userService.deleteUser(user.getId());
             });
         }

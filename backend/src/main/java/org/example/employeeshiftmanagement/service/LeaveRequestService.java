@@ -51,15 +51,6 @@ public class LeaveRequestService {
         return leaveRequestRepository.findByUserId(userId, Paging.withSort(pageable, LATEST_FIRST));
     }
 
-    public Page<LeaveRequest> getLeavesByStatus(LeaveStatus status, Pageable pageable) {
-        return leaveRequestRepository.findByStatus(status, Paging.withSort(pageable, LATEST_FIRST));
-    }
-
-    public Page<LeaveRequest> getLeavesByUserAndStatus(Integer userId, LeaveStatus status, Pageable pageable) {
-        userService.findUserById(userId);
-        return leaveRequestRepository.findByUserIdAndStatus(userId, status, Paging.withSort(pageable, LATEST_FIRST));
-    }
-
     /**
      * A request is answered once (B63): approving a rejected one, or answering
      * it a second time, is a ConflictException (409). Before, any status could

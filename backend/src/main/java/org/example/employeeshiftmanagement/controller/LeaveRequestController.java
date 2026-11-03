@@ -8,7 +8,6 @@ import org.example.employeeshiftmanagement.dto.LeaveRequestResponse;
 import org.example.employeeshiftmanagement.dto.PageResponse;
 import org.example.employeeshiftmanagement.model.LeaveDecision;
 import org.example.employeeshiftmanagement.model.LeaveRequest;
-import org.example.employeeshiftmanagement.model.LeaveStatus;
 import org.example.employeeshiftmanagement.service.LeaveDecisionResult;
 import org.example.employeeshiftmanagement.service.LeaveRequestService;
 import org.springframework.data.domain.Page;
@@ -63,19 +62,6 @@ public class LeaveRequestController {
     public ResponseEntity<PageResponse<LeaveRequestResponse>> getAllLeaves(Pageable pageable) {
         return ResponseEntity.ok(toResponses(leaveRequestService.getAllLeaveRequests(pageable)));
     }
-
-    @GetMapping("/leaves/filter")
-    @PreAuthorize("hasRole('SUPERVISOR')")
-    public ResponseEntity<PageResponse<LeaveRequestResponse>> filterLeaves(@RequestParam LeaveStatus status,
-                                               @RequestParam(required = false) Integer userId,
-                                               Pageable pageable) {
-        if (userId != null) {
-            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByUserAndStatus(userId, status, pageable)));
-        }else{
-            return ResponseEntity.ok(toResponses(leaveRequestService.getLeavesByStatus(status, pageable)));
-        }
-    }
-
 
     @PutMapping("/leaves/{requestId}/status")
     @PreAuthorize("hasRole('SUPERVISOR')")

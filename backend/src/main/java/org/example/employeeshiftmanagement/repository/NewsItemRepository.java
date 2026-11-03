@@ -34,7 +34,4 @@ public interface NewsItemRepository extends JpaRepository<NewsItem, Integer> {
 
     @EntityGraph(attributePaths = "author")
     Page<NewsItem> findByType(NewsType type, Pageable pageable); //It brings news of a specific type
-
-    @EntityGraph(attributePaths = "author")
-    Page<NewsItem> findByAuthorId(Integer authorId, Pageable pageable); //It brings news from a creator
 }
