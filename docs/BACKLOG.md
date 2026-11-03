@@ -123,17 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B39 · LOW · The Android build pins Kotlin 1.8.22, which Flutter will soon stop supporting** — found 2026-09-24
-Where: `frontend/android/settings.gradle.kts` -
-`id("org.jetbrains.kotlin.android") version "1.8.22"`. Every Android build
-prints "Flutter support for your project's Kotlin version (1.8.22) will soon be
-dropped. Please upgrade your Kotlin version to a version of at least 2.1.0".
-Why it matters: nothing breaks today, but a future Flutter upgrade will refuse
-to build the Android app until this is raised - at the worst moment, mixed in
-with whatever else that upgrade changes.
-Fix idea: raise the plugin version to a current 2.x in its own commit and check
-`flutter build apk` still passes. Only build config, no new dependency.
-
 **B40 · LOW · `LeaveRequestResponse`'s comment still describes F7 as open** — found 2026-09-25
 Where: the Javadoc on `LeaveRequestResponse.java` says the response "still
 carries every employee's leave to every caller - that is F7, and it needs the
@@ -1975,3 +1964,47 @@ after; the dashboard logout and session expiry tests pass unchanged.
 `flutter test`: 221 passing; `flutter analyze`: 24 before and after.
 Fixed by: `refactor(frontend): return to login one way from every logout (B38)`,
 2026-11-01.
+
+**B39 · LOW · The Android build pins Kotlin 1.8.22, which Flutter will soon stop supporting** — found 2026-09-24
+Where: `frontend/android/settings.gradle.kts` -
+`id("org.jetbrains.kotlin.android") version "1.8.22"`. Every Android build
+prints "Flutter support for your project's Kotlin version (1.8.22) will soon be
+dropped. Please upgrade your Kotlin version to a version of at least 2.1.0".
+Why it matters: nothing breaks today, but a future Flutter upgrade will refuse
+to build the Android app until this is raised - at the worst moment, mixed in
+with whatever else that upgrade changes.
+Fix idea: raise the plugin version to a current 2.x in its own commit and check
+`flutter build apk` still passes. Only build config, no new dependency.
+Done: raised to 2.2.20. Flutter 3.38.7's `DependencyVersionChecker.kt` warns
+below 2.1.0 and refuses to build below 1.8.10, so 1.8.22 was close to the hard
+limit. 2.2.20 and not the minimum 2.1.0: it is what this SDK puts in new
+projects (`templateKotlinGradlePluginVersion` in `gradle_utils.dart`), so it
+is the combination Flutter tests, and the warning floor rises over time.
+Kotlin 2.2.20 supports Gradle 7.6.3-8.14 and AGP 7.3.1-8.11.1, so our Gradle
+8.10.2 and AGP 8.7.0 stay as they are; raising them too would be three tool
+changes in one commit. Kotlin 2.x compiles with the new K2 compiler; our only
+Kotlin file is `MainActivity.kt`. `flutter build apk --debug` passed before
+(with the warning) and after (without it). Done together with B78, building
+after each change so a failure would point at one of them. `flutter test`:
+221 passing; `flutter analyze`: 24 before and after.
+Fixed by: `build(android): raise Kotlin to 2.2.20 and Java to 17 (B39, B78)`,
+2026-11-03.
+
+**B78 · LOW · The Android app compiles for Java 11 while Flutter's template uses 17** — found 2026-11-03
+Where: `frontend/android/app/build.gradle.kts` - `compileOptions` sets
+`sourceCompatibility`/`targetCompatibility` to `JavaVersion.VERSION_11` and
+`kotlinOptions` sets `jvmTarget` to 11. Flutter 3.38.7's app template sets all
+three to 17. Noticed while fixing B39.
+Why it matters: nothing breaks today. But the JDK that runs Gradle must
+already be 17 or newer (Flutter's checker and AGP 8 both require it), so the
+11 is a leftover from the template the project was created with, not a real
+constraint. The further `android/` drifts from the current template, the
+harder each Flutter upgrade is to compare against it.
+Fix idea: set all three to 17 in the same change. They must match: if the
+Java and Kotlin compilers target different JVM versions, Gradle stops with
+"Inconsistent JVM-target compatibility".
+Done: all three set to `JavaVersion.VERSION_17`. Only `MainActivity.kt` and
+the generated `GeneratedPluginRegistrant.java` are compiled with it. The Dart
+code is not affected. `flutter build apk --debug` passed after the change.
+Fixed by: `build(android): raise Kotlin to 2.2.20 and Java to 17 (B39, B78)`,
+2026-11-03.
