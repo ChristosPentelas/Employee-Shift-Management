@@ -78,10 +78,21 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
-    /** A failed login (F16 step 16b; until then the controller built this 401 itself). */
+    /**
+     * A failed login (F16 step 16b; until then the controller built this 401 itself).
+     *
+     * A ResponseEntity, like handleTooManyAttempts, for the WWW-Authenticate
+     * header: RFC 9110 requires it on every 401, to say how to authenticate
+     * (B50). "Bearer" with no parameters is what the filter chain sends for a
+     * missing token, so every 401 in the API names the same scheme. No
+     * error="invalid_token" here: that describes a bad token, and a login
+     * sends none.
+     */
     @ExceptionHandler(InvalidCredentialsException.class)
-    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
+    public ResponseEntity<ProblemDetail> handleInvalidCredentials(InvalidCredentialsException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage()));
     }
 
     /**

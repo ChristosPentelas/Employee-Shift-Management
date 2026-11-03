@@ -218,21 +218,6 @@ same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
-**B50 · LOW · A failed login's 401 has no `WWW-Authenticate` header** — found 2026-10-05
-Where: `POST /users/login` with a wrong email or password. Every other 401
-comes from Spring Security's entry point, which sends the header
-(`SecurityIntegrationTest.anUnauthorizedAnswerCarriesTheStandardErrorBody`
-checks it); the login's comes from `ApiExceptionHandler`, which does not.
-Why it matters: RFC 9110 requires the header on every 401 - it tells the
-client how to authenticate. Nothing breaks today (the app only reads the
-status), but it is one more way the login answer differs from the rest.
-Relates to: F16 (found in step 16b, which kept the response unchanged on
-purpose because it was a refactor).
-Fix idea: set the header in `handleInvalidCredentials` (a `ResponseEntity`
-with `WWW-Authenticate: Bearer`), or decide that a failed login is not a 401
-at all - some APIs answer 400, since the request carried no credentials the
-header could describe. Either is a contract change, with its own test.
-
 **B51 · LOW · `flutter analyze` reports 35 issues that nobody tracks as a whole** — found 2026-10-06
 Where: counted during F16 step 16d2, the same 35 before and after it. Ten
 `no_leading_underscores_for_local_identifiers` are B35's dialog variables and
@@ -2322,3 +2307,43 @@ on writes and disk; dropping it is a V6 migration, best done when a
 migration is needed anyway, or reused if `/leaves?status=` arrives.
 `idx_news_author_created` stays: it is the index the `author_id` foreign key
 uses.
+
+**B50 · LOW · A failed login's 401 has no `WWW-Authenticate` header** — found 2026-10-05
+Where: `POST /users/login` with a wrong email or password. Every other 401
+comes from Spring Security's entry point, which sends the header
+(`SecurityIntegrationTest.anUnauthorizedAnswerCarriesTheStandardErrorBody`
+checks it); the login's comes from `ApiExceptionHandler`, which does not.
+Why it matters: RFC 9110 requires the header on every 401 - it tells the
+client how to authenticate. Nothing breaks today (the app only reads the
+status), but it is one more way the login answer differs from the rest.
+Relates to: F16 (found in step 16b, which kept the response unchanged on
+purpose because it was a refactor).
+Fix idea: set the header in `handleInvalidCredentials` (a `ResponseEntity`
+with `WWW-Authenticate: Bearer`), or decide that a failed login is not a 401
+at all - some APIs answer 400, since the request carried no credentials the
+header could describe. Either is a contract change, with its own test.
+Fixed by: `fix(backend): say how to authenticate on a failed login (B50)`,
+2026-11-03. Decided: keep the 401 and add the header.
+- `handleInvalidCredentials` returns a `ResponseEntity<ProblemDetail>` with
+  `WWW-Authenticate: Bearer`, the same way `handleTooManyAttempts` sends
+  `Retry-After` (B56); a bare `ProblemDetail` cannot carry a header. The body
+  is unchanged, `instance` included. `Bearer` with no parameters is what
+  `BearerTokenAuthenticationEntryPoint` sends for a missing token, so every
+  401 in the API now names the same scheme. No `error="invalid_token"`
+  (RFC 6750 §3): that describes a bad token, and a login sends none.
+- Not chosen: 400, as OAuth's token endpoint answers a wrong password
+  (`invalid_grant`, RFC 6749 §5.2). Defensible, but `login_screen.dart`
+  reads the 401, so it would need three expand-then-contract steps for a
+  status the app already relies on. Also not chosen: making
+  `InvalidCredentialsException` an `ErrorResponseException` that carries
+  its own headers - no other exception here works that way. The app is
+  unchanged: `auth_client.dart` only logs out on a 401 to a request that
+  sent a token, and a login sends none.
+- Test: `UserControllerTest.theFailedLoginBody()` also checks the header, so
+  both failed-login tests pin it. Run against the handler before this fix,
+  those two failed (`expected:<Bearer> but was:<null>`) and the other 43
+  passed.
+- `SecurityIntegrationTest`'s note that `ApiExceptionHandler` never sees a
+  401 was out of date since F16 step 16b - which is how B50 came about. It
+  now names the failed login as the one 401 that handler answers.
+- Backend suite: 314 passing (no new tests; an existing helper checks more).

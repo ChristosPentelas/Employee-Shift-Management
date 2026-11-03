@@ -284,9 +284,13 @@ class SecurityIntegrationTest {
         assertEquals(400, status.value());
     }
 
-    // 401 and 403 are produced by the security filter chain, which runs before
-    // the DispatcherServlet - so ApiExceptionHandler never sees them. They used
-    // to come back with an empty body, the only two answers in the API that did.
+    // A 401 for a missing or bad token, and every 403, are produced by the
+    // security filter chain, which runs before the DispatcherServlet - so
+    // ApiExceptionHandler never sees them. They used to come back with an empty
+    // body, the only two answers in the API that did.
+    // A failed login's 401 is the one that does not: the controller throws it
+    // and ApiExceptionHandler answers it, so that handler sets its own
+    // WWW-Authenticate header (B50, checked in UserControllerTest).
 
     @Test
     void anUnauthorizedAnswerCarriesTheStandardErrorBody() {

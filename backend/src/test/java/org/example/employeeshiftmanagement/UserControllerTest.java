@@ -753,7 +753,10 @@ class UserControllerTest {
                 jsonPath("$.status").value(401),
                 jsonPath("$.title").value("Unauthorized"),
                 jsonPath("$.detail").value("Invalid email or password"),
-                jsonPath("$.instance").value("/api/v1/users/login")
+                jsonPath("$.instance").value("/api/v1/users/login"),
+                // RFC 9110: every 401 says how to authenticate (B50). The same
+                // challenge the filter chain sends for a missing token.
+                header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
         };
     }
 }
