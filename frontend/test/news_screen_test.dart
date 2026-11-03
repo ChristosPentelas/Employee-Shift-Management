@@ -316,13 +316,14 @@ void main() {
         User(id: 7, name: 'Worker', email: 'worker@example.com', role: 'EMPLOYEE');
     final boss =
         User(id: 9, name: 'Boss', email: 'boss@example.com', role: 'SUPERVISOR');
+    // A list is its path, plus ?type= when it is filtered (B49).
     const all = '/api/v1/news';
-    const goals = '/api/v1/news/type/GOAL';
+    const goals = '/api/v1/news?type=GOAL';
     const everyList = [
       '$all 0',
-      '/api/v1/news/type/ANNOUNCEMENT 0',
+      '/api/v1/news?type=ANNOUNCEMENT 0',
       '$goals 0',
-      '/api/v1/news/type/TASK 0',
+      '/api/v1/news?type=TASK 0',
     ];
 
     /// One page of posts with these [ids], titled "Post <id>".
@@ -351,11 +352,12 @@ void main() {
             200);
 
     /// Opens the news screen as [user]. [answer] replies to each GET, given
-    /// its path and ?page=. Returns every GET as "<path> <page>", in order.
+    /// the list it asks for (see [all]) and ?page=. Returns every GET as
+    /// "<list> <page>", in order.
     /// [deleteStatus] answers a DELETE. With [heldDeletes], each DELETE
     /// instead waits for the test to complete the Completer it adds there.
     Future<List<String>> openNews(WidgetTester tester, User user,
-        http.Response Function(String path, String? page) answer,
+        http.Response Function(String list, String? page) answer,
         {int deleteStatus = 204,
         List<Completer<http.Response>>? heldDeletes}) async {
       final asked = <String>[];
@@ -368,8 +370,10 @@ void main() {
         }
         if (request.method == 'DELETE') return http.Response('', deleteStatus);
         final page = request.url.queryParameters['page'];
-        asked.add('${request.url.path} $page');
-        return answer(request.url.path, page);
+        final type = request.url.queryParameters['type'];
+        final list = type == null ? request.url.path : '${request.url.path}?type=$type';
+        asked.add('$list $page');
+        return answer(list, page);
       });
       final container = testContainer(
           user: user, overrides: [networkClientProvider.overrideWithValue(network)]);

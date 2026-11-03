@@ -205,11 +205,12 @@ class ApiService {
 
   // One page of news, newest first: every post, or with [type] only posts of
   // that type, which the server filters (B26). [type] is a NewsType name as
-  // the server spells it, e.g. 'GOAL'; any other word is a 400.
+  // the server spells it, e.g. 'GOAL'; any other word is a 400. A filter is
+  // a query parameter on the list itself, like every list filter (B49).
   Future<ListPage<NewsItem>> getNews({String? type, int page = 0, int size = 20}) async {
-    final path = type == null ? "news" : "news/type/$type";
+    final filter = type == null ? "" : "type=$type&";
     final response = await _client.get(
-      Uri.parse("$baseUrl/$path?page=$page&size=$size"),
+      Uri.parse("$baseUrl/news?${filter}page=$page&size=$size"),
       headers: {"Content-Type" : "application/json"},
     );
 

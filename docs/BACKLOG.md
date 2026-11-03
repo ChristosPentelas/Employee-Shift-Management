@@ -259,6 +259,21 @@ against the controller before this step, the first and third failed (500:
 the parameter was ignored, so the unstubbed `getAllNews` ran); the second
 passed there too, since it pins what both do.
 `CLAUDE.md` gained the rule in the same commit.
+Progress: 49b, `feat(frontend): ask for one type of news with ?type= (B49)`,
+2026-11-03. `ApiService.getNews(type:)` asks for `/news?type=GOAL&page=..`;
+with no type, no `type` parameter at all (the server would read an empty
+one as "all" too, but leaving it out is what "no filter" means). The query
+is still built as a string, like the rest of `ApiService`; safe here since
+a type is an enum name, but a value a user types would need encoding
+(`Uri.replace(queryParameters:)`). Tests: `api_service_test` checks the path
+and the query for one type, and that no type sends no `type`;
+`news_screen_test`'s fake server names a list by its path plus `?type=`, so
+a tab asking the old path no longer matches any list. Run against the
+`api_service.dart` before this step, 6 failed (the type test and 5 tab
+tests); the no-type test passed there too, since that request did not
+change. `flutter test`: 247 passing; `flutter analyze`: 24 issues before and
+after. From here no app code calls `/news/type/{type}`; it must not reach
+phones before a backend with 49a runs.
 
 **B50 · LOW · A failed login's 401 has no `WWW-Authenticate` header** — found 2026-10-05
 Where: `POST /users/login` with a wrong email or password. Every other 401

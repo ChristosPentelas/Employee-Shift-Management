@@ -165,10 +165,28 @@ void main() {
 
     final goals = await api.getNews(type: 'GOAL', page: 1);
 
-    expect(sent!.url.path, '/api/v1/news/type/GOAL');
-    expect(sent!.url.queryParameters, {'page': '1', 'size': '20'});
+    // The type is a query parameter on the list, not a path segment (B49).
+    expect(sent!.url.path, '/api/v1/news');
+    expect(sent!.url.queryParameters, {'type': 'GOAL', 'page': '1', 'size': '20'});
     expect(goals.page, 1);
     expect(goals.hasMore, isFalse);
+  });
+
+  test('every post is asked for with no type at all', () async {
+    http.BaseRequest? sent;
+    final api = ApiService(client: MockClient((request) async {
+      sent = request;
+      return http.Response(
+          '{"content":[],"page":0,"size":20,"totalElements":0,"totalPages":0}',
+          200);
+    }));
+
+    await api.getNews();
+
+    // Not ?type= with nothing after it: the server reads that as "all" too,
+    // but no parameter is what "no filter" means.
+    expect(sent!.url.path, '/api/v1/news');
+    expect(sent!.url.queryParameters, {'page': '0', 'size': '20'});
   });
 
   test("the supervisor's calendar asks for the month it shows", () async {
