@@ -10,7 +10,6 @@ import org.example.employeeshiftmanagement.service.MessageService;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,26 +45,12 @@ public class MessageController {
     }
 
     /**
-     * Only a chat you are part of. Newest first, like every list here: page 0
-     * is the latest messages, which the app shows oldest-to-newest.
+     * The caller's chat with otherUserId. Newest first, like every list here:
+     * page 0 is the latest messages, which the app shows oldest-to-newest.
      *
-     * Old shape, kept until the app has moved to GET /chat/{otherUserId}
-     * (B48 step 48c), then removed (48d).
-     */
-    @GetMapping("/chat")
-    @PreAuthorize("#user1Id.toString() == authentication.name or #user2Id.toString() == authentication.name")
-    public ResponseEntity<PageResponse<MessageResponse>> getChat(@RequestParam Integer user1Id,
-                                                                 @RequestParam Integer user2Id,
-                                                                 Pageable pageable) {
-        return ResponseEntity.ok(PageResponse.from(
-                messageService.getChatHistory(user1Id, user2Id, pageable), MessageResponse::from));
-    }
-
-    /**
-     * The caller's chat with otherUserId. The caller comes from the token, so
-     * there is no @PreAuthorize: otherUserId only picks which of the caller's
-     * own chats to read, and no value of it reaches anyone else's (B48).
-     * Like PUT /chat/{otherUserId}/read.
+     * The caller comes from the token, so there is no @PreAuthorize:
+     * otherUserId only picks which of the caller's own chats to read, and no
+     * value of it reaches anyone else's (B48). Like PUT /chat/{otherUserId}/read.
      */
     @GetMapping("/chat/{otherUserId}")
     public ResponseEntity<PageResponse<MessageResponse>> getChatWith(Authentication authentication,

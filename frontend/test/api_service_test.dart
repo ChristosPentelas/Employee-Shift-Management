@@ -202,19 +202,20 @@ void main() {
           200);
     }));
 
-    final chat = await api.getChatHistory(7, 9, page: 1);
+    final chat = await api.getChatHistory(9, page: 1);
 
     expect(chat.items.map((m) => m.id), [2, 1]);
     expect(chat.page, 1);
-    // user1Id: the caller says who is asking; the service no longer looks it up.
-    expect(sent!.url.queryParameters,
-        {'user1Id': '7', 'user2Id': '9', 'page': '1', 'size': '50'});
+    // Only the other person is named: the server takes the caller from the
+    // token (B48), so no id of the caller's own travels in the URL.
+    expect(sent!.url.path, '/api/v1/messages/chat/9');
+    expect(sent!.url.queryParameters, {'page': '1', 'size': '50'});
   });
 
   test('a failed chat load throws, not an empty chat (B44)', () async {
     final api = ApiService(client: MockClient((_) async => http.Response('', 500)));
 
-    await expectLater(api.getChatHistory(7, 9), throwsException);
+    await expectLater(api.getChatHistory(9), throwsException);
   });
 
   test('a chat is marked read with one request naming only the other person',

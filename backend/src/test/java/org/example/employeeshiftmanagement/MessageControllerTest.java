@@ -186,26 +186,18 @@ class MessageControllerTest {
         verify(messageService, never()).getConversations(anyInt(), any());
     }
 
-    // The old chat shape, until B48 step 48d removes it.
     @Test
-    void aChatYouArePartOfCanBeRead() throws Exception {
-        when(messageService.getChatHistory(eq(7), eq(9), any(Pageable.class))).thenReturn(TestPages.of(message()));
-
+    void theOldChatPathIsGone() throws Exception {
+        // /chat/{otherUserId} replaced it (B48): added in 48b, the app
+        // switched in 48c, and the old path was removed in 48d.
+        // 405, not 404: "/messages/chat" still matches DELETE /{messageId},
+        // as a message whose id is "chat", so Spring answers that the path
+        // exists but not for GET (B83).
         mockMvc.perform(get("/api/v1/messages/chat")
                         .param("user1Id", "7")
                         .param("user2Id", "9")
                         .with(TestTokens.employee()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].content").value("Καλημέρα"));
-    }
-
-    @Test
-    void aChatBetweenTwoOtherPeopleIsForbidden() throws Exception {
-        mockMvc.perform(get("/api/v1/messages/chat")
-                        .param("user1Id", "9")
-                        .param("user2Id", "3")
-                        .with(TestTokens.employee()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isMethodNotAllowed());
 
         verify(messageService, never()).getChatHistory(anyInt(), anyInt(), any());
     }

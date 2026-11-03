@@ -60,7 +60,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // (B16), and ref may not be used after the screen closes.
     final me = ref.read(authProvider);
     if (me == null) return Future.value(const ListPage(items: [], page: 0, totalPages: 0));
-    return _apiService.getChatHistory(me.user.id, widget.receiver.id, page: page);
+    return _apiService.getChatHistory(widget.receiver.id, page: page);
   }
 
   @override

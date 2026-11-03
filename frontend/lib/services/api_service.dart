@@ -490,10 +490,11 @@ class ApiService {
   // chat's list is reversed, so the newest sits at the bottom and older pages
   // load above it. Throws on failure; it used to return [], and the chat then
   // looked as if nobody had written (B44).
-  Future<ListPage<Message>> getChatHistory(int currentUserId, int otherUserId,
-      {int page = 0}) async {
+  // Only the other person: the server takes the caller from the token (B48),
+  // like markChatAsRead below.
+  Future<ListPage<Message>> getChatHistory(int otherUserId, {int page = 0}) async {
     final response = await _client.get(
-      Uri.parse("$baseUrl/messages/chat?user1Id=$currentUserId&user2Id=$otherUserId&page=$page&size=50")
+      Uri.parse("$baseUrl/messages/chat/$otherUserId?page=$page&size=50")
     );
 
     if (response.statusCode == 200) {

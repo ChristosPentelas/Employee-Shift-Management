@@ -59,7 +59,7 @@ http.Client fakeServer(List<List<Map<String, Object?>>> pages, {List<String>? as
         // No conversations at all is no pages, as the server says it.
         final total = pages.length == 1 && pages[0].isEmpty ? 0 : pages.length;
         return page(pages[number], number, total);
-      case '/api/v1/messages/chat':
+      case '/api/v1/messages/chat/9':
         return page([], 0, 0);
       default:
         return http.Response('unexpected request', 404);

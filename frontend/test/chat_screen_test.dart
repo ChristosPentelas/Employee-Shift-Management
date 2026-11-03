@@ -78,7 +78,7 @@ class FakeChatServer {
   late final client = MockClient((request) async {
     requests.add('${request.method} ${request.url.path}');
 
-    if (request.method == 'GET' && request.url.path == '/api/v1/messages/chat') {
+    if (request.method == 'GET' && request.url.path == '/api/v1/messages/chat/9') {
       if (failLoads) throw http.ClientException('no network');
       // The answer is what the chat held when the request arrived, even if
       // it reaches the app later: a message sent meanwhile is not in it.
