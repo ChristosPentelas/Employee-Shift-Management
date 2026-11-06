@@ -17,7 +17,7 @@ class EmployeeListScreen extends ConsumerStatefulWidget {
   const EmployeeListScreen({super.key, this.apiService});
 
   @override
-  _EmployeeListScreenState createState() => _EmployeeListScreenState();
+  ConsumerState<EmployeeListScreen> createState() => _EmployeeListScreenState();
 }
 
 class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {

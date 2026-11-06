@@ -17,7 +17,7 @@ class LeaveRequestsScreen extends ConsumerStatefulWidget {
   const LeaveRequestsScreen({super.key, this.apiService});
 
   @override
-  _LeaveRequestsScreenState createState() => _LeaveRequestsScreenState();
+  ConsumerState<LeaveRequestsScreen> createState() => _LeaveRequestsScreenState();
 }
 
 class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {

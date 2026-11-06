@@ -14,7 +14,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key, this.apiService});
 
   @override
-  _ProfileScreenState createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 

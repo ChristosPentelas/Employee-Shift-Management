@@ -17,7 +17,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.receiver});
 
   @override
-  _ChatScreenState createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {

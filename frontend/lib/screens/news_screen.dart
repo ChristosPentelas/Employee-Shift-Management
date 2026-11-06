@@ -19,7 +19,7 @@ class NewsScreen extends ConsumerStatefulWidget {
   const NewsScreen({super.key});
 
   @override
-  _NewsScreenState createState() => _NewsScreenState();
+  ConsumerState<NewsScreen> createState() => _NewsScreenState();
 }
 
 class _NewsScreenState extends ConsumerState<NewsScreen> {

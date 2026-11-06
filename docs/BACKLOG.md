@@ -218,25 +218,6 @@ same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
-**B51 · LOW · `flutter analyze` reports 35 issues that nobody tracks as a whole** — found 2026-10-06
-Where: counted during F16 step 16d2, the same 35 before and after it. Ten
-`no_leading_underscores_for_local_identifiers` are B35's dialog variables and
-the one `unused_element` was `_buildStatColumn`, deleted with F20 on
-2026-10-07, leaving 34. B35 (done 2026-10-30) removed the ten, leaving 24. Not tracked anywhere else: every screen's constructor has no `key` parameter
-(`use_key_in_widget_constructors`, 10) and two could be `const`; nine
-`createState` methods return a private `_...State` type in a public API
-(`library_private_types_in_public_api`); `child` is not the last argument
-twice (`leave_requests_screen.dart:96`, `news_screen.dart:70`); and
-`leave_requests_screen.dart:122` calls `withOpacity`, deprecated in favour of
-`withValues`.
-Why it matters: each is small, but 35 standing warnings teach everyone to
-ignore the analyzer, so a real new one (like F25's
-`use_build_context_synchronously`) is easy to miss among them. The deprecated
-call stops compiling when Flutter removes it.
-Fix idea: one screen at a time, or one rule at a time; most are mechanical
-(`super.key`, `const`, `State<X>` as the return type). Aim for a clean
-`flutter analyze` so a new issue stands out.
-
 **B52 · LOW · Every employee can read every colleague's email and phone number** — found 2026-10-07
 Where: `UserController.getAllUsers` and `getUserById` have no
 `@PreAuthorize`, and `UserResponse` carries `email` and `phoneNumber`. The app
@@ -2347,3 +2328,52 @@ Fixed by: `fix(backend): say how to authenticate on a failed login (B50)`,
   401 was out of date since F16 step 16b - which is how B50 came about. It
   now names the failed login as the one 401 that handler answers.
 - Backend suite: 314 passing (no new tests; an existing helper checks more).
+
+**B51 · LOW · `flutter analyze` reports 35 issues that nobody tracks as a whole** — found 2026-10-06
+Where: counted during F16 step 16d2, the same 35 before and after it. Ten
+`no_leading_underscores_for_local_identifiers` are B35's dialog variables and
+the one `unused_element` was `_buildStatColumn`, deleted with F20 on
+2026-10-07, leaving 34. B35 (done 2026-10-30) removed the ten, leaving 24. Not tracked anywhere else: every screen's constructor has no `key` parameter
+(`use_key_in_widget_constructors`, 10) and two could be `const`; nine
+`createState` methods return a private `_...State` type in a public API
+(`library_private_types_in_public_api`); `child` is not the last argument
+twice (`leave_requests_screen.dart:96`, `news_screen.dart:70`); and
+`leave_requests_screen.dart:122` calls `withOpacity`, deprecated in favour of
+`withValues`.
+Why it matters: each is small, but 35 standing warnings teach everyone to
+ignore the analyzer, so a real new one (like F25's
+`use_build_context_synchronously`) is easy to miss among them. The deprecated
+call stops compiling when Flutter removes it.
+Fix idea: one screen at a time, or one rule at a time; most are mechanical
+(`super.key`, `const`, `State<X>` as the return type). Aim for a clean
+`flutter analyze` so a new issue stands out.
+Fixed by: four commits, one lint rule each, 2026-11-06. `flutter analyze`
+now says "No issues found!" (24 before; the line numbers above had drifted -
+the two FABs were at `leave_requests_screen.dart:121` and
+`news_screen.dart:101`, `withOpacity` at `:147`).
+- **51a** `3415b2f` `refactor(frontend): replace deprecated withOpacity with
+  withValues (B51)` - `.withOpacity(0.2)` → `.withValues(alpha: 0.2)`. Since
+  Flutter 3.27 colour channels are doubles (wide gamut); `withOpacity` rounds
+  alpha to 8 bits. Not chosen: `withAlpha(51)`, the same rounding behind a
+  magic number.
+- **51b** `f65519d` `style(frontend): put child last in the two add buttons
+  (B51)` - `sort_child_properties_last`, argument order only.
+- **51c** `a07eb40` `refactor(frontend): let every screen take a key (B51)` -
+  `super.key` on ten screens (`HomeScreen` and `NewsScreen` got a constructor
+  for it), and `ChatScreen` and `EmployeeDetailsScreen` became `const`. Super
+  parameters, like `ShiftsScreen` and every dialog already had; not the old
+  `{Key? key}) : super(key: key)`.
+- **51d** `refactor(frontend): return ConsumerState from every screen's
+  createState (B51)` - nine `_XState createState()` now return
+  `ConsumerState<X>`, as `EmployeeDetailsScreen` already did. The fix idea's
+  `State<X>` was wrong for these: a Riverpod `ConsumerStatefulWidget`'s
+  `createState()` must return a `ConsumerState`, so `State<X>` does not
+  compile. Not chosen: a public `XState` class (exposes the internals) or
+  `// ignore:` (hides the warning).
+- No new tests: no step changes behaviour. Frontend suite: 247 passing after
+  51c and after 51d; the leave and news screen tests passed after 51a and 51b.
+Left, not worth its own entry: `prefer_const_constructors` is not in
+`flutter_lints`, so callers still write `HomeScreen()`, `NewsScreen()` and
+`Icon(Icons.add)` without `const`, and nothing says so. Turning that rule on
+(and `flutter analyze --fatal-infos` as a pre-commit or CI gate, so warnings
+cannot pile up again) is a decision for later, not a bug.

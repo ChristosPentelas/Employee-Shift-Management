@@ -18,7 +18,7 @@ class MessagesListScreen extends ConsumerStatefulWidget {
   const MessagesListScreen({super.key, this.apiService});
 
   @override
-  _MessagesListScreenState createState() => _MessagesListScreenState();
+  ConsumerState<MessagesListScreen> createState() => _MessagesListScreenState();
 }
 
 class _MessagesListScreenState extends ConsumerState<MessagesListScreen> {

@@ -15,7 +15,7 @@ class ShiftsScreen extends ConsumerStatefulWidget {
   const ShiftsScreen({super.key, this.apiService});
 
   @override
-  _ShiftsScreenState createState() => _ShiftsScreenState();
+  ConsumerState<ShiftsScreen> createState() => _ShiftsScreenState();
 }
 
 class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {

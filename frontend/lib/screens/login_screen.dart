@@ -15,7 +15,7 @@ class LoginScreen extends ConsumerStatefulWidget{
   const LoginScreen({super.key, this.apiService});
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {

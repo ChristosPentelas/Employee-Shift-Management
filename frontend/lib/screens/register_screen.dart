@@ -12,7 +12,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key, this.apiService});
 
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
