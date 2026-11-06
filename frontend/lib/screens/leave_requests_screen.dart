@@ -118,8 +118,8 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
       floatingActionButton: !isSupervisor
         ? FloatingActionButton(
           onPressed: () => _showAddLeaveDialog(),
-          child: Icon(Icons.add),
           backgroundColor: Colors.orange,
+          child: Icon(Icons.add),
         )
         : null,
     );

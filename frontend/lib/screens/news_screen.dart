@@ -98,8 +98,8 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
         floatingActionButton: isSupervisor
           ? FloatingActionButton(
               onPressed: () => _showAddNewsDialog(),
-              child: Icon(Icons.add),
               backgroundColor: Colors.blue,
+              child: Icon(Icons.add),
             )
           : null,
       ),
