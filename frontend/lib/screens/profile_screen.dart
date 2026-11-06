@@ -11,7 +11,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
-  const ProfileScreen({this.apiService});
+  const ProfileScreen({super.key, this.apiService});
 
   @override
   _ProfileScreenState createState() => _ProfileScreenState();

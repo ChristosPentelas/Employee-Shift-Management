@@ -16,6 +16,8 @@ import '../widgets/paged_list_footer.dart';
 typedef _NewsTab = ({String label, String? type});
 
 class NewsScreen extends ConsumerStatefulWidget {
+  const NewsScreen({super.key});
+
   @override
   _NewsScreenState createState() => _NewsScreenState();
 }

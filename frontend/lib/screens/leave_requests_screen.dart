@@ -14,7 +14,7 @@ class LeaveRequestsScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
-  const LeaveRequestsScreen({this.apiService});
+  const LeaveRequestsScreen({super.key, this.apiService});
 
   @override
   _LeaveRequestsScreenState createState() => _LeaveRequestsScreenState();

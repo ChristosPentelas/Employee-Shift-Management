@@ -15,7 +15,7 @@ class MessagesListScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
-  const MessagesListScreen({this.apiService});
+  const MessagesListScreen({super.key, this.apiService});
 
   @override
   _MessagesListScreenState createState() => _MessagesListScreenState();

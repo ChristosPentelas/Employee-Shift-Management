@@ -12,7 +12,7 @@ class EmployeeDetailsScreen extends ConsumerStatefulWidget {
 
   final User user;
 
-  EmployeeDetailsScreen({required this.user});
+  const EmployeeDetailsScreen({super.key, required this.user});
 
   @override
   ConsumerState<EmployeeDetailsScreen> createState() => _EmployeeDetailsScreenState();

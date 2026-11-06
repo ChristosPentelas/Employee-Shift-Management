@@ -9,7 +9,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
-  const RegisterScreen({this.apiService});
+  const RegisterScreen({super.key, this.apiService});
 
   @override
   _RegisterScreenState createState() => _RegisterScreenState();

@@ -14,7 +14,7 @@ import 'dart:developer' as developer;
 class ChatScreen extends ConsumerStatefulWidget {
   final User receiver;
 
-  ChatScreen({required this.receiver});
+  const ChatScreen({super.key, required this.receiver});
 
   @override
   _ChatScreenState createState() => _ChatScreenState();

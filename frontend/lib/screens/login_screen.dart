@@ -12,7 +12,7 @@ class LoginScreen extends ConsumerStatefulWidget{
   // Tests pass an ApiService with a fake client; the app uses the default.
   final ApiService? apiService;
 
-  const LoginScreen({this.apiService});
+  const LoginScreen({super.key, this.apiService});
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
