@@ -144,7 +144,7 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: _getStatusColor(req.status).withOpacity(0.2),
+          color: _getStatusColor(req.status).withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
