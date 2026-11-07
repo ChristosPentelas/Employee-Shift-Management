@@ -123,17 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B79 · LOW · A later page that fails leaves nothing in the debug log** — found 2026-11-03
-Where: `PagedList.loadMore` and `PagedList.refresh` (`state/paged_list.dart`)
-catch their error and keep only a flag; `reload` logs it since B41 step 41a.
-Why it matters: the user is told (the footer's "Δοκιμάστε ξανά", the chat's
-next poll), but whoever debugs a list that stops growing has no error to
-look at. `refresh` runs every 5 s in a chat, so logging there needs care not
-to repeat the same error on every poll.
-Relates to: B41, F26.
-Fix idea: `developer.log(..., error: e, stackTrace: st)` in `loadMore`'s
-catch; in `refresh`, only when it sets `_error` (nothing on screen yet).
-
 **B80 · LOW · Deleting a news post or employee that is already gone says "try again" for ever** — found 2026-11-03
 Where: `ApiService.deleteNews` and `deleteUser` throw on every status but
 200/204; `news_screen.dart` and `employee_details_screen.dart` show "Η
@@ -2453,3 +2442,37 @@ Left as it is: if the colleague was deleted while the chat is open, the server
 answers 404 (`findUserById` throws `ResourceNotFoundException`) and the
 snackbar says "try again", which will never work - the same shape as B80 for
 deletes. Rare, and it fits B80's fix when that is done.
+
+**B79 · LOW · A later page that fails leaves nothing in the debug log** — found 2026-11-03
+Where: `PagedList.loadMore` and `PagedList.refresh` (`state/paged_list.dart`)
+catch their error and keep only a flag; `reload` logs it since B41 step 41a.
+Why it matters: the user is told (the footer's "Δοκιμάστε ξανά", the chat's
+next poll), but whoever debugs a list that stops growing has no error to
+look at. `refresh` runs every 5 s in a chat, so logging there needs care not
+to repeat the same error on every poll.
+Relates to: B41, F26.
+Fix idea: `developer.log(..., error: e, stackTrace: st)` in `loadMore`'s
+catch; in `refresh`, only when it sets `_error` (nothing on screen yet).
+Fixed by: `fix(frontend): log a list page that fails to load (B79)`,
+2026-11-07. Both catches now take `(e, stackTrace)` and log with
+`developer.log` (name `PagedList`) like `reload`, after the "dropped" check,
+so a page nobody waits for any more is not logged.
+- `loadMore` logs every failure: it cannot repeat by itself, since the footer
+  then waits for "Δοκιμάστε ξανά" (26c2). One line per try.
+- `refresh` logs only the first failure of a streak (edge-triggered): a new
+  `_refreshFailing` flag is set on a failure and cleared on a success, so a
+  server down for a minute gives one line, not twelve, and a new outage after
+  a recovery gives a new one.
+Not chosen: the fix idea's "only when it sets `_error`". After the first
+failure `_error` stays set, so it would still log on every poll; and a chat
+with messages on screen whose polls fail would log nothing - the very "list
+that stops growing" this entry is about.
+Tests: none for the log line itself. `developer.log` goes to the debugger
+connection, not through `print` or a `Zone`, so a test cannot see it; it
+would take a `log` function passed to `PagedList` only for tests, and
+`reload`'s log (B41) is untested for the same reason. The behaviour around
+it is pinned by the existing `paged_list_test.dart` tests ("a failed later
+page says so and keeps the rows", "a failed refresh with rows on screen
+changes nothing and says nothing", "... with nothing loaded yet is an
+error"), which still pass. Frontend suite: 258 passing. `flutter analyze`: no
+issues.

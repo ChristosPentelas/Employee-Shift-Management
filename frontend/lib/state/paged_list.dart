@@ -30,6 +30,10 @@ class PagedList<T> extends ChangeNotifier {
   bool _loadingMore = false;
   bool _loadMoreFailed = false;
   Object? _error;
+  // Refresh has failed since its last success. Only the first failure of such
+  // a streak is logged: a chat polls every 5 s, and the same error each time
+  // would bury everything else in the log (B79).
+  bool _refreshFailing = false;
   // Raised by every reload. A page that was on its way when the list started
   // again belongs to the old list, and is dropped instead of appended.
   int _generation = 0;
@@ -107,10 +111,16 @@ class PagedList<T> extends ChangeNotifier {
       _hasMore = _page + 1 < first.totalPages;
       _loading = false;
       _error = null;
+      _refreshFailing = false;
       notifyListeners();
       return first;
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (_disposed || generation != _generation) return null;
+      if (!_refreshFailing) {
+        _refreshFailing = true;
+        developer.log("Refreshing the list failed",
+            name: "PagedList", error: e, stackTrace: stackTrace);
+      }
       // With rows on screen, a failed refresh changes nothing: they are still
       // right, and the next poll tries again. With nothing yet, say so.
       if (_loading || _error != null) {
@@ -146,9 +156,12 @@ class PagedList<T> extends ChangeNotifier {
       _hasMore = next.hasMore;
       _loadingMore = false;
       notifyListeners();
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Dropped like a late page: after a reload or dispose nobody asked.
       if (_disposed || generation != _generation) return;
+      // Once per failure: the footer then waits for "try again" (B79).
+      developer.log("Loading the next page failed",
+          name: "PagedList", error: e, stackTrace: stackTrace);
       _loadingMore = false;
       _loadMoreFailed = true;
       notifyListeners();
