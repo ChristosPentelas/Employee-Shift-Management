@@ -61,7 +61,25 @@ class FakeChatServer {
   /// When true, loading the chat fails as if there were no network.
   bool failLoads = false;
 
+  /// What sending a message answers; set it to refuse the send.
+  int sendStatus = 201;
+
+  /// When true, sending fails as if there were no network.
+  bool failSends = false;
+
   Completer<void>? _heldLoads;
+  Completer<void>? _heldSends;
+
+  /// From now on, every send waits until [releaseSends] - a slow network.
+  void holdSends() => _heldSends = Completer<void>();
+
+  /// Lets every waiting send answer, and stops holding new ones.
+  void releaseSends() {
+    _heldSends?.complete();
+    _heldSends = null;
+  }
+
+  Iterable<String> get sends => requests.where((r) => r.startsWith('POST'));
 
   /// From now on, every chat load waits until [releaseLoads] - a slow network.
   void holdLoads() => _heldLoads = Completer<void>();
@@ -100,6 +118,10 @@ class FakeChatServer {
           headers: {'content-type': 'application/json; charset=utf-8'});
     }
     if (request.method == 'POST' && request.url.path == '/api/v1/messages') {
+      if (failSends) throw http.ClientException('no network');
+      final hold = _heldSends;
+      if (hold != null) await hold.future;
+      if (sendStatus != 201) return http.Response('', sendStatus);
       final content = jsonDecode(request.body)['content'] as String;
       messages.add(StoredMessage(messages.length + 1, worker, boss, content: content));
       return http.Response('', 201);
@@ -468,6 +490,117 @@ void main() {
       expect(server.loads, hasLength(2));
       expect(find.text('m1'), findsOneWidget);
       expect(find.text('Δεν ήταν δυνατή η φόρτωση των μηνυμάτων.'), findsNothing);
+
+      await closeChat(tester);
+    });
+  });
+
+  // B54: the field used to be cleared before the send, and a failure said
+  // nothing - the message was gone and the user believed it was sent.
+  group('sending', () {
+    const notSent = 'Το μήνυμα δεν στάλθηκε. Δοκιμάστε ξανά.';
+
+    String fieldText(WidgetTester tester) =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+    Future<void> type(WidgetTester tester, String text) =>
+        tester.enterText(find.byType(TextField), text);
+
+    Future<void> tapSend(WidgetTester tester) => tester.tap(find.byIcon(Icons.send));
+
+    testWidgets('a sent message clears the field and shows in the chat',
+        (WidgetTester tester) async {
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)]);
+      await openChat(tester, server);
+
+      await type(tester, 'Hello');
+      await tapSend(tester);
+      await tester.pumpAndSettle();
+
+      expect(server.sends, hasLength(1));
+      expect(fieldText(tester), isEmpty);
+      expect(find.text('Hello'), findsOneWidget, reason: 'the bubble, not the field');
+      expect(find.text(notSent), findsNothing);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a refused send keeps the text and says so',
+        (WidgetTester tester) async {
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)])
+        ..sendStatus = 500;
+      await openChat(tester, server);
+
+      await type(tester, 'Hello');
+      await tapSend(tester);
+      await tester.pumpAndSettle();
+
+      expect(server.sends, hasLength(1));
+      expect(fieldText(tester), 'Hello', reason: 'still there, to send again');
+      expect(find.text(notSent), findsOneWidget);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a send with no network keeps the text and says so',
+        (WidgetTester tester) async {
+      // Not the same failure as a refusal: the request throws instead of
+      // answering, which the old code did not catch at all.
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)])
+        ..failSends = true;
+      await openChat(tester, server);
+
+      await type(tester, 'Hello');
+      await tapSend(tester);
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester), 'Hello');
+      expect(find.text(notSent), findsOneWidget);
+
+      await closeChat(tester);
+    });
+
+    testWidgets('a second tap while the message is on its way sends nothing',
+        (WidgetTester tester) async {
+      // Clearing the field first used to stop this by accident: the second
+      // tap found it empty. Keeping the text until the server has it needs a
+      // real guard.
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)])
+        ..holdSends();
+      await openChat(tester, server);
+
+      await type(tester, 'Hello');
+      await tapSend(tester);
+      await tester.pump();
+      await tapSend(tester);
+      await tester.pump();
+      expect(server.sends, hasLength(1));
+
+      server.releaseSends();
+      await tester.pumpAndSettle();
+      expect(server.sends, hasLength(1));
+      expect(find.text('Hello'), findsOneWidget, reason: 'sent once, shown once');
+
+      await closeChat(tester);
+    });
+
+    testWidgets('text typed while a message is on its way is not wiped',
+        (WidgetTester tester) async {
+      final server = FakeChatServer([StoredMessage(1, boss, worker, read: true)])
+        ..holdSends();
+      await openChat(tester, server);
+
+      await type(tester, 'Hello');
+      await tapSend(tester);
+      await tester.pump();
+      // The next message, started before the first one is through.
+      await type(tester, 'Hello again');
+
+      server.releaseSends();
+      await tester.pumpAndSettle();
+
+      expect(fieldText(tester), 'Hello again');
+      expect(find.text('Hello'), findsOneWidget, reason: 'the first one was sent');
 
       await closeChat(tester);
     });

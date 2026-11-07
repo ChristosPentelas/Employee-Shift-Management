@@ -41,6 +41,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _loading = false;
   bool _reloadAfter = false;
 
+  // True while a message is on its way, which turns the send button off so a
+  // second tap cannot send it twice. Clearing the field at once used to stop
+  // that only by accident (B54).
+  bool _sending = false;
+
   // Loads now, then every _pollEvery. The old timer is cancelled first: two
   // timers would poll twice as often, and the lost one could never be
   // cancelled.
@@ -126,16 +131,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _send() async {
-    if (_messageController.text.trim().isEmpty) return;
+  // A Future, not void: a void async function cannot be awaited, so an error
+  // thrown in it reaches nobody (B54).
+  Future<void> _send() async {
+    // The button is off while sending, but only from the next frame on.
+    if (_sending) return;
+    final text = _messageController.text;
+    if (text.trim().isEmpty) return;
 
-    String text = _messageController.text;
-    _messageController.clear();
-
-    bool success = await _apiService.sendMessage(widget.receiver.id, text);
+    // The text stays in the field until the server has it (B54): cleared
+    // first, a failed message was gone and the user believed it was sent.
+    setState(() => _sending = true);
+    bool sent;
+    try {
+      sent = await _apiService.sendMessage(widget.receiver.id, text);
+    } catch (e) {
+      // No network: the request throws instead of answering.
+      developer.log("Sending a message failed", name: "ChatScreen", error: e);
+      sent = false;
+    } finally {
+      // In finally, like _loading: a failure must not leave the button off.
+      if (mounted) setState(() => _sending = false);
+    }
     if (!mounted) return;
-    if (success) {
+
+    if (sent) {
+      // Only if unchanged: anything typed while this one was on its way is
+      // the next message.
+      if (_messageController.text == text) _messageController.clear();
       _loadMessages();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Το μήνυμα δεν στάλθηκε. Δοκιμάστε ξανά.")),
+      );
     }
   }
 
@@ -216,7 +244,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               decoration: InputDecoration(hintText: "Γράψτε ένα μήνυμα..."),
             ),
           ),
-          IconButton(icon: Icon(Icons.send, color: Colors.teal), onPressed: _send),
+          // The colour on the button, not the Icon: an Icon's own colour wins
+          // over the button's, and the button would not grey out while off.
+          IconButton(
+            icon: const Icon(Icons.send),
+            color: Colors.teal,
+            onPressed: _sending ? null : _send,
+          ),
         ],
       ),
     );

@@ -142,7 +142,8 @@ Why it matters: if another supervisor deleted it first, the server answers
 404. The post or employee stays on screen, and every retry is another 404.
 B33 solved the same thing for shifts.
 Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ended
-here too, until B43 was fixed), B41.
+here too, until B43 was fixed), B41. The chat has the same shape since B54:
+a message to a colleague deleted meanwhile is a 404 that says "try again".
 Fix idea: a `deleted` / `notFound` / `failed` enum result like
 `DeleteShiftResult`; on `notFound` say it was already deleted and reload.
 
@@ -207,16 +208,6 @@ Fix idea: catch `DataIntegrityViolationException` around the save in
 same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
-
-**B54 · LOW · A message that fails to send is lost without a word** — found 2026-10-13
-Where: `chat_screen.dart` `_send()` clears the text field before calling
-`sendMessage`, and does nothing when it returns `false`.
-Why it matters: on a network or server error the typed message disappears and
-nothing says it was not sent, so the user believes it was.
-Relates to: B44 (the same silent failure on loading), F28 (same screen).
-Fix idea: clear the field only after a successful send; on failure keep the
-text and show a short Greek snackbar.
-Found while planning F28.
 
 **B55 · LOW · The chat asks the server for news instead of being told** — found 2026-10-13
 Where: `chat_screen.dart` reloads the chat every 5 s while it is open and
@@ -2348,8 +2339,8 @@ directory), but nobody had decided it; F1 step 7 decided who reads leave,
 shifts and messages, not profiles.
 Relates to: F1 step 7, B53. Found while writing F22's profile test, which
 reads your own profile so it does not quietly approve the current rule.
-Closed with no code change: `test(backend): pin that employees may read
-colleagues' contact details (B52)`. Decided 2026-11-07: the staff list is a
+Closed with no code change: `5bc9f58` `test(backend): pin that employees may
+read colleague's contact details (B52)`. Decided 2026-11-07: the staff list is a
 company directory - every logged-in user sees every colleague's name, role,
 email and phone. One company (B9), whose staff already work side by side,
 and employees need the list anyway: it is where a chat starts (list →
@@ -2418,3 +2409,47 @@ not a red test. Checked that it fails when a card is given the wrong screen
 (Νέα → `ProfileScreen`). The default 800x600 test window shows only a row and
 a half of cards and the grid does not build the rest, so the test uses an
 800x1400 window. Frontend suite: 253 passing (247 + 6).
+
+**B54 · LOW · A message that fails to send is lost without a word** — found 2026-10-13
+Where: `chat_screen.dart` `_send()` clears the text field before calling
+`sendMessage`, and does nothing when it returns `false`.
+Why it matters: on a network or server error the typed message disappears and
+nothing says it was not sent, so the user believes it was.
+Relates to: B44 (the same silent failure on loading), F28 (same screen).
+Fix idea: clear the field only after a successful send; on failure keep the
+text and show a short Greek snackbar.
+Found while planning F28.
+Fixed by: `fix(frontend): keep a chat message that failed to send (B54)`,
+2026-11-07. The fix idea, plus what it uncovered:
+- Two failures, not one. A refusal (500, 400...) makes `sendMessage` return
+  `false`; no network makes the request throw, and `void _send() async` let
+  that out uncaught - a void async function cannot be awaited, so its error
+  reaches nobody. `_send` is now a `Future<void>`, and one `try/catch` turns
+  both into the snackbar "Το μήνυμα δεν στάλθηκε. Δοκιμάστε ξανά.", worded
+  like the delete failures.
+- A guard the fix needed. Clearing the field first stopped a double tap only
+  by accident (the second tap found it empty). With the text kept, a
+  `_sending` flag turns the send button off, as B43's `_saving` does in the
+  dialogs; an early `return` covers a tap before the next frame redraws the
+  button. Cleared in `finally`, like `_loading`, so a failure cannot leave the
+  button off.
+- On success the field is cleared only if it still holds the sent text, so
+  anything typed while the message was on its way stays.
+- The send colour moved from the `Icon` to the `IconButton`: an `Icon`'s own
+  colour wins, so the button did not grey out while off.
+Not chosen: `sendMessage` throwing instead of returning `bool` (B41's style;
+a second layer in the same change, and one `catch` covers both anyway);
+optimistic "not sent, tap to retry" bubbles (a pending message merged into
+`PagedList`, much bigger); a `readOnly` field while sending (blocks typing
+for every send, even fast ones).
+Tests: `chat_screen_test.dart`, `group('sending')`, five. "A refused send"
+and "no network" fail on the old code (the field was empty; an uncaught
+`ClientException`). "A second tap sends nothing" and "text typed while
+sending is not wiped" pass there - the early clear did both by accident - and
+guard the fix: each was checked to fail with its guard removed (no
+`_sending`; an unconditional clear). Frontend suite: 258 passing (253 + 5).
+`flutter analyze`: no issues.
+Left as it is: if the colleague was deleted while the chat is open, the server
+answers 404 (`findUserById` throws `ResourceNotFoundException`) and the
+snackbar says "try again", which will never work - the same shape as B80 for
+deletes. Rare, and it fits B80's fix when that is done.
