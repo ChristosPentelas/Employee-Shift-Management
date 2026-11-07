@@ -8,7 +8,7 @@ with colleagues.
 The app's user interface is in Greek.
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="The dashboard after logging in" width="320">
+  <img src="docs/screenshots/Home.png" alt="The dashboard after logging in" width="320">
 </p>
 
 ## Features
