@@ -668,9 +668,9 @@ class UserControllerTest {
 
     @Test
     void youCanReadYourOwnProfileWithoutThePassword() throws Exception {
-        // Your own profile on purpose: whether an employee should read a
-        // colleague's email and phone is an open question (B52), and this test
-        // should not quietly answer it.
+        // Your own profile: the password check is the point here. A colleague's
+        // profile is a separate rule with its own test,
+        // anEmployeeCanReadAColleaguesContactDetails (B52).
         when(userService.findUserById(7)).thenReturn(TestUsers.employee());
 
         mockMvc.perform(get("/api/v1/users/7").with(TestTokens.employee()))
@@ -679,6 +679,33 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.email").value("worker@example.com"))
                 .andExpect(jsonPath("$.role").value("EMPLOYEE"))
                 .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void anEmployeeCanReadAColleaguesContactDetails() throws Exception {
+        // Decided 2026-11-07 (B52): the staff list is a company directory, so
+        // colleagues see each other's email and phone. If this test fails, that
+        // decision is being changed - update B52 too, do not just edit the test.
+        when(userService.findUserById(9)).thenReturn(TestUsers.supervisor());
+
+        // Employee 7 reads person 9: someone else's profile, not their own.
+        mockMvc.perform(get("/api/v1/users/9").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("boss@example.com"))
+                .andExpect(jsonPath("$.phoneNumber").value("1234567890"));
+    }
+
+    @Test
+    void anEmployeeCanListEveryonesContactDetails() throws Exception {
+        // The same decision for the list (B52), which is where it matters most:
+        // one request reads the whole staff's contact details.
+        when(userService.findAllUsers(any(Pageable.class))).thenReturn(TestPages.of(TestUsers.supervisor()));
+
+        mockMvc.perform(get("/api/v1/users").with(TestTokens.employee()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(9))
+                .andExpect(jsonPath("$.content[0].email").value("boss@example.com"))
+                .andExpect(jsonPath("$.content[0].phoneNumber").value("1234567890"));
     }
 
     @Test

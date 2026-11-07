@@ -155,16 +155,6 @@ two copies drift apart when one is changed.
 Fix idea: the footer returns `Padding(..., child: LoadErrorView(onRetry:
 list.loadMore))`; its widget tests should pass unchanged.
 
-**B82 · LOW · The employee details screen spells "Emaill"** — found 2026-11-03
-Where: `employee_details_screen.dart`, the first `ListTile`'s title.
-Why it matters: a typo every supervisor sees on every employee. The same
-screen's constructor also has no `key` and is not `const`
-(`use_key_in_widget_constructors`, `prefer_const_constructors_in_immutables`
-in `flutter analyze`), unlike `ShiftsScreen`.
-Relates to: B43 (found while making this screen stateful).
-Fix idea: "Email"; `const EmployeeDetailsScreen({super.key, required
-this.user})`, and `const` where it is built if the analyzer then asks.
-
 **B83 · LOW · `{messageId}` matches any word, so `/messages/chat` is "a message called chat"** — found 2026-11-03
 Where: `MessageController` - `@DeleteMapping("/{messageId}")` and
 `@PutMapping("/{messageId}/read")`; the same shape in the other controllers
@@ -218,35 +208,14 @@ same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
-**B52 · LOW · Every employee can read every colleague's email and phone number** — found 2026-10-07
-Where: `UserController.getAllUsers` and `getUserById` have no
-`@PreAuthorize`, and `UserResponse` carries `email` and `phoneNumber`. The app
-shows this on purpose: Home opens `EmployeeListScreen` for everyone, and
-`EmployeeDetailsScreen` shows the phone number; only the add and delete
-buttons are supervisor-only.
-Why it matters: a phone number and a private email are personal data, and
-right now one employee's token reads the whole staff list's in one request
-(`?size=100`). That may be exactly what a small company wants (a staff
-directory), but nobody has decided it; F1 step 7 decided who reads leave,
-shifts and messages, not profiles.
-Relates to: F1 step 7. Found while writing F22's profile test, which reads
-your own profile so it does not quietly approve the current rule.
-Fix idea: decide first. If colleagues may see each other, write that down
-and add a test that says so. If not, give employees a smaller response (id and
-name, enough for a list of colleagues) and keep the full `UserResponse` for supervisors
-and for your own profile.
-Side note, same controllers: two names do not say what the code does.
-`MessageService.getSendMessages` returns sent messages, and
-`NewsItemController.getNewsAuthorById` returns news, not an author. Rename them
-when either file is next changed.
-
 **B53 · LOW · Home decides where a menu card goes by comparing its Greek label** — found 2026-10-07
 Where: `home_screen.dart`, `_buildMenuCard` - `if(title == "Υπάλληλοι")`,
 `if(title == "Νέα")` and so on, one `if` per card.
 Why it matters: the label is shown text, not an identifier. Fixing a typo in
 it, or translating it, makes the card do nothing when tapped, with no error
-from the analyzer or at runtime. Also no card checks the role, which is why
-employees reach the staff list (B52).
+from the analyzer or at runtime. No card checks the role either; today none
+needs to (employees reach the staff list on purpose, B52), but a future
+supervisor-only card would have nowhere to say so.
 Fix idea: pass the destination with the card (a `WidgetBuilder` or the screen
 itself) instead of matching the title, so each card says where it goes.
 Found while checking B52.
@@ -2377,3 +2346,55 @@ Left, not worth its own entry: `prefer_const_constructors` is not in
 `Icon(Icons.add)` without `const`, and nothing says so. Turning that rule on
 (and `flutter analyze --fatal-infos` as a pre-commit or CI gate, so warnings
 cannot pile up again) is a decision for later, not a bug.
+
+**B52 · LOW · Every employee can read every colleague's email and phone number** — found 2026-10-07
+Where: `UserController.getAllUsers` and `getUserById` have no
+`@PreAuthorize`, and `UserResponse` carries `email` and `phoneNumber`. The app
+shows this on purpose: Home opens `EmployeeListScreen` for everyone, and
+`EmployeeDetailsScreen` shows the phone number; only the add and delete
+buttons are supervisor-only.
+Why it seemed to matter: a phone number and a private email are personal
+data, and one employee's token reads the whole staff list's in one request
+(`?size=100`). That may be exactly what a small company wants (a staff
+directory), but nobody had decided it; F1 step 7 decided who reads leave,
+shifts and messages, not profiles.
+Relates to: F1 step 7, B53. Found while writing F22's profile test, which
+reads your own profile so it does not quietly approve the current rule.
+Closed with no code change: `test(backend): pin that employees may read
+colleagues' contact details (B52)`. Decided 2026-11-07: the staff list is a
+company directory - every logged-in user sees every colleague's name, role,
+email and phone. One company (B9), whose staff already work side by side,
+and employees need the list anyway: it is where a chat starts (list →
+details → `ChatScreen`), so supervisor-only was never an option.
+Two `UserControllerTest` tests pin it, so changing the rule fails a test
+instead of happening by accident: `anEmployeeCanReadAColleaguesContactDetails`
+(`GET /users/9` with employee 7's token) and
+`anEmployeeCanListEveryonesContactDetails`. Both were checked to fail (403)
+with `@PreAuthorize("hasRole('SUPERVISOR')")` added to the two endpoints.
+`youCanReadYourOwnProfileWithoutThePassword`'s comment, which called this an
+open question, now points to them.
+Not chosen: data minimisation (GDPR Art. 5(1)(c)) - employees get only id,
+name and role, and email and phone go to supervisors and the person
+themselves. Considered as `null` in the same `UserResponse` (one JSON shape;
+but `EmployeeDetailsScreen` shows `null` as "Δεν έχει καταχωρηθεί", which
+would be untrue, and the Dart `User.email` is non-nullable) or a separate
+`ColleagueResponse` (one URL answering two shapes). Revisit if the company
+asks for it or the app ever serves several companies (B9).
+The side note first written here was already settled when B52 closed: both
+misleadingly named methods were deleted, not renamed -
+`MessageService.getSendMessages` with the unused message lists (B48,
+`e7bdb7f`) and `NewsItemController.getNewsAuthorById` with the author filter
+(B49, `1f7e2bd`).
+
+**B82 · LOW · The employee details screen spells "Emaill"** — found 2026-11-03
+Where: `employee_details_screen.dart`, the first `ListTile`'s title.
+Why it matters: a typo every supervisor sees on every employee. The same
+screen's constructor also has no `key` and is not `const`
+(`use_key_in_widget_constructors`, `prefer_const_constructors_in_immutables`
+in `flutter analyze`), unlike `ShiftsScreen`.
+Relates to: B43 (found while making this screen stateful).
+Fix idea: "Email"; `const EmployeeDetailsScreen({super.key, required
+this.user})`, and `const` where it is built if the analyzer then asks.
+Fixed by: `c35bb17` `fix(frontend): correct the Email label on the employee
+details screen`, 2026-11-07 - the label, written by the owner. The `key` and
+`const` half was already done by B51's `a07eb40` (51c).
