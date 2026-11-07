@@ -135,6 +135,14 @@ here too, until B43 was fixed), B41. The chat has the same shape since B54:
 a message to a colleague deleted meanwhile is a 404 that says "try again".
 Fix idea: a `deleted` / `notFound` / `failed` enum result like
 `DeleteShiftResult`; on `notFound` say it was already deleted and reload.
+Doing in three steps from 2026-11-07, one concept each: 80a one enum for
+every delete, 80b news, 80c employees.
+**80a done** (`refactor(frontend): rename DeleteShiftResult to DeleteResult (B80)`):
+a rename only, in `api_service.dart` and `shifts_screen.dart`. News and
+users need the same three outcomes, and three identical enums could drift
+apart. Its doc comment now speaks of any delete, and `deleted` is "200 or
+204", as every delete method accepts both. No test names the enum; the
+shift tests pass unchanged (258).
 
 **B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
 Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η

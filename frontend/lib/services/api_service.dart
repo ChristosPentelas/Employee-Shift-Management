@@ -44,9 +44,10 @@ enum UpdateLeaveStatusResult {
   failed,
 }
 
-/// The outcome of ApiService.deleteShift (B33).
-enum DeleteShiftResult {
-  /// 204: the shift is gone.
+/// What the server answered to a DELETE (B33). Shared by every delete, as
+/// they all have the same three outcomes (B80 step 80a).
+enum DeleteResult {
+  /// 200 or 204: it is gone.
   deleted,
   /// 404: it was already gone, e.g. deleted by another supervisor.
   notFound,
@@ -456,20 +457,20 @@ class ApiService {
 
   // An enum, not a bool: "already gone" needs a reload, "failed" a retry, and
   // a bool cannot tell them apart (B33).
-  Future<DeleteShiftResult> deleteShift(int shiftId) async {
+  Future<DeleteResult> deleteShift(int shiftId) async {
     try {
       final response = await _client.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
       switch (response.statusCode) {
         case 200:
         case 204:
-          return DeleteShiftResult.deleted;
+          return DeleteResult.deleted;
         case 404:
-          return DeleteShiftResult.notFound;
+          return DeleteResult.notFound;
         default:
-          return DeleteShiftResult.failed;
+          return DeleteResult.failed;
       }
     } catch (e) {
-      return DeleteShiftResult.failed;
+      return DeleteResult.failed;
     }
   }
 

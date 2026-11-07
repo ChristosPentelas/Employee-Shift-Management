@@ -226,13 +226,13 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
 
   // A switch with no default: a value added to the enum later will not
   // compile until it is given its text here.
-  String _deleteResultText(DeleteShiftResult result) {
+  String _deleteResultText(DeleteResult result) {
     switch (result) {
-      case DeleteShiftResult.deleted:
+      case DeleteResult.deleted:
         return "Η βάρδια διαγράφηκε";
-      case DeleteShiftResult.notFound:
+      case DeleteResult.notFound:
         return "Η βάρδια είχε ήδη διαγραφεί.";
-      case DeleteShiftResult.failed:
+      case DeleteResult.failed:
         return "Η διαγραφή απέτυχε. Δοκιμάστε ξανά.";
     }
   }
@@ -253,16 +253,16 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
               setState(() => _deletingId = shiftId);
               Navigator.pop(dialogContext);
               // No try/finally: deleteShift never throws, every outcome is a
-              // DeleteShiftResult (B33).
+              // DeleteResult (B33).
               final result = await _apiService.deleteShift(shiftId);
               if (!mounted) return;
               setState(() {
                 _deletingId = null;
                 // Reload unless nothing changed: after a 404 the calendar on
                 // screen is out of date, and the reload shows what is stored.
-                if (result != DeleteShiftResult.failed) _selectedDay = null;
+                if (result != DeleteResult.failed) _selectedDay = null;
               });
-              if (result != DeleteShiftResult.failed) _loadShifts();
+              if (result != DeleteResult.failed) _loadShifts();
               // Every outcome says something: a failure used to say nothing
               // at all (B33).
               ScaffoldMessenger.of(context)
