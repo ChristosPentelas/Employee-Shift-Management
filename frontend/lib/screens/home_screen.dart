@@ -39,58 +39,28 @@ class HomeScreen extends ConsumerWidget {
           crossAxisSpacing: 15,
           mainAxisSpacing: 15,
           children:[
-            _buildMenuCard(context,"Υπάλληλοι", Icons.people, Colors.orange),
-            _buildMenuCard(context,"Βάρδιες", Icons.calendar_month,Colors.green),
-            _buildMenuCard(context,"Μηνύματα", Icons.message, Colors.purple),
-            _buildMenuCard(context, "Αιτήματα Αδείας", Icons.event_note, Colors.red),
-            _buildMenuCard(context, "Νέα", Icons.newspaper, Colors.blue),
-            _buildMenuCard(context, "Προφίλ", Icons.account_circle, Colors.blueGrey),
+            _buildMenuCard(context, "Υπάλληλοι", Icons.people, Colors.orange, const EmployeeListScreen()),
+            _buildMenuCard(context, "Βάρδιες", Icons.calendar_month, Colors.green, const ShiftsScreen()),
+            _buildMenuCard(context, "Μηνύματα", Icons.message, Colors.purple, const MessagesListScreen()),
+            _buildMenuCard(context, "Αιτήματα Αδείας", Icons.event_note, Colors.red, const LeaveRequestsScreen()),
+            _buildMenuCard(context, "Νέα", Icons.newspaper, Colors.blue, const NewsScreen()),
+            _buildMenuCard(context, "Προφίλ", Icons.account_circle, Colors.blueGrey, const ProfileScreen()),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMenuCard(BuildContext context,String title,IconData icon,Color color){
+  // Each card is given the screen it opens (B53). The title is only the text
+  // on the card; before, it was also compared with a string to pick the
+  // screen, so changing the text in one place silently broke the card.
+  Widget _buildMenuCard(BuildContext context, String title, IconData icon,
+      Color color, Widget destination) {
     return InkWell(
-      onTap:(){
-        if(title == "Υπάλληλοι") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => EmployeeListScreen()),
-          );
-        }
-        if(title == "Νέα") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => NewsScreen()),
-          );
-        }
-        if(title == "Αιτήματα Αδείας") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => LeaveRequestsScreen()),
-          );
-        }
-        if(title == "Προφίλ") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => ProfileScreen()),
-          );
-        }
-        if(title == "Βάρδιες") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => ShiftsScreen()),
-          );
-        }
-        if(title == "Μηνύματα") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => MessagesListScreen()),
-          );
-        }
-      },
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => destination),
+      ),
       child: Card(
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),

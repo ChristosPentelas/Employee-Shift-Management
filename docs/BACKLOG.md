@@ -208,18 +208,6 @@ same exception as the normal duplicate check (a `ConflictException` since
 B20 step 20a). `saveAndFlush` is needed there,
 or the insert only reaches the database at commit, after the catch.
 
-**B53 · LOW · Home decides where a menu card goes by comparing its Greek label** — found 2026-10-07
-Where: `home_screen.dart`, `_buildMenuCard` - `if(title == "Υπάλληλοι")`,
-`if(title == "Νέα")` and so on, one `if` per card.
-Why it matters: the label is shown text, not an identifier. Fixing a typo in
-it, or translating it, makes the card do nothing when tapped, with no error
-from the analyzer or at runtime. No card checks the role either; today none
-needs to (employees reach the staff list on purpose, B52), but a future
-supervisor-only card would have nowhere to say so.
-Fix idea: pass the destination with the card (a `WidgetBuilder` or the screen
-itself) instead of matching the title, so each card says where it goes.
-Found while checking B52.
-
 **B54 · LOW · A message that fails to send is lost without a word** — found 2026-10-13
 Where: `chat_screen.dart` `_send()` clears the text field before calling
 `sendMessage`, and does nothing when it returns `false`.
@@ -2398,3 +2386,35 @@ this.user})`, and `const` where it is built if the analyzer then asks.
 Fixed by: `c35bb17` `fix(frontend): correct the Email label on the employee
 details screen`, 2026-11-07 - the label, written by the owner. The `key` and
 `const` half was already done by B51's `a07eb40` (51c).
+
+**B53 · LOW · Home decides where a menu card goes by comparing its Greek label** — found 2026-10-07
+Where: `home_screen.dart`, `_buildMenuCard` - `if(title == "Υπάλληλοι")`,
+`if(title == "Νέα")` and so on, one `if` per card.
+Why it matters: the label is shown text, not an identifier. Fixing a typo in
+it, or translating it, makes the card do nothing when tapped, with no error
+from the analyzer or at runtime. No card checks the role either; today none
+needs to (employees reach the staff list on purpose, B52), but a future
+supervisor-only card would have nowhere to say so.
+Fix idea: pass the destination with the card (a `WidgetBuilder` or the screen
+itself) instead of matching the title, so each card says where it goes.
+Found while checking B52.
+Fixed by: `refactor(frontend): give each dashboard card the screen it opens
+(B53)`, 2026-11-07. `_buildMenuCard` takes a `Widget destination`, each of
+the six calls passes its screen (`const NewsScreen()` and so on), and the six
+`if (title == ...)` became one `Navigator.push`. The title is now only the
+text on the card. A card without a screen, or with a screen that does not
+exist, no longer compiles. Before, a mismatch made a card silently do
+nothing.
+Not chosen: a `WidgetBuilder` (builds the screen only on tap; these screens
+are `const` and cheap to create, so a plain `Widget` reads simpler); named
+routes (`'/news'` is a string again); an `enum` with a `switch` (checked for
+every case, but more code than six cards need).
+The role half is settled: B52 closed as "the staff list is a directory for
+everyone", so no card needs a role check today. A future supervisor-only card
+can now take its own condition next to its destination.
+Test: `home_screen_test.dart`, one test per card, taps it and expects its
+screen. It passes on the old code too (the six labels matched); it is a guard,
+not a red test. Checked that it fails when a card is given the wrong screen
+(Νέα → `ProfileScreen`). The default 800x600 test window shows only a row and
+a half of cards and the grid does not build the rest, so the test uses an
+800x1400 window. Frontend suite: 253 passing (247 + 6).
