@@ -143,6 +143,27 @@ users need the same three outcomes, and three identical enums could drift
 apart. Its doc comment now speaks of any delete, and `deleted` is "200 or
 204", as every delete method accepts both. No test names the enum; the
 shift tests pass unchanged (258).
+**80b done** (`fix(frontend): say when a news post was already deleted (B80)`):
+`deleteNews` returns a `DeleteResult` from the status (a new private
+`_deleteResultOf`, which 80c reuses): 200/204 `deleted`, 404 `notFound`,
+anything else `failed`. The news screen says "Η ανάρτηση είχε ήδη
+διαγραφεί." and reloads every tab on `notFound`, as on `deleted`; on
+`failed` it keeps the post and says "try again". Its texts are one switch
+with no `default`, `_deleteResultText`, as on the shifts screen.
+Decided: no network is still thrown, not turned into `failed` as
+`deleteShift` does. Only the app can log that error (the screen's `catch`
+does, B41); a 500 the server logs itself. That leaves `deleteShift`
+swallowing it: B84. `deleteShift` keeps its own status switch until then,
+so this step does not change shifts.
+Tests: `api_service_test.dart` group 'what a delete answered' (204 and 200,
+404, 500 and 403) and 'deleteNews deletes that post'. B41's "refused by the
+server says so once" no longer runs for `deleteNews`, on purpose: a 500 is
+now a result, not an exception, and the new group checks that result; its
+"without a network throws the network error itself" still runs.
+`news_screen_test.dart`: "a post already deleted says so and leaves the
+list" fails on the old code; "a delete without a network says it failed and
+keeps the post" passes there too (the old `catch` took everything) and
+guards the `catch` the screen still needs. Frontend suite: 261 passing.
 
 **B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
 Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η
@@ -170,6 +191,21 @@ Fix idea: restrict the variable to digits, `@DeleteMapping("/{messageId:\\d+}")`
 (and the `PUT`), so a word matches no route and the answer is 404; then
 change that test to expect 404. Check the other controllers' `{id}`
 variables the same way.
+
+**B84 · LOW · `deleteShift` swallows a network error without a log** — found 2026-11-07
+Where: `ApiService.deleteShift` ends in `catch (e) { return DeleteResult.failed; }`.
+`changePassword`, `updateLeaveStatus` and the other enum-result methods have
+the same shape (unchecked one by one).
+Why it matters: the supervisor is told it failed, but the error itself is
+gone, so whoever debugs a delete that never works has nothing to look at -
+the B79 problem in the service layer. Since B80 step 80b `deleteNews` lets
+a thrown error through to the screen, which logs it; `deleteShift` shares
+its `DeleteResult` but not that behaviour, so the two now disagree.
+Relates to: B80, B79, B41 (step 41c let service errors through), F26.
+Fix idea: the same as `deleteNews`: map the status with `_deleteResultOf`
+and let a thrown error through; the shifts screen catches it, logs it with
+`developer.log`, and says "failed" (it has no `try` since B33). Then look at
+the other enum-result methods.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,

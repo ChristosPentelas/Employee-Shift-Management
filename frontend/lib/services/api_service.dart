@@ -51,7 +51,8 @@ enum DeleteResult {
   deleted,
   /// 404: it was already gone, e.g. deleted by another supervisor.
   notFound,
-  /// Anything else, including no network.
+  /// Any other answer. deleteShift returns it for no network too;
+  /// deleteNews lets that error through for its caller to log (B80, B84).
   failed,
 }
 
@@ -239,14 +240,29 @@ class ApiService {
     }
   }
 
-  Future<void> deleteNews(int id) async {
+  // A 404 means another supervisor deleted it first: the caller reloads
+  // instead of offering a retry that can only fail again (B80). No network
+  // is not an answer, so it is thrown as it happened (B41) and the caller,
+  // which logs it, says "failed"; the server logs a 500 itself.
+  Future<DeleteResult> deleteNews(int id) async {
     final response = await _client.delete(
       Uri.parse("$baseUrl/news/$id"),
       headers: {"Content-Type" : "application/json"},
     );
+    return _deleteResultOf(response.statusCode);
+  }
 
-    if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
+  /// What a DELETE's status means; every status the server may send is one
+  /// of the three, so a caller cannot forget one (B80).
+  DeleteResult _deleteResultOf(int statusCode) {
+    switch (statusCode) {
+      case 200:
+      case 204:
+        return DeleteResult.deleted;
+      case 404:
+        return DeleteResult.notFound;
+      default:
+        return DeleteResult.failed;
     }
   }
 

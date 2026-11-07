@@ -217,6 +217,19 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     );
   }
 
+  // A switch with no default: a value added to the enum later will not
+  // compile until it is given its text here.
+  String _deleteResultText(DeleteResult result) {
+    switch (result) {
+      case DeleteResult.deleted:
+        return "Η ανάρτηση διαγράφηκε";
+      case DeleteResult.notFound:
+        return "Η ανάρτηση είχε ήδη διαγραφεί.";
+      case DeleteResult.failed:
+        return "Η διαγραφή απέτυχε. Δοκιμάστε ξανά.";
+    }
+  }
+
   void _confirmDelete(int newsId) {
     showDialog(
       context: context,
@@ -235,20 +248,23 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
               // whatever is on top, which would then be this screen (F25).
               Navigator.pop(dialogContext);
               try{
-                await _apiService.deleteNews(newsId);
+                final result = await _apiService.deleteNews(newsId);
                 if (!mounted) return;
-                _reloadAll();
+                // Reload unless nothing changed: after a 404 the post on
+                // screen is out of date too, and only a reload removes it
+                // (B80). The shifts screen does the same (B33).
+                if (result != DeleteResult.failed) _reloadAll();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Η ανάρτηση διαγράφηκε")),
+                  SnackBar(content: Text(_deleteResultText(result))),
                 );
               } catch (e, stackTrace) {
                 // Logged before the mounted check: it failed either way.
                 developer.log("Deleting the news post failed",
                     name: "NewsScreen", error: e, stackTrace: stackTrace);
                 if (!mounted) return;
-                // The shifts screen's words for the same failure (B33).
+                // No network: no answer at all, so a retry may work (B80).
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
+                  SnackBar(content: Text(_deleteResultText(DeleteResult.failed))),
                 );
               } finally {
                 // On success and failure alike; the guard is for a screen

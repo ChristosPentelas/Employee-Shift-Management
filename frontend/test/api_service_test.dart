@@ -641,6 +641,40 @@ void main() {
         ChangePasswordResult.failed);
   });
 
+  // B80: a 404 is "someone deleted it first", which needs a reload, not the
+  // "try again" a failure gets. Every answer is a result; none is thrown.
+  group('what a delete answered', () {
+    final deletes = <String, Future<DeleteResult> Function(ApiService)>{
+      'deleteNews': (api) => api.deleteNews(1),
+    };
+
+    for (final MapEntry(key: name, value: delete) in deletes.entries) {
+      test('$name tells deleted, already gone and failed apart', () async {
+        Future<DeleteResult> answered(int status) => delete(
+            ApiService(client: MockClient((_) async => http.Response('', status))));
+
+        expect(await answered(204), DeleteResult.deleted);
+        expect(await answered(200), DeleteResult.deleted);
+        expect(await answered(404), DeleteResult.notFound);
+        expect(await answered(500), DeleteResult.failed);
+        expect(await answered(403), DeleteResult.failed);
+      });
+    }
+
+    test('deleteNews deletes that post', () async {
+      late http.BaseRequest sent;
+      final api = ApiService(client: MockClient((request) async {
+        sent = request;
+        return http.Response('', 204);
+      }));
+
+      await api.deleteNews(1);
+
+      expect(sent.method, 'DELETE');
+      expect(sent.url.path, endsWith('/news/1'));
+    });
+  });
+
   // B41: these five caught their own error and threw Exception("...: $e")
   // around it, so the caller got text: "Exception: Σφάλμα: Exception:
   // Αποτυχία δημιουργίας: 500", with no way to tell a lost network from a
@@ -659,6 +693,9 @@ void main() {
           )),
       'deleteNews': (api) => api.deleteNews(1),
     };
+    // B80: these answer a refusal with a DeleteResult instead of throwing
+    // (see 'what a delete answered'); no network is still thrown.
+    const refusalIsAResult = {'deleteNews'};
 
     for (final MapEntry(key: name, value: call) in calls.entries) {
       test('$name without a network throws the network error itself', () async {
@@ -669,6 +706,7 @@ void main() {
         await expectLater(call(api), throwsA(isA<http.ClientException>()));
       });
 
+      if (refusalIsAResult.contains(name)) continue;
       test('$name refused by the server says so once, not once per layer',
           () async {
         final api = ApiService(client: MockClient((_) async => http.Response('', 500)));

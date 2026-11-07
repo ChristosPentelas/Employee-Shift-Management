@@ -530,6 +530,47 @@ void main() {
       expect(find.text('Post 1'), findsOneWidget);
     });
 
+    // B80: another supervisor deleted it first, so the server answers 404.
+    // It used to say "try again" and keep the post, and every retry was
+    // another 404.
+    testWidgets('a post already deleted says so and leaves the list',
+        (WidgetTester tester) async {
+      var deletedElsewhere = false;
+      final asked = await openNews(tester, boss, (path, _) =>
+          path == all && !deletedElsewhere ? newsPage(0, 1, [1]) : newsPage(0, 0, []),
+          deleteStatus: 404);
+      deletedElsewhere = true;
+      asked.clear();
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+      await tester.pumpAndSettle();
+
+      expect(find.text('Η ανάρτηση είχε ήδη διαγραφεί.'), findsOneWidget);
+      expect(asked, unorderedEquals(everyList));
+      expect(find.text('Post 1'), findsNothing);
+    });
+
+    // No answer at all: the error is thrown, logged, and a retry may work.
+    testWidgets('a delete without a network says it failed and keeps the post',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await openNews(tester, boss,
+          (path, _) => path == all ? newsPage(0, 1, [1]) : newsPage(0, 0, []),
+          heldDeletes: held);
+
+      await tester.tap(find.byIcon(Icons.delete));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+      await tester.pump();
+      held.single.completeError(http.ClientException('no network'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(find.text('Post 1'), findsOneWidget);
+    });
+
     // B43: the dialog closes before the DELETE is sent, and nothing stopped
     // the supervisor from deleting the same post again meanwhile. pump, not
     // pumpAndSettle, while a reply is held: the spinner never settles.
