@@ -33,7 +33,7 @@ class _EmployeeDetailsScreenState extends ConsumerState<EmployeeDetailsScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            ListTile(leading: Icon(Icons.email), title: Text("Emaill"), subtitle: Text(user.email)),
+            ListTile(leading: Icon(Icons.email), title: Text("Email"), subtitle: Text(user.email)),
             ListTile(leading: Icon(Icons.work), title: Text("Ρόλος"), subtitle: Text(user.role)),
 
 
