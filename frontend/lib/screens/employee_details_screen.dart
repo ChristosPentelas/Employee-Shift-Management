@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_providers.dart';
+import '../services/api_service.dart';
 import '../models/user_model.dart';
 import '../state/auth_session.dart';
 import '../screens/chat_screen.dart';
@@ -77,6 +78,16 @@ class _EmployeeDetailsScreenState extends ConsumerState<EmployeeDetailsScreen> {
     );
   }
 
+  /// A refused delete and one without a network look the same to the
+  /// supervisor: still here, and worth trying again (B80). The shifts
+  /// screen's words for the same failure (B33).
+  void _deleteFailed() {
+    setState(() => _deleting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
+    );
+  }
+
   void _showDeleteDialog(){
     final user = widget.user;
     showDialog(
@@ -102,24 +113,26 @@ class _EmployeeDetailsScreenState extends ConsumerState<EmployeeDetailsScreen> {
                 Navigator.pop(dialogContext);
                 final api = ref.read(apiServiceProvider);
                 try{
-                  await api.deleteUser(user.id);
+                  final result = await api.deleteUser(user.id);
                   if (!mounted) return;
 
-                  // true tells the employee list to reload and to say the
-                  // employee was deleted (it is the screen on display then).
-                  // _deleting stays true: the screen is on its way out.
-                  Navigator.pop(context,true);
+                  if (result != DeleteResult.failed) {
+                    // Deleted now or already gone (B80): either way there
+                    // is no employee left to show. The result goes back to
+                    // the list, the screen on display then, which reloads
+                    // and says which. _deleting stays true: the screen is
+                    // on its way out.
+                    Navigator.pop(context, result);
+                    return;
+                  }
+                  _deleteFailed();
                 } catch (e, stackTrace) {
                   // The detail is for whoever debugs it, not the supervisor
                   // (B41). Logged before the mounted check: it failed either way.
                   developer.log("Deleting the employee failed",
                       name: "EmployeeDetailsScreen", error: e, stackTrace: stackTrace);
                   if (!mounted) return;
-                  setState(() => _deleting = false);
-                  // The shifts screen's words for the same failure (B33).
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Η διαγραφή απέτυχε. Δοκιμάστε ξανά.")),
-                  );
+                  _deleteFailed();
                 }
 
               },

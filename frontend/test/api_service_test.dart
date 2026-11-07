@@ -646,6 +646,7 @@ void main() {
   group('what a delete answered', () {
     final deletes = <String, Future<DeleteResult> Function(ApiService)>{
       'deleteNews': (api) => api.deleteNews(1),
+      'deleteUser': (api) => api.deleteUser(7),
     };
 
     for (final MapEntry(key: name, value: delete) in deletes.entries) {
@@ -673,6 +674,19 @@ void main() {
       expect(sent.method, 'DELETE');
       expect(sent.url.path, endsWith('/news/1'));
     });
+
+    test('deleteUser deletes that employee', () async {
+      late http.BaseRequest sent;
+      final api = ApiService(client: MockClient((request) async {
+        sent = request;
+        return http.Response('', 204);
+      }));
+
+      await api.deleteUser(7);
+
+      expect(sent.method, 'DELETE');
+      expect(sent.url.path, endsWith('/users/7'));
+    });
   });
 
   // B41: these five caught their own error and threw Exception("...: $e")
@@ -695,7 +709,7 @@ void main() {
     };
     // B80: these answer a refusal with a DeleteResult instead of throwing
     // (see 'what a delete answered'); no network is still thrown.
-    const refusalIsAResult = {'deleteNews'};
+    const refusalIsAResult = {'deleteUser', 'deleteNews'};
 
     for (final MapEntry(key: name, value: call) in calls.entries) {
       test('$name without a network throws the network error itself', () async {

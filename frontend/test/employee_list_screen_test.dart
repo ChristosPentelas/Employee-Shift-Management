@@ -177,6 +177,70 @@ void main() {
     expect(find.text('Ο υπάλληλος διαγράφηκε επιτυχώς'), findsNothing);
   });
 
+  // B80: another supervisor deleted them first, so the server answers 404.
+  // It used to say "try again" on the details screen of an employee who no
+  // longer exists, and every retry was another 404.
+  testWidgets('an employee already deleted: back on the list, which reloads and says so',
+      (WidgetTester tester) async {
+    var deletedElsewhere = false;
+    final network = MockClient((request) async {
+      if (request.method == 'DELETE') return http.Response('', 404);
+      return http.Response(
+          deletedElsewhere
+              ? '{"content":[],"page":0,"size":100,"totalElements":0,"totalPages":0}'
+              : '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+                  '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+          200);
+    });
+    final container = testContainer(
+        user: supervisor(),
+        overrides: [networkClientProvider.overrideWithValue(network)]);
+
+    await tester.pumpWidget(
+        withAppState(container, MaterialApp(home: EmployeeListScreen())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Worker'));
+    await tester.pumpAndSettle();
+    deletedElsewhere = true;
+    await tester.tap(find.text('Διαγραφή Υπαλλήλου'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ο υπάλληλος είχε ήδη διαγραφεί.'), findsOneWidget);
+    expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsNothing);
+    expect(find.text('Διαγραφή Υπαλλήλου'), findsNothing); // details closed
+    expect(find.text('Δεν βρέθηκαν υπάλληλοι.'), findsOneWidget); // reloaded
+  });
+
+  // No answer at all: the error is thrown, logged, and a retry may work.
+  testWidgets('a delete without a network says it failed and stays on the details screen',
+      (WidgetTester tester) async {
+    final network = MockClient((request) async {
+      if (request.method == 'DELETE') throw http.ClientException('no network');
+      return http.Response(
+          '{"content":[{"id":7,"name":"Worker","email":"worker@example.com","role":"EMPLOYEE"}],'
+          '"page":0,"size":100,"totalElements":1,"totalPages":1}',
+          200);
+    });
+    final container = testContainer(
+        user: supervisor(),
+        overrides: [networkClientProvider.overrideWithValue(network)]);
+
+    await tester.pumpWidget(
+        withAppState(container, MaterialApp(home: EmployeeListScreen())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Worker'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή Υπαλλήλου'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Διαγραφή')); // the dialog's confirm button
+    await tester.pumpAndSettle();
+
+    expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+    expect(find.text('Διαγραφή Υπαλλήλου'), findsOneWidget);
+  });
+
   // B43: the dialog closes before the DELETE is sent, and nothing stopped the
   // supervisor from deleting the same employee again meanwhile. pump, not
   // pumpAndSettle, while a reply is held: the spinner never settles.

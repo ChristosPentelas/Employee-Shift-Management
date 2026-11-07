@@ -69,23 +69,34 @@ class _EmployeeListScreenState extends ConsumerState<EmployeeListScreen> {
   // builders `context` would be the row's, and the analyzer rightly calls
   // `mounted` unrelated to it (F25).
   Future<void> _openEmployee(User emp) async {
-    final deleted = await Navigator.push(
+    // Typed: the details screen pops with a DeleteResult, or with nothing
+    // when the supervisor just goes back (B80).
+    final result = await Navigator.push<DeleteResult>(
       context,
       MaterialPageRoute(
         builder: (context) => EmployeeDetailsScreen(user: emp),
       ),
     );
 
-    // true means the details screen deleted this employee. That screen is
-    // closed by now, so this one, the screen on display, says so.
-    if (deleted == true && mounted) {
-      _reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Ο υπάλληλος διαγράφηκε επιτυχώς"),
-            backgroundColor: Colors.red),
-      );
+    // The details screen is closed by now, so this one, the screen on
+    // display, reloads and says what happened. It only pops after a delete
+    // that left no employee: deleted now, or already gone.
+    if (result == null || !mounted) return;
+    // No default: a value added to the enum later will not compile until
+    // it is handled here.
+    final String text;
+    switch (result) {
+      case DeleteResult.deleted:
+        text = "Ο υπάλληλος διαγράφηκε επιτυχώς";
+      case DeleteResult.notFound:
+        text = "Ο υπάλληλος είχε ήδη διαγραφεί.";
+      case DeleteResult.failed:
+        return; // never popped: the details screen stays open and says so
     }
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: Colors.red),
+    );
   }
 
   @override

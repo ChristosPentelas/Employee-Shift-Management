@@ -123,48 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B80 · LOW · Deleting a news post or employee that is already gone says "try again" for ever** — found 2026-11-03
-Where: `ApiService.deleteNews` and `deleteUser` throw on every status but
-200/204; `news_screen.dart` and `employee_details_screen.dart` show "Η
-διαγραφή απέτυχε. Δοκιμάστε ξανά." and do not reload.
-Why it matters: if another supervisor deleted it first, the server answers
-404. The post or employee stays on screen, and every retry is another 404.
-B33 solved the same thing for shifts.
-Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ended
-here too, until B43 was fixed), B41. The chat has the same shape since B54:
-a message to a colleague deleted meanwhile is a 404 that says "try again".
-Fix idea: a `deleted` / `notFound` / `failed` enum result like
-`DeleteShiftResult`; on `notFound` say it was already deleted and reload.
-Doing in three steps from 2026-11-07, one concept each: 80a one enum for
-every delete, 80b news, 80c employees.
-**80a done** (`refactor(frontend): rename DeleteShiftResult to DeleteResult (B80)`):
-a rename only, in `api_service.dart` and `shifts_screen.dart`. News and
-users need the same three outcomes, and three identical enums could drift
-apart. Its doc comment now speaks of any delete, and `deleted` is "200 or
-204", as every delete method accepts both. No test names the enum; the
-shift tests pass unchanged (258).
-**80b done** (`fix(frontend): say when a news post was already deleted (B80)`):
-`deleteNews` returns a `DeleteResult` from the status (a new private
-`_deleteResultOf`, which 80c reuses): 200/204 `deleted`, 404 `notFound`,
-anything else `failed`. The news screen says "Η ανάρτηση είχε ήδη
-διαγραφεί." and reloads every tab on `notFound`, as on `deleted`; on
-`failed` it keeps the post and says "try again". Its texts are one switch
-with no `default`, `_deleteResultText`, as on the shifts screen.
-Decided: no network is still thrown, not turned into `failed` as
-`deleteShift` does. Only the app can log that error (the screen's `catch`
-does, B41); a 500 the server logs itself. That leaves `deleteShift`
-swallowing it: B84. `deleteShift` keeps its own status switch until then,
-so this step does not change shifts.
-Tests: `api_service_test.dart` group 'what a delete answered' (204 and 200,
-404, 500 and 403) and 'deleteNews deletes that post'. B41's "refused by the
-server says so once" no longer runs for `deleteNews`, on purpose: a 500 is
-now a result, not an exception, and the new group checks that result; its
-"without a network throws the network error itself" still runs.
-`news_screen_test.dart`: "a post already deleted says so and leaves the
-list" fails on the old code; "a delete without a network says it failed and
-keeps the post" passes there too (the old `catch` took everything) and
-guards the `catch` the screen still needs. Frontend suite: 261 passing.
-
 **B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
 Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η
 φόρτωση." text and "Δοκιμάστε ξανά" button; `widgets/load_error_view.dart`
@@ -206,6 +164,21 @@ Fix idea: the same as `deleteNews`: map the status with `_deleteResultOf`
 and let a thrown error through; the shifts screen catches it, logs it with
 `developer.log`, and says "failed" (it has no `try` since B33). Then look at
 the other enum-result methods.
+
+**B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
+Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);
+`chat_screen.dart` `_send` shows "Το μήνυμα δεν στάλθηκε. Δοκιμάστε ξανά."
+for every `false`.
+Why it matters: if the colleague's account was deleted while the chat is
+open, the server answers 404 (`findUserById` throws
+`ResourceNotFoundException`), and every retry is another 404 - the shape B80
+fixed for deletes. Noted in B54 and B80, given its own entry when B80 was
+closed (2026-11-07): a different method, and a different screen answer
+(the typed text is kept; there is no list to reload).
+Relates to: B80, B54, B41.
+Fix idea: an enum result (`sent` / `recipientGone` / `failed`), as B80 did;
+on `recipientGone` say the colleague no longer exists and stop offering to
+send, or leave the chat.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
@@ -2520,3 +2493,68 @@ page says so and keeps the rows", "a failed refresh with rows on screen
 changes nothing and says nothing", "... with nothing loaded yet is an
 error"), which still pass. Frontend suite: 258 passing. `flutter analyze`: no
 issues.
+
+**B80 · LOW · Deleting a news post or employee that is already gone says "try again" for ever** — found 2026-11-03
+Where: `ApiService.deleteNews` and `deleteUser` throw on every status but
+200/204; `news_screen.dart` and `employee_details_screen.dart` show "Η
+διαγραφή απέτυχε. Δοκιμάστε ξανά." and do not reload.
+Why it matters: if another supervisor deleted it first, the server answers
+404. The post or employee stays on screen, and every retry is another 404.
+B33 solved the same thing for shifts.
+Relates to: B33 (`DeleteShiftResult`), B43 (a delete started twice ended
+here too, until B43 was fixed), B41. The chat has the same shape since B54:
+a message to a colleague deleted meanwhile is a 404 that says "try again".
+Fix idea: a `deleted` / `notFound` / `failed` enum result like
+`DeleteShiftResult`; on `notFound` say it was already deleted and reload.
+Doing in three steps from 2026-11-07, one concept each: 80a one enum for
+every delete, 80b news, 80c employees.
+**80a done** (`refactor(frontend): rename DeleteShiftResult to DeleteResult (B80)`):
+a rename only, in `api_service.dart` and `shifts_screen.dart`. News and
+users need the same three outcomes, and three identical enums could drift
+apart. Its doc comment now speaks of any delete, and `deleted` is "200 or
+204", as every delete method accepts both. No test names the enum; the
+shift tests pass unchanged (258).
+**80b done** (`fix(frontend): say when a news post was already deleted (B80)`):
+`deleteNews` returns a `DeleteResult` from the status (a new private
+`_deleteResultOf`, which 80c reuses): 200/204 `deleted`, 404 `notFound`,
+anything else `failed`. The news screen says "Η ανάρτηση είχε ήδη
+διαγραφεί." and reloads every tab on `notFound`, as on `deleted`; on
+`failed` it keeps the post and says "try again". Its texts are one switch
+with no `default`, `_deleteResultText`, as on the shifts screen.
+Decided: no network is still thrown, not turned into `failed` as
+`deleteShift` does. Only the app can log that error (the screen's `catch`
+does, B41); a 500 the server logs itself. That leaves `deleteShift`
+swallowing it: B84. `deleteShift` keeps its own status switch until then,
+so this step does not change shifts.
+Tests: `api_service_test.dart` group 'what a delete answered' (204 and 200,
+404, 500 and 403) and 'deleteNews deletes that post'. B41's "refused by the
+server says so once" no longer runs for `deleteNews`, on purpose: a 500 is
+now a result, not an exception, and the new group checks that result; its
+"without a network throws the network error itself" still runs.
+`news_screen_test.dart`: "a post already deleted says so and leaves the
+list" fails on the old code; "a delete without a network says it failed and
+keeps the post" passes there too (the old `catch` took everything) and
+guards the `catch` the screen still needs. Frontend suite: 261 passing.
+**80c done** (`fix(frontend): say when an employee was already deleted (B80)`):
+`deleteUser` returns a `DeleteResult` through `_deleteResultOf`, and lets no
+network through, as `deleteNews`. On `deleted` or `notFound` the details
+screen pops with the result itself, not `true`; the list pushes it as
+`Navigator.push<DeleteResult>`, reloads, and says "Ο υπάλληλος διαγράφηκε
+επιτυχώς" or "Ο υπάλληλος είχε ήδη διαγραφεί." from a switch with no
+`default`. An untyped `push` returns `dynamic`, so `deleted == true` would
+have compiled whatever was popped; the type and the enum say it instead of
+a comment. On `failed` - a refusal, or no network caught and logged - the
+details screen stays and says "try again"; the two paths share a new
+`_deleteFailed()`, so their words and the button turning back on cannot
+drift apart.
+Tests: `api_service_test.dart` 'what a delete answered' now runs for
+`deleteUser` too, plus 'deleteUser deletes that employee'; B41's "refused
+by the server says so once" no longer runs for it, as for `deleteNews`.
+`employee_list_screen_test.dart`: "an employee already deleted: back on the
+list, which reloads and says so" fails on the old code; "a delete without a
+network says it failed and stays on the details screen" passes there too
+and guards the `catch`. Frontend suite: 264 passing (261 + 4 new, - 1 B41
+case). `flutter analyze`: no issues.
+Fixed by: `57bcc12` (80a), `246cabe` (80b) and
+`fix(frontend): say when an employee was already deleted (B80)` (80c),
+2026-11-07. The chat's 404 is its own entry: B85.

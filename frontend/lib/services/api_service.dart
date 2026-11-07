@@ -51,8 +51,8 @@ enum DeleteResult {
   deleted,
   /// 404: it was already gone, e.g. deleted by another supervisor.
   notFound,
-  /// Any other answer. deleteShift returns it for no network too;
-  /// deleteNews lets that error through for its caller to log (B80, B84).
+  /// Any other answer. deleteShift returns it for no network too; deleteNews
+  /// and deleteUser let that error through for their callers to log (B80, B84).
   failed,
 }
 
@@ -194,15 +194,14 @@ class ApiService {
     return employees.values.toList();
   }
 
-  Future<void> deleteUser(int userId) async {
+  // As deleteNews: every answer is a DeleteResult, and no network is thrown
+  // for the caller to log (B80).
+  Future<DeleteResult> deleteUser(int userId) async {
     final response = await _client.delete(
       Uri.parse("$baseUrl/users/$userId"),
       headers: {"Content-Type" : "application/json"},
     );
-
-    if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception("Αποτυχία διαγραφής: ${response.statusCode}");
-    }
+    return _deleteResultOf(response.statusCode);
   }
 
   // One page of news, newest first: every post, or with [type] only posts of
