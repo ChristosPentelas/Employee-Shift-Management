@@ -7,11 +7,12 @@ import 'package:flutter/material.dart';
 /// SocketException ..."), and the user can do nothing with it. Whoever
 /// caught the error logs it with developer.log instead.
 ///
-/// The same words as PagedListFooter uses when a later page fails, so the app
-/// says it one way.
+/// PagedListFooter shows this too when a later page fails, so the app says it
+/// one way (B81).
 class LoadErrorView extends StatelessWidget {
-  /// Starts the load again. The screen decides what that means: a new future
-  /// for a FutureBuilder, or PagedList.reload.
+  /// Starts the load again. The caller decides what that means: a new future
+  /// for a FutureBuilder, PagedList.reload, or PagedList.loadMore in the
+  /// footer.
   final VoidCallback onRetry;
 
   const LoadErrorView({super.key, required this.onRetry});

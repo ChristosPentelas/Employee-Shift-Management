@@ -123,15 +123,6 @@ Same problem one hop further: `spring.datasource.url` in
 travel unencrypted. Harmless while MySQL is on `localhost`; turn TLS on
 (`sslMode=REQUIRED` or stricter) when the database runs on another machine.
 
-**B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
-Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η
-φόρτωση." text and "Δοκιμάστε ξανά" button; `widgets/load_error_view.dart`
-(B41) is the same two widgets.
-Why it matters: the wording is meant to be one (B41 chose it to match), and
-two copies drift apart when one is changed.
-Fix idea: the footer returns `Padding(..., child: LoadErrorView(onRetry:
-list.loadMore))`; its widget tests should pass unchanged.
-
 **B83 · LOW · `{messageId}` matches any word, so `/messages/chat` is "a message called chat"** — found 2026-11-03
 Where: `MessageController` - `@DeleteMapping("/{messageId}")` and
 `@PutMapping("/{messageId}/read")`; the same shape in the other controllers
@@ -2558,3 +2549,24 @@ case). `flutter analyze`: no issues.
 Fixed by: `57bcc12` (80a), `246cabe` (80b) and
 `fix(frontend): say when an employee was already deleted (B80)` (80c),
 2026-11-07. The chat's 404 is its own entry: B85.
+
+**B81 · LOW · `PagedListFooter` repeats `LoadErrorView`** — found 2026-11-03
+Where: `widgets/paged_list_footer.dart` builds its own "Δεν ήταν δυνατή η
+φόρτωση." text and "Δοκιμάστε ξανά" button; `widgets/load_error_view.dart`
+(B41) is the same two widgets.
+Why it matters: the wording is meant to be one (B41 chose it to match), and
+two copies drift apart when one is changed.
+Fix idea: the footer returns `Padding(..., child: LoadErrorView(onRetry:
+list.loadMore))`; its widget tests should pass unchanged.
+Done that way: the footer keeps its 12 px padding and the comment on why a
+failure waits for a tap. `LoadErrorView`'s `Center` shrinks to its child in
+a list row (no height limit there), so the row looks as before. Its doc
+comments now say the footer uses it, and `onRetry` names `loadMore`.
+Not chosen: shared string constants with two layouts - the button or the
+spacing could still drift; sharing the widget keeps all of it one.
+Tests: the three footer tests pass unchanged; they find the button by its
+text, so they could not tell a copy from the shared widget. "after a failure
+it offers to try again" now also expects one `LoadErrorView`, which fails on
+the old footer. Frontend suite: 264 passing. `flutter analyze`: no issues.
+Fixed by: `refactor(frontend): reuse LoadErrorView in the list footer (B81)`,
+2026-11-08.

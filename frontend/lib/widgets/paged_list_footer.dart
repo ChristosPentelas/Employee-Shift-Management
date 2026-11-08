@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/paged_list.dart';
+import 'load_error_view.dart';
 
 /// The last row of a paged list while the server has more (B26 step 26c2).
 ///
@@ -23,13 +24,7 @@ class PagedListFooter<T> extends StatelessWidget {
     if (list.loadMoreFailed) {
       return Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Δεν ήταν δυνατή η φόρτωση."),
-            TextButton(onPressed: list.loadMore, child: const Text("Δοκιμάστε ξανά")),
-          ],
-        ),
+        child: LoadErrorView(onRetry: list.loadMore),
       );
     }
 

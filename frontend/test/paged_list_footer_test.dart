@@ -4,6 +4,7 @@
 
 import 'package:employee_shift_management_ui/models/page_model.dart';
 import 'package:employee_shift_management_ui/state/paged_list.dart';
+import 'package:employee_shift_management_ui/widgets/load_error_view.dart';
 import 'package:employee_shift_management_ui/widgets/paged_list_footer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,6 +85,8 @@ void main() {
     await show(tester, server);
 
     expect(find.text('Δοκιμάστε ξανά'), findsOneWidget);
+    // B81: the same widget as a first page that fails, not a copy of it.
+    expect(find.byType(LoadErrorView), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     // Frames go by - rebuilds, the clock - and no request is retried on its own.
     for (var i = 0; i < 5; i++) {
