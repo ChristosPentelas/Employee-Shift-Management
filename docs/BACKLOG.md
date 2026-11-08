@@ -140,6 +140,29 @@ Fix idea: restrict the variable to digits, `@DeleteMapping("/{messageId:\\d+}")`
 (and the `PUT`), so a word matches no route and the answer is 404; then
 change that test to expect 404. Check the other controllers' `{id}`
 variables the same way.
+Checked 2026-11-08: every `{id}` variable in all five controllers has the
+shape (17 mappings), e.g. `GET /users/me` answers 400. Doing in two steps
+from 2026-11-08: 83a messages, which this entry and its test name; 83b the
+other four (users, news, shifts, leaves).
+**83a done** (`fix(backend): answer 404 for a word in place of a message id (B83)`):
+`MessageController`'s four id variables are `\\d+` (the Java string for the
+regex `\d+`), `{otherUserId}` included so the controller has one rule; the
+class comment says why. Nothing else changed: with no route matched, Spring
+throws `NoResourceFoundException`, which `ResponseEntityExceptionHandler`
+(our `ApiExceptionHandler`'s parent) already answers 404 as a ProblemDetail.
+Decided: not a 404 for `MethodArgumentTypeMismatchException` in the
+handler. That turns the 400 into 404 but leaves `GET /messages/chat` at 405,
+because the method is matched before the id is converted.
+Left as is: an id too long for an `Integer` (`99999999999`) is digits, so it
+still matches and still fails conversion with 400 - a malformed id, not a
+missing route. A negative id was a 404 from the service and is now a 404
+with no route; the client sees no difference.
+Tests (`MessageControllerTest`): `theOldChatPathIsGone` expects 404 and its
+comment says why it was 405; new `aWordInPlaceOfAMessageIdIsNotFound`
+(`DELETE /messages/chat`, `PUT /messages/chat/read`) and
+`aWordInPlaceOfTheOtherPersonIsNotFound` (`GET /messages/chat/abc`,
+`PUT /messages/chat/abc/read`). All three fail on the old code (400, 400,
+405). Backend suite: 317 passing.
 
 **B84 · LOW · `deleteShift` swallows a network error without a log** — found 2026-11-07
 Where: `ApiService.deleteShift` ends in `catch (e) { return DeleteResult.failed; }`.

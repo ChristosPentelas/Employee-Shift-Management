@@ -20,6 +20,11 @@ import org.springframework.web.bind.annotation.*;
  *
  * Every list here is one page, newest first: {@code ?page=0&size=20} (F9).
  * See NewsItemController.getAllNews for the defaults and the cap.
+ *
+ * Every id in a path is {@code \\d+}, digits only (B83). Spring matches the
+ * path before it converts the id, so a bare {@code {messageId}} would read
+ * "/messages/chat" as a message called "chat": a removed or mistyped path
+ * answered 405 or 400 instead of 404.
  */
 @RestController
 @RequestMapping("/api/v1/messages")
@@ -52,7 +57,7 @@ public class MessageController {
      * otherUserId only picks which of the caller's own chats to read, and no
      * value of it reaches anyone else's (B48). Like PUT /chat/{otherUserId}/read.
      */
-    @GetMapping("/chat/{otherUserId}")
+    @GetMapping("/chat/{otherUserId:\\d+}")
     public ResponseEntity<PageResponse<MessageResponse>> getChatWith(Authentication authentication,
                                                                      @PathVariable Integer otherUserId,
                                                                      Pageable pageable) {
@@ -76,7 +81,7 @@ public class MessageController {
                 messageService.getConversations(CurrentUser.id(authentication), pageable), MessageResponse::from));
     }
 
-    @PutMapping("/{messageId}/read")
+    @PutMapping("/{messageId:\\d+}/read")
     public ResponseEntity<MessageResponse> markRead(Authentication authentication,
                                                     @PathVariable Integer messageId) {
         return ResponseEntity.ok(MessageResponse.from(
@@ -87,13 +92,13 @@ public class MessageController {
      * The URL names only the other person, and the receiver is always the caller.
      *  That's why there is no @PreAuthorize: there's nobody else's data this request could touch.
      */
-    @PutMapping("/chat/{otherUserId}/read")
+    @PutMapping("/chat/{otherUserId:\\d+}/read")
     public ResponseEntity<Void> markChatRead(Authentication authentication, @PathVariable Integer otherUserId) {
         messageService.markChatAsRead(otherUserId, CurrentUser.id(authentication));
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{messageId}")
+    @DeleteMapping("/{messageId:\\d+}")
     public ResponseEntity<Void> deleteMessage(Authentication authentication,
                                               @PathVariable Integer messageId) {
         messageService.deleteMessage(messageId, CurrentUser.id(authentication));

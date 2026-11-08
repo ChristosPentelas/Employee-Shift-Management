@@ -190,16 +190,39 @@ class MessageControllerTest {
     void theOldChatPathIsGone() throws Exception {
         // /chat/{otherUserId} replaced it (B48): added in 48b, the app
         // switched in 48c, and the old path was removed in 48d.
-        // 405, not 404: "/messages/chat" still matches DELETE /{messageId},
-        // as a message whose id is "chat", so Spring answers that the path
-        // exists but not for GET (B83).
+        // Until B83 this answered 405: "chat" matched DELETE /{messageId} as
+        // a message id, so Spring said the path existed but not for GET.
         mockMvc.perform(get("/api/v1/messages/chat")
                         .param("user1Id", "7")
                         .param("user2Id", "9")
                         .with(TestTokens.employee()))
-                .andExpect(status().isMethodNotAllowed());
+                .andExpect(status().isNotFound());
 
         verify(messageService, never()).getChatHistory(anyInt(), anyInt(), any());
+    }
+
+    // B83: an id is digits, so a word in its place is a path that does not
+    // exist (404), not a bad id (400).
+    @Test
+    void aWordInPlaceOfAMessageIdIsNotFound() throws Exception {
+        mockMvc.perform(delete("/api/v1/messages/chat").with(TestTokens.employee()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/messages/chat/read").with(TestTokens.employee()))
+                .andExpect(status().isNotFound());
+
+        verify(messageService, never()).deleteMessage(anyInt(), anyInt());
+        verify(messageService, never()).markAsRead(anyInt(), anyInt());
+    }
+
+    @Test
+    void aWordInPlaceOfTheOtherPersonIsNotFound() throws Exception {
+        mockMvc.perform(get("/api/v1/messages/chat/abc").with(TestTokens.employee()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/messages/chat/abc/read").with(TestTokens.employee()))
+                .andExpect(status().isNotFound());
+
+        verify(messageService, never()).getChatHistory(anyInt(), anyInt(), any());
+        verify(messageService, never()).markChatAsRead(anyInt(), anyInt());
     }
 
     @Test
