@@ -463,16 +463,6 @@ void main() {
     });
   });
 
-  test('assigning a shift without a network is a failure, not a crash', () async {
-    final api = ApiService(client: MockClient((_) async {
-      throw http.ClientException('no network');
-    }));
-
-    final result = await api.assignShift(aShift(), 7);
-
-    expect(result, AssignShiftResult.failed);
-  });
-
   // B19: the reply used to be ignored, so a refused request looked filed.
   test('filing leave reports whether the server took it', () async {
     Future<SubmitLeaveResult> submitAnswered(int status) {
@@ -723,10 +713,15 @@ void main() {
       // B84: this one did the opposite - it caught no network and returned
       // `failed`, so the error itself was lost.
       'deleteShift': (api) => api.deleteShift(3),
+      // B84 step 84b: the same. A test here used to expect `failed` without a
+      // network; "not a crash" is now the dialog's job, and shifts_screen_test
+      // checks it there ("a shift that never reached the server ...").
+      'assignShift': (api) => api.assignShift(aShift(), 7),
     };
-    // B80: these answer a refusal with a DeleteResult instead of throwing
-    // (see 'what a delete answered'); no network is still thrown.
-    const refusalIsAResult = {'deleteUser', 'deleteNews', 'deleteShift'};
+    // B80, B84: these answer a refusal with an enum result instead of
+    // throwing (see 'what a delete answered' and 'assigning a shift reports
+    // why the server refused it'); no network is still thrown.
+    const refusalIsAResult = {'deleteUser', 'deleteNews', 'deleteShift', 'assignShift'};
 
     for (final MapEntry(key: name, value: call) in calls.entries) {
       test('$name without a network throws the network error itself', () async {

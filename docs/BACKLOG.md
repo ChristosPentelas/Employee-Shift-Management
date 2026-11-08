@@ -209,6 +209,28 @@ passes on the old code, which returned `failed`, and fails with the new
 service and the old screen: it guards the `catch`/`finally`. The log line is
 untested, as in B79. Frontend suite: 268 passing. `flutter analyze`: no
 issues.
+**84b done** (`fix(frontend): log a shift assignment that never reached the server (B84)`):
+`assignShift` has no `try`; its status switch stays (the 409 split is its
+own). Nothing else in it throws: `_problemType` catches its own
+`FormatException`. `AssignShiftDialog._save` wraps only the call: the `catch`
+logs and sets `result = failed`, and the existing three branches (created,
+open dialog, closed dialog - B75) run unchanged. Not chosen: a `catch` with
+its own `setState`/`onFailed`, a copy of the open-or-closed branching that
+B75 showed is easy to get wrong. No `finally` needed, unlike 84a: the
+branches already turn `_saving` off.
+Pitfall met: `result` cannot be a `final` set in both `try` and `catch` - Dart
+cannot tell the `catch` runs only when the `try` did not assign it, and does
+not compile it. The screen's `final List<User> employees` works because its
+`catch` returns.
+Tests: "assigning a shift without a network is a failure, not a crash" in
+`api_service_test.dart` expected `failed`, the behaviour this step removes.
+Replaced, not weakened: `assignShift` joins 'a failure reaches the caller as
+it happened' (expects the `ClientException` itself; fails on the old
+service), and "not a crash" moved to the dialog, now its job:
+`shifts_screen_test.dart` "a shift that never reached the server keeps the
+dialog open and says it failed" and "... after its dialog was closed still
+says so". Both pass on the old code and fail with the new service and the
+old dialog. Frontend suite: 270 passing. `flutter analyze`: no issues.
 
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);

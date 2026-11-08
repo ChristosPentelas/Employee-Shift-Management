@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import '../models/shift_model.dart';
 import '../models/user_model.dart';
@@ -68,7 +70,20 @@ class _AssignShiftDialogState extends State<AssignShiftDialog> {
       position: _positionController.text,
     );
 
-    final result = await widget.apiService.assignShift(newShift, _selectedEmployee!.id);
+    // Not final: Dart cannot tell that the catch runs only when try did not
+    // assign it, so a final here would not compile. No value is needed
+    // either - try and catch both set it before it is read.
+    AssignShiftResult result;
+    try {
+      result = await widget.apiService.assignShift(newShift, _selectedEmployee!.id);
+    } catch (e, stackTrace) {
+      // No network: assignShift throws it so that it is logged here (B84).
+      // Then it is a failure like any other, so it takes the one path below
+      // - open dialog or closed (B75) - instead of a copy of it.
+      developer.log("Assigning the shift failed",
+          name: "AssignShiftDialog", error: e, stackTrace: stackTrace);
+      result = AssignShiftResult.failed;
+    }
 
     if (result == AssignShiftResult.created) {
       // Before the mounted check: the screen needs it even when this dialog

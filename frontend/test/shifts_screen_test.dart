@@ -181,6 +181,27 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    // B84 step 84b: assignShift now throws a lost network for the dialog to
+    // log. This and the closed-dialog test below pass on the old code too,
+    // which returned `failed`; they guard the dialog's catch - without it the
+    // error is uncaught and Save spins for good.
+    testWidgets('a shift that never reached the server keeps the dialog open and says it failed',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      await openAssignDialog(tester, serverAnsweringAssign(0, held: held));
+
+      await tester.tap(find.text('Αποθήκευση'));
+      await tester.pump();
+      held.single.completeError(http.ClientException('no network'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(spinner, findsNothing);
+      final save = tester.widget<ElevatedButton>(
+          find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+      expect(save.onPressed, isNotNull, reason: 'it can be tried again');
+    });
+
     // B35: the dialog moved into its own State. A tap outside can close it
     // while the shift is on its way; the two tests below pin what happens to
     // each answer then.
@@ -227,6 +248,25 @@ void main() {
       expect(
           find.text('Η βάρδια δεν αποθηκεύτηκε. '
               'Ο υπάλληλος έχει ήδη βάρδια που επικαλύπτεται με αυτές τις ώρες.'),
+          findsOneWidget);
+      expect(shiftLoads, hasLength(loadsBefore));
+    });
+
+    testWidgets('a shift that never reached the server after its dialog was closed still says so',
+        (WidgetTester tester) async {
+      final held = <Completer<http.Response>>[];
+      final shiftLoads = <String>[];
+      await openAssignDialog(
+          tester, serverAnsweringAssign(0, held: held, shiftLoads: shiftLoads));
+      await saveAndCloseTheDialog(tester);
+      final loadsBefore = shiftLoads.length;
+
+      held.single.completeError(http.ClientException('no network'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+          find.text('Η βάρδια δεν αποθηκεύτηκε. Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.'),
           findsOneWidget);
       expect(shiftLoads, hasLength(loadsBefore));
     });

@@ -17,7 +17,8 @@ enum AssignShiftResult {
   onLeave,
   /// 400: the server refused a field, e.g. a time that is not HH:mm.
   invalid,
-  /// Anything else, including no network.
+  /// Any other answer. No network is not an answer: it is thrown as it
+  /// happened, for the caller to log (B84).
   failed,
 }
 
@@ -440,33 +441,31 @@ class ApiService {
 
   // What happened to the shift, not how to say it: the screen picks the
   // wording, because the server's English detail is not for the user (B2).
+  // No try: no network is thrown for the dialog to log, as deleteShift does
+  // (B84). Nothing else here throws - _problemType catches its own.
   Future<AssignShiftResult> assignShift(Shift shift, int userId) async {
-    try {
-      final response = await _client.post(
-        Uri.parse("$baseUrl/users/$userId/shifts"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "date": _isoDate(shift.date),
-          "startTime": shift.startTime,
-          "endTime": shift.endTime,
-          "position": shift.position,
-        }),
-      );
-      switch (response.statusCode) {
-        case 200:
-        case 201:
-          return AssignShiftResult.created;
-        case 409:
-          return _problemType(response) == _employeeOnLeave
-              ? AssignShiftResult.onLeave
-              : AssignShiftResult.overlaps;
-        case 400:
-          return AssignShiftResult.invalid;
-        default:
-          return AssignShiftResult.failed;
-      }
-    } catch (e) {
-      return AssignShiftResult.failed;
+    final response = await _client.post(
+      Uri.parse("$baseUrl/users/$userId/shifts"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "date": _isoDate(shift.date),
+        "startTime": shift.startTime,
+        "endTime": shift.endTime,
+        "position": shift.position,
+      }),
+    );
+    switch (response.statusCode) {
+      case 200:
+      case 201:
+        return AssignShiftResult.created;
+      case 409:
+        return _problemType(response) == _employeeOnLeave
+            ? AssignShiftResult.onLeave
+            : AssignShiftResult.overlaps;
+      case 400:
+        return AssignShiftResult.invalid;
+      default:
+        return AssignShiftResult.failed;
     }
   }
 
