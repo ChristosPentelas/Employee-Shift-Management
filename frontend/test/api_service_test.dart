@@ -580,6 +580,13 @@ void main() {
             '{"status":429,"detail":"Too many failed attempts, try again later"}'),
         ChangePasswordResult.tooManyAttempts);
     expect(await changeAnswered(500), ChangePasswordResult.failed);
+    // B84 step 84e: a 400 the app cannot read - a proxy's HTML page, or JSON
+    // that is not an object - is still a refusal, and not a wrong password.
+    // It used to throw while being read, and the catch made it `failed`.
+    expect(await changeAnswered(400, '<html>Bad Request</html>'),
+        ChangePasswordResult.invalid);
+    expect(await changeAnswered(400, '["not", "an", "object"]'),
+        ChangePasswordResult.invalid);
   });
 
   test('a 429 says how long to wait in its Retry-After header (B56)', () {
@@ -600,15 +607,6 @@ void main() {
         ApiService.retryAfter(
             locked({'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'})),
         isNull);
-  });
-
-  test('a password change without a network is a failure, not a crash', () async {
-    final api = ApiService(client: MockClient((_) async {
-      throw http.ClientException('no network');
-    }));
-
-    expect(await api.changePassword('old-secret', 'new-secret'),
-        ChangePasswordResult.failed);
   });
 
   // B80: a 404 is "someone deleted it first", which needs a reload, not the
@@ -703,12 +701,16 @@ void main() {
       // B84 step 84d: the same; "not a crash" moved to the leave requests
       // screen (leave_requests_screen_test.dart).
       'updateLeaveStatus': (api) => api.updateLeaveStatus(5, 'APPROVED'),
+      // B84 step 84e: the same; "not a crash" moved to the password dialog
+      // (profile_screen_test.dart).
+      'changePassword': (api) => api.changePassword('old-secret', 'new-secret'),
     };
     // B80, B84: these answer a refusal with an enum result instead of
     // throwing (see 'what a delete answered', 'assigning a shift reports why
     // the server refused it', 'filing leave reports whether the server took
-    // it' and 'answering leave reports whether the server took it'); no
-    // network is still thrown.
+    // it', 'answering leave reports whether the server took it' and 'a
+    // password change reports why the server refused it'); no network is
+    // still thrown.
     const refusalIsAResult = {
       'deleteUser',
       'deleteNews',
@@ -716,6 +718,7 @@ void main() {
       'assignShift',
       'submitLeaveRequest',
       'updateLeaveStatus',
+      'changePassword',
     };
 
     for (final MapEntry(key: name, value: call) in calls.entries) {
@@ -773,7 +776,10 @@ void main() {
         await expectLater(api.getConversations(), throwsException);
         await expectLater(api.markChatAsRead(9), throwsException);
         await expectLater(api.getNews(), throwsException);
-        await api.changePassword('old-secret', 'new-secret');
+        // Thrown since B84 step 84e, not returned as `failed`; what this test
+        // is about - nothing printed - is unchanged.
+        await expectLater(
+            api.changePassword('old-secret', 'new-secret'), throwsException);
       });
 
       expect(printed, isEmpty);

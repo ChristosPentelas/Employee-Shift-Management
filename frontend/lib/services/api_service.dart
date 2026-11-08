@@ -67,11 +67,13 @@ enum ChangePasswordResult {
   wrongCurrentPassword,
   /// Any other 400: the server refused the new password, e.g. too short.
   /// The dialog checks the same rules first, so this means they drifted apart.
+  /// Also a 400 whose body cannot be read (B84).
   invalid,
   /// 429: too many wrong current passwords, so changing is locked for a while
   /// (B56). Logging in is counted separately and still works.
   tooManyAttempts,
-  /// Anything else, including no network.
+  /// Any other answer. No network is not an answer: it is thrown as it
+  /// happened, for the caller to log (B84).
   failed,
 }
 
@@ -138,14 +140,18 @@ class ApiService {
   // A copy of the backend's ProblemTypes: changing it there breaks this.
   static const String _employeeOnLeave = 'urn:shift-manager:problem:employee-on-leave';
 
-  // The body's "type", or null if it has none or is not a JSON object - e.g.
-  // a proxy's HTML page. Never throws: jsonDecode would, and the caller's
-  // catch would then turn a refused shift into "save failed, try again".
-  static String? _problemType(http.Response response) {
+  // One text field of an error body - its "type" (B31) or "detail" (B8) - or
+  // null if it has none or is not a JSON object, e.g. a proxy's HTML page or
+  // a JSON list. Never throws: jsonDecode would on non-JSON, and a cast with
+  // `as Map` would on a list, and since B84 there is no catch around the
+  // callers to take it - a refused shift or password would reach the screen
+  // as an exception. One reader for both fields, so they cannot drift apart
+  // (B84 step 84e).
+  static String? _problemField(http.Response response, String field) {
     try {
       final body = jsonDecode(response.body);
-      return body is Map<String, dynamic> && body['type'] is String
-          ? body['type'] as String
+      return body is Map<String, dynamic> && body[field] is String
+          ? body[field] as String
           : null;
     } on FormatException {
       return null;
@@ -347,7 +353,7 @@ class ApiService {
   }
 
   // The "removedShifts" of an answered leave request, or 0 if the body does
-  // not say. Never throws, like _problemType: by now the server has already
+  // not say. Never throws, like _problemField: by now the server has already
   // stored the answer, and the caller's catch would report it as failed - the
   // supervisor would try again and be told it was already answered.
   static int _removedShifts(http.Response response) {
@@ -396,33 +402,32 @@ class ApiService {
   //
   // Neither the request nor the response body is ever logged - both
   // passwords are in the request (F26).
+  //
+  // No try: no network is thrown for the dialog to log, as assignShift does
+  // (B84). Nothing else here throws - _problemField catches its own.
   Future<ChangePasswordResult> changePassword(String currentPassword, String newPassword) async {
-    try {
-      final response = await _client.put(
-        Uri.parse("$baseUrl/users/me/password"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "currentPassword": currentPassword,
-          "newPassword": newPassword,
-        }),
-      );
-      switch (response.statusCode) {
-        case 204:
-          return ChangePasswordResult.changed;
-        case 400:
-          // Decoded only here: a 204 has an empty body, and jsonDecode('')
-          // throws.
-          final detail = (jsonDecode(response.body) as Map<String, dynamic>)['detail'];
-          return detail == _wrongCurrentPasswordDetail
-              ? ChangePasswordResult.wrongCurrentPassword
-              : ChangePasswordResult.invalid;
-        case 429:
-          return ChangePasswordResult.tooManyAttempts;
-        default:
-          return ChangePasswordResult.failed;
-      }
-    } catch (e) {
-      return ChangePasswordResult.failed;
+    final response = await _client.put(
+      Uri.parse("$baseUrl/users/me/password"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "currentPassword": currentPassword,
+        "newPassword": newPassword,
+      }),
+    );
+    switch (response.statusCode) {
+      case 204:
+        return ChangePasswordResult.changed;
+      case 400:
+        // Read only here: a 204 has an empty body. A 400 the app cannot read
+        // is `invalid` - refused, but not for a wrong password. It used to
+        // throw here and be caught as `failed` (B84 step 84e).
+        return _problemField(response, 'detail') == _wrongCurrentPasswordDetail
+            ? ChangePasswordResult.wrongCurrentPassword
+            : ChangePasswordResult.invalid;
+      case 429:
+        return ChangePasswordResult.tooManyAttempts;
+      default:
+        return ChangePasswordResult.failed;
     }
   }
 
@@ -442,7 +447,7 @@ class ApiService {
   // What happened to the shift, not how to say it: the screen picks the
   // wording, because the server's English detail is not for the user (B2).
   // No try: no network is thrown for the dialog to log, as deleteShift does
-  // (B84). Nothing else here throws - _problemType catches its own.
+  // (B84). Nothing else here throws - _problemField catches its own.
   Future<AssignShiftResult> assignShift(Shift shift, int userId) async {
     final response = await _client.post(
       Uri.parse("$baseUrl/users/$userId/shifts"),
@@ -459,7 +464,7 @@ class ApiService {
       case 201:
         return AssignShiftResult.created;
       case 409:
-        return _problemType(response) == _employeeOnLeave
+        return _problemField(response, 'type') == _employeeOnLeave
             ? AssignShiftResult.onLeave
             : AssignShiftResult.overlaps;
       case 400:

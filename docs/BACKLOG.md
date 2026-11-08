@@ -258,6 +258,34 @@ answer that never reached the server says so and keeps the list"
 (`approveAnswered` takes a null status for no network; passes on the old
 code, fails with the new service and the old screen: uncaught
 `ClientException`). Frontend suite: 273 passing. `flutter analyze`: no issues.
+**84e done** (`fix(frontend): log a password change that never reached the server (B84)`):
+The trap: `changePassword`'s 400 branch read the body with
+`(jsonDecode(body) as Map)['detail']`, which throws on non-JSON
+(`FormatException`) and on JSON that is not an object (a failed cast), and
+the method's `catch` turned both into `failed` - by accident, not by
+decision. `_problemType` (B31) already read a body without throwing, so it
+became `_problemField(response, field)`, used for `'type'` (409, as before)
+and `'detail'` (400). An unreadable 400 is now `invalid`, as the enum and
+`_wrongCurrentPasswordDetail`'s comment promise ("falls back to `invalid`") -
+the one change a user can see in B84: "Ο νέος κωδικός δεν έγινε δεκτός."
+instead of "Η αλλαγή απέτυχε. Δοκιμάστε ξανά.". Then the `try` went, and
+`ChangePasswordDialog._save` got 84b's `catch`: it logs only the error,
+never the request with both passwords (F26), and sets `result = failed`.
+Not chosen: a second reader `_problemDetail` beside `_problemType` - two
+twins that drift apart (B81's problem); or keeping `failed` for an
+unreadable 400 - an accident made into the rule.
+Tests (`api_service_test.dart`): 'a password change reports why the server
+refused it' gains a 400 with an HTML body and one with a JSON list, both
+`invalid` (fail on the old service: `failed`); "a password change without a
+network is a failure, not a crash" replaced by `changePassword` in 'a
+failure reaches the caller as it happened' (fails on the old service);
+'nothing is printed to the device log / when there is no network' now
+expects the throw, and still checks that nothing is printed. 'a refused
+shift' (three 409 cases, non-JSON included) passes unchanged through the
+shared reader. `profile_screen_test.dart`: "a password change that never
+reached the server keeps the dialog open and says it failed" (passes on the
+old code, fails with the new service and the old dialog: uncaught
+`ClientException`). Frontend suite: 274 passing. `flutter analyze`: no issues.
 
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);

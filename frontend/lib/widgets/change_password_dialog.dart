@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
@@ -59,10 +60,22 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       _error = null;
     });
 
-    final result = await widget.apiService.changePassword(
-      _currentController.text,
-      _newController.text,
-    );
+    // Not final: set in both try and catch (B84 step 84b).
+    ChangePasswordResult result;
+    try {
+      result = await widget.apiService.changePassword(
+        _currentController.text,
+        _newController.text,
+      );
+    } catch (e, stackTrace) {
+      // No network: changePassword throws it so that it is logged here (B84),
+      // before the mounted check - it failed either way. Only the error: the
+      // request carries both passwords and is never logged (F26). Then it is
+      // a failure like any other.
+      developer.log("Changing the password failed",
+          name: "ChangePasswordDialog", error: e, stackTrace: stackTrace);
+      result = ChangePasswordResult.failed;
+    }
 
     // A tap outside, the back button or an expired login can close the
     // dialog while the request is on its way (F25).

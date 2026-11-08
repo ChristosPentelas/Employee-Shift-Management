@@ -342,6 +342,30 @@ void main() {
       expect(container.read(authProvider)?.token, 'test-token');
     });
 
+    // B84 step 84e: changePassword now throws a lost network for the dialog
+    // to log. Passes on the old code too, which returned `failed`; it guards
+    // the dialog's catch - without it the error is uncaught and Save stays
+    // off for good.
+    testWidgets('a password change that never reached the server keeps the dialog open and says it failed',
+        (WidgetTester tester) async {
+      final container = testContainer(user: worker());
+      final api = ApiService(client: MockClient((_) async {
+        throw http.ClientException('no network');
+      }));
+
+      await openDialog(tester, container, api);
+      await fillIn(tester);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ChangePasswordDialog), findsOneWidget);
+      expect(find.text('Η αλλαγή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(tester.widget<ElevatedButton>(save).onPressed, isNotNull,
+          reason: 'it can be tried again');
+      expect(container.read(authProvider)?.token, 'test-token');
+    });
+
     // Each mistake the phone can see is shown at its field, and no request
     // is sent for it.
     final mistakes = {
