@@ -164,129 +164,6 @@ comment says why it was 405; new `aWordInPlaceOfAMessageIdIsNotFound`
 `PUT /messages/chat/abc/read`). All three fail on the old code (400, 400,
 405). Backend suite: 317 passing.
 
-**B84 · LOW · `deleteShift` swallows a network error without a log** — found 2026-11-07
-Where: `ApiService.deleteShift` ends in `catch (e) { return DeleteResult.failed; }`.
-`changePassword`, `updateLeaveStatus` and the other enum-result methods have
-the same shape (unchecked one by one).
-Why it matters: the supervisor is told it failed, but the error itself is
-gone, so whoever debugs a delete that never works has nothing to look at -
-the B79 problem in the service layer. Since B80 step 80b `deleteNews` lets
-a thrown error through to the screen, which logs it; `deleteShift` shares
-its `DeleteResult` but not that behaviour, so the two now disagree.
-Relates to: B80, B79, B41 (step 41c let service errors through), F26.
-Fix idea: the same as `deleteNews`: map the status with `_deleteResultOf`
-and let a thrown error through; the shifts screen catches it, logs it with
-`developer.log`, and says "failed" (it has no `try` since B33). Then look at
-the other enum-result methods.
-Checked 2026-11-08: seven methods catch no network and drop it -
-`deleteShift`, `assignShift`, `submitLeaveRequest`, `updateLeaveStatus`,
-`changePassword`, `updateUser` (returns null) and `registerUser` (returns
-false). Each has its own caller, so one per step: 84a `deleteShift`, then
-84b-84g the other six in that order.
-Watch in 84e: `changePassword`'s `catch` also takes the `FormatException` of a
-400 whose body is not JSON, so dropping it would throw that too - map it to
-`invalid` first. The request carries both passwords (F26): log the error
-only, as the screens do, never the request.
-**84a done** (`fix(frontend): log a shift delete that never reached the server (B84)`):
-`deleteShift` is `deleteNews`'s shape: `_deleteResultOf` for the status, no
-`try`, so no network is thrown as it happened. `_confirmDelete` in the shifts
-screen gains the news screen's `try`/`catch`/`finally`: the `catch` logs
-with `developer.log` (before the `mounted` check) and says "failed", and the
-`finally` turns the delete buttons back on (B43) - without it a thrown error
-would leave them off until the screen closed. `DeleteResult.failed`'s doc
-no longer names `deleteShift` as the exception.
-Not chosen: log inside the service and keep returning `failed`. One file
-instead of two, but B41 settled that the service lets errors through and the
-caller reports them; a service that logs some would bring the disagreement
-back.
-Tests: `api_service_test.dart` - `deleteShift` joins 'what a delete
-answered' (204/200/404/500/403), 'deleteShift deletes that shift', and 'a
-failure reaches the caller as it happened', whose "deleteShift without a
-network throws the network error itself" fails on the old service.
-`shifts_screen_test.dart` - "a delete without a network says it failed and
-keeps the shift" (snackbar, no reload, shift listed, button on again). It
-passes on the old code, which returned `failed`, and fails with the new
-service and the old screen: it guards the `catch`/`finally`. The log line is
-untested, as in B79. Frontend suite: 268 passing. `flutter analyze`: no
-issues.
-**84b done** (`fix(frontend): log a shift assignment that never reached the server (B84)`):
-`assignShift` has no `try`; its status switch stays (the 409 split is its
-own). Nothing else in it throws: `_problemType` catches its own
-`FormatException`. `AssignShiftDialog._save` wraps only the call: the `catch`
-logs and sets `result = failed`, and the existing three branches (created,
-open dialog, closed dialog - B75) run unchanged. Not chosen: a `catch` with
-its own `setState`/`onFailed`, a copy of the open-or-closed branching that
-B75 showed is easy to get wrong. No `finally` needed, unlike 84a: the
-branches already turn `_saving` off.
-Pitfall met: `result` cannot be a `final` set in both `try` and `catch` - Dart
-cannot tell the `catch` runs only when the `try` did not assign it, and does
-not compile it. The screen's `final List<User> employees` works because its
-`catch` returns.
-Tests: "assigning a shift without a network is a failure, not a crash" in
-`api_service_test.dart` expected `failed`, the behaviour this step removes.
-Replaced, not weakened: `assignShift` joins 'a failure reaches the caller as
-it happened' (expects the `ClientException` itself; fails on the old
-service), and "not a crash" moved to the dialog, now its job:
-`shifts_screen_test.dart` "a shift that never reached the server keeps the
-dialog open and says it failed" and "... after its dialog was closed still
-says so". Both pass on the old code and fail with the new service and the
-old dialog. Frontend suite: 270 passing. `flutter analyze`: no issues.
-**84c done** (`fix(frontend): log a leave request that never reached the server (B84)`):
-84b's shape for `submitLeaveRequest` and `AddLeaveDialog._submit`: no `try`
-in the service (nothing else in it throws - `jsonEncode` of strings,
-`_isoDate`), and the dialog's `catch` logs and sets `result = failed` for the
-existing three branches. Tests as in 84b: "filing leave without a network is
-a failure, not a crash" replaced by `submitLeaveRequest` in 'a failure
-reaches the caller as it happened' (fails on the old service: it returned
-`failed`), and `leave_requests_screen_test.dart` "a request that never
-reached the server keeps the dialog open and says it failed" and "... after
-its dialog was closed still says so" (pass on the old code, fail with the
-new service and the old dialog: uncaught `ClientException`). Frontend suite:
-272 passing. `flutter analyze`: no issues.
-**84d done** (`fix(frontend): log a leave answer that never reached the server (B84)`):
-`updateLeaveStatus` has no `try` (`_removedShifts` catches its own
-`FormatException`). Its caller is the screen, `LeaveRequestsScreen._updateStatus`,
-and the answer is a record: the `catch` logs (before the `mounted` check) and
-sets `answer = (result: failed, removedShifts: 0)`, then `final (:result,
-:removedShifts) = answer;` and the code after it runs unchanged - `failed`
-already says "try again" and does not reload. No `finally`: the screen has no
-lock (B88). Not chosen: a `catch` with its own snackbar, a second copy of the
-"failed" text. Tests: "answering leave without a network is a failure, not a
-crash" replaced by `updateLeaveStatus` in 'a failure reaches the caller as it
-happened' (fails on the old service); `leave_requests_screen_test.dart` "an
-answer that never reached the server says so and keeps the list"
-(`approveAnswered` takes a null status for no network; passes on the old
-code, fails with the new service and the old screen: uncaught
-`ClientException`). Frontend suite: 273 passing. `flutter analyze`: no issues.
-**84e done** (`fix(frontend): log a password change that never reached the server (B84)`):
-The trap: `changePassword`'s 400 branch read the body with
-`(jsonDecode(body) as Map)['detail']`, which throws on non-JSON
-(`FormatException`) and on JSON that is not an object (a failed cast), and
-the method's `catch` turned both into `failed` - by accident, not by
-decision. `_problemType` (B31) already read a body without throwing, so it
-became `_problemField(response, field)`, used for `'type'` (409, as before)
-and `'detail'` (400). An unreadable 400 is now `invalid`, as the enum and
-`_wrongCurrentPasswordDetail`'s comment promise ("falls back to `invalid`") -
-the one change a user can see in B84: "Ο νέος κωδικός δεν έγινε δεκτός."
-instead of "Η αλλαγή απέτυχε. Δοκιμάστε ξανά.". Then the `try` went, and
-`ChangePasswordDialog._save` got 84b's `catch`: it logs only the error,
-never the request with both passwords (F26), and sets `result = failed`.
-Not chosen: a second reader `_problemDetail` beside `_problemType` - two
-twins that drift apart (B81's problem); or keeping `failed` for an
-unreadable 400 - an accident made into the rule.
-Tests (`api_service_test.dart`): 'a password change reports why the server
-refused it' gains a 400 with an HTML body and one with a JSON list, both
-`invalid` (fail on the old service: `failed`); "a password change without a
-network is a failure, not a crash" replaced by `changePassword` in 'a
-failure reaches the caller as it happened' (fails on the old service);
-'nothing is printed to the device log / when there is no network' now
-expects the throw, and still checks that nothing is printed. 'a refused
-shift' (three 409 cases, non-JSON included) passes unchanged through the
-shared reader. `profile_screen_test.dart`: "a password change that never
-reached the server keeps the dialog open and says it failed" (passes on the
-old code, fails with the new service and the old dialog: uncaught
-`ClientException`). Frontend suite: 274 passing. `flutter analyze`: no issues.
-
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);
 `chat_screen.dart` `_send` shows "Το μήνυμα δεν στάλθηκε. Δοκιμάστε ξανά."
@@ -347,6 +224,20 @@ B84 (found while fixing it).
 Fix idea: B43's `_deletingId` pattern - an `_answeringId` set before the
 await and cleared in a `finally`, every approve/reject button off while it
 is set, a spinner on the one in flight.
+
+**B89 · LOW · The new employee's password is shown as it is typed** — found 2026-11-08
+Where: `register_screen.dart`: the "Κωδικός" `TextField` has no
+`obscureText`. Also there: `_register` is `void ... async`, not
+`Future<void>`.
+Why it matters: anyone near the supervisor's screen can read the password.
+It may be meant - the supervisor has to pass it on - but the change-password
+dialog hides every password field, and nothing says which is intended. A
+`void` async method cannot be awaited by a caller or a test, and an error it
+does not catch is lost (B84 step 84g added the `catch` that matters today).
+Relates to: B84 (found while fixing it), B8 (the dialog's fields).
+Fix idea: decide first (owner): hide it like the dialog, or hide it with a
+"show" eye button so the supervisor can check what they typed. Then make
+`_register` `Future<void>`. One change each.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
@@ -2747,3 +2638,160 @@ it offers to try again" now also expects one `LoadErrorView`, which fails on
 the old footer. Frontend suite: 264 passing. `flutter analyze`: no issues.
 Fixed by: `refactor(frontend): reuse LoadErrorView in the list footer (B81)`,
 2026-11-08.
+
+**B84 · LOW · `deleteShift` swallows a network error without a log** — found 2026-11-07
+Where: `ApiService.deleteShift` ends in `catch (e) { return DeleteResult.failed; }`.
+`changePassword`, `updateLeaveStatus` and the other enum-result methods have
+the same shape (unchecked one by one).
+Why it matters: the supervisor is told it failed, but the error itself is
+gone, so whoever debugs a delete that never works has nothing to look at -
+the B79 problem in the service layer. Since B80 step 80b `deleteNews` lets
+a thrown error through to the screen, which logs it; `deleteShift` shares
+its `DeleteResult` but not that behaviour, so the two now disagree.
+Relates to: B80, B79, B41 (step 41c let service errors through), F26.
+Fix idea: the same as `deleteNews`: map the status with `_deleteResultOf`
+and let a thrown error through; the shifts screen catches it, logs it with
+`developer.log`, and says "failed" (it has no `try` since B33). Then look at
+the other enum-result methods.
+Checked 2026-11-08: seven methods catch no network and drop it -
+`deleteShift`, `assignShift`, `submitLeaveRequest`, `updateLeaveStatus`,
+`changePassword`, `updateUser` (returns null) and `registerUser` (returns
+false). Each has its own caller, so one per step: 84a `deleteShift`, then
+84b-84g the other six in that order.
+Watch in 84e: `changePassword`'s `catch` also takes the `FormatException` of a
+400 whose body is not JSON, so dropping it would throw that too - map it to
+`invalid` first. The request carries both passwords (F26): log the error
+only, as the screens do, never the request.
+**84a done** (`fix(frontend): log a shift delete that never reached the server (B84)`):
+`deleteShift` is `deleteNews`'s shape: `_deleteResultOf` for the status, no
+`try`, so no network is thrown as it happened. `_confirmDelete` in the shifts
+screen gains the news screen's `try`/`catch`/`finally`: the `catch` logs
+with `developer.log` (before the `mounted` check) and says "failed", and the
+`finally` turns the delete buttons back on (B43) - without it a thrown error
+would leave them off until the screen closed. `DeleteResult.failed`'s doc
+no longer names `deleteShift` as the exception.
+Not chosen: log inside the service and keep returning `failed`. One file
+instead of two, but B41 settled that the service lets errors through and the
+caller reports them; a service that logs some would bring the disagreement
+back.
+Tests: `api_service_test.dart` - `deleteShift` joins 'what a delete
+answered' (204/200/404/500/403), 'deleteShift deletes that shift', and 'a
+failure reaches the caller as it happened', whose "deleteShift without a
+network throws the network error itself" fails on the old service.
+`shifts_screen_test.dart` - "a delete without a network says it failed and
+keeps the shift" (snackbar, no reload, shift listed, button on again). It
+passes on the old code, which returned `failed`, and fails with the new
+service and the old screen: it guards the `catch`/`finally`. The log line is
+untested, as in B79. Frontend suite: 268 passing. `flutter analyze`: no
+issues.
+**84b done** (`fix(frontend): log a shift assignment that never reached the server (B84)`):
+`assignShift` has no `try`; its status switch stays (the 409 split is its
+own). Nothing else in it throws: `_problemType` catches its own
+`FormatException`. `AssignShiftDialog._save` wraps only the call: the `catch`
+logs and sets `result = failed`, and the existing three branches (created,
+open dialog, closed dialog - B75) run unchanged. Not chosen: a `catch` with
+its own `setState`/`onFailed`, a copy of the open-or-closed branching that
+B75 showed is easy to get wrong. No `finally` needed, unlike 84a: the
+branches already turn `_saving` off.
+Pitfall met: `result` cannot be a `final` set in both `try` and `catch` - Dart
+cannot tell the `catch` runs only when the `try` did not assign it, and does
+not compile it. The screen's `final List<User> employees` works because its
+`catch` returns.
+Tests: "assigning a shift without a network is a failure, not a crash" in
+`api_service_test.dart` expected `failed`, the behaviour this step removes.
+Replaced, not weakened: `assignShift` joins 'a failure reaches the caller as
+it happened' (expects the `ClientException` itself; fails on the old
+service), and "not a crash" moved to the dialog, now its job:
+`shifts_screen_test.dart` "a shift that never reached the server keeps the
+dialog open and says it failed" and "... after its dialog was closed still
+says so". Both pass on the old code and fail with the new service and the
+old dialog. Frontend suite: 270 passing. `flutter analyze`: no issues.
+**84c done** (`fix(frontend): log a leave request that never reached the server (B84)`):
+84b's shape for `submitLeaveRequest` and `AddLeaveDialog._submit`: no `try`
+in the service (nothing else in it throws - `jsonEncode` of strings,
+`_isoDate`), and the dialog's `catch` logs and sets `result = failed` for the
+existing three branches. Tests as in 84b: "filing leave without a network is
+a failure, not a crash" replaced by `submitLeaveRequest` in 'a failure
+reaches the caller as it happened' (fails on the old service: it returned
+`failed`), and `leave_requests_screen_test.dart` "a request that never
+reached the server keeps the dialog open and says it failed" and "... after
+its dialog was closed still says so" (pass on the old code, fail with the
+new service and the old dialog: uncaught `ClientException`). Frontend suite:
+272 passing. `flutter analyze`: no issues.
+**84d done** (`fix(frontend): log a leave answer that never reached the server (B84)`):
+`updateLeaveStatus` has no `try` (`_removedShifts` catches its own
+`FormatException`). Its caller is the screen, `LeaveRequestsScreen._updateStatus`,
+and the answer is a record: the `catch` logs (before the `mounted` check) and
+sets `answer = (result: failed, removedShifts: 0)`, then `final (:result,
+:removedShifts) = answer;` and the code after it runs unchanged - `failed`
+already says "try again" and does not reload. No `finally`: the screen has no
+lock (B88). Not chosen: a `catch` with its own snackbar, a second copy of the
+"failed" text. Tests: "answering leave without a network is a failure, not a
+crash" replaced by `updateLeaveStatus` in 'a failure reaches the caller as it
+happened' (fails on the old service); `leave_requests_screen_test.dart` "an
+answer that never reached the server says so and keeps the list"
+(`approveAnswered` takes a null status for no network; passes on the old
+code, fails with the new service and the old screen: uncaught
+`ClientException`). Frontend suite: 273 passing. `flutter analyze`: no issues.
+**84e done** (`fix(frontend): log a password change that never reached the server (B84)`):
+The trap: `changePassword`'s 400 branch read the body with
+`(jsonDecode(body) as Map)['detail']`, which throws on non-JSON
+(`FormatException`) and on JSON that is not an object (a failed cast), and
+the method's `catch` turned both into `failed` - by accident, not by
+decision. `_problemType` (B31) already read a body without throwing, so it
+became `_problemField(response, field)`, used for `'type'` (409, as before)
+and `'detail'` (400). An unreadable 400 is now `invalid`, as the enum and
+`_wrongCurrentPasswordDetail`'s comment promise ("falls back to `invalid`") -
+the one change a user can see in B84: "Ο νέος κωδικός δεν έγινε δεκτός."
+instead of "Η αλλαγή απέτυχε. Δοκιμάστε ξανά.". Then the `try` went, and
+`ChangePasswordDialog._save` got 84b's `catch`: it logs only the error,
+never the request with both passwords (F26), and sets `result = failed`.
+Not chosen: a second reader `_problemDetail` beside `_problemType` - two
+twins that drift apart (B81's problem); or keeping `failed` for an
+unreadable 400 - an accident made into the rule.
+Tests (`api_service_test.dart`): 'a password change reports why the server
+refused it' gains a 400 with an HTML body and one with a JSON list, both
+`invalid` (fail on the old service: `failed`); "a password change without a
+network is a failure, not a crash" replaced by `changePassword` in 'a
+failure reaches the caller as it happened' (fails on the old service);
+'nothing is printed to the device log / when there is no network' now
+expects the throw, and still checks that nothing is printed. 'a refused
+shift' (three 409 cases, non-JSON included) passes unchanged through the
+shared reader. `profile_screen_test.dart`: "a password change that never
+reached the server keeps the dialog open and says it failed" (passes on the
+old code, fails with the new service and the old dialog: uncaught
+`ClientException`). Frontend suite: 274 passing. `flutter analyze`: no issues.
+**84f and 84g done together** (`fix(frontend): log a profile save or new account that never reached the server (B84)`),
+at the owner's request - the same concept, the last two sites:
+`updateUser` (returns `User?`) and `registerUser` (returns `bool`) have no
+`try`. `EditProfileDialog._save` and `RegisterScreen._register` got 84b's
+`catch`: log, then `saved = null` / `success = false`, and the existing code
+runs unchanged. `RegisterScreen` logs only the error, never the request
+with the new password (F26).
+Decided: `updateUser`'s `try` also covered `User.fromJson` on a 200, so a
+200 the app could not read came back as null - the server had stored the
+profile and the app said "failed", with no trace. Now that error is thrown
+too and the dialog logs it (the user still reads "failed"). Not chosen: a
+narrow `catch` around the parse returning null, which would keep hiding an
+app-server mismatch.
+Tests: neither method had a service test and `RegisterScreen` had no test
+file. `api_service_test.dart`: 'updateUser answers null when refused',
+'updateUser returns the user as the server stored it', 'registerUser says
+whether the server took it' (201/200 true; 400, 409, 500 false) - these pin
+the refusal half and pass on the old code; "updateUser with a 200 it cannot
+read lets the error through" and both methods in 'a failure reaches the
+caller as it happened' fail on the old service (it returned). New
+`profile_screen_test.dart` "a save that never reached the server says it
+failed and turns Save back on" and new file `register_screen_test.dart` "an
+account that never reached the server says it failed and keeps the form":
+pass on the old code, fail with the new service and the old dialog / screen
+(uncaught `ClientException`). Frontend suite: 282 passing. `flutter
+analyze`: no issues. Found on the way: B89.
+Closed: no `ApiService` request method catches an error any more; every
+refusal is a value, and no network is thrown for the caller to log. The only
+`catch`es left are the body readers `_problemField` and `_removedShifts`,
+which turn a malformed body into "not said" on purpose (B31, B84 step 84e).
+Fixed by: `e69880e` (84a), `ba4ad2c` (84b), `e471349` (84c), `ef7e712`
+(84d), `d63b226` (84e) and
+`fix(frontend): log a profile save or new account that never reached the server (B84)`
+(84f/84g), 2026-11-08.

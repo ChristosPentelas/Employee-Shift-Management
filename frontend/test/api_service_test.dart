@@ -609,6 +609,51 @@ void main() {
         isNull);
   });
 
+  // B84 steps 84f/84g: these two had no tests. Their catch is gone, so these
+  // pin the half that stays: a refusal is still a value, not an exception.
+  test('updateUser answers null when refused', () async {
+    Future<User?> savedWith(int status) => ApiService(
+            client: MockClient((_) async => http.Response('', status)))
+        .updateUser(7, 'Worker', 'worker@example.com', '');
+
+    expect(await savedWith(400), isNull);
+    expect(await savedWith(500), isNull);
+  });
+
+  test('updateUser returns the user as the server stored it', () async {
+    final api = ApiService(client: MockClient((_) async => http.Response(
+        '{"id":7,"name":"Stored","email":"worker@example.com","role":"EMPLOYEE"}',
+        200)));
+
+    final saved = await api.updateUser(7, 'Typed', 'worker@example.com', '');
+
+    expect(saved?.name, 'Stored');
+  });
+
+  // The server stored the profile, but the app cannot read its answer: a
+  // mismatch between the two that a developer must see. It used to be caught
+  // and returned as null, which looked like an ordinary refusal.
+  test('updateUser with a 200 it cannot read lets the error through', () async {
+    final api = ApiService(
+        client: MockClient((_) async => http.Response('<html>OK</html>', 200)));
+
+    await expectLater(api.updateUser(7, 'Worker', 'worker@example.com', ''),
+        throwsA(isA<FormatException>()));
+  });
+
+  test('registerUser says whether the server took it', () async {
+    Future<bool> registered(int status) => ApiService(
+            client: MockClient((_) async => http.Response('{}', status)))
+        .registerUser('New', 'new@example.com', '', 'secret');
+
+    expect(await registered(201), isTrue);
+    expect(await registered(200), isTrue);
+    expect(await registered(400), isFalse);
+    // 409: the email is taken (B20).
+    expect(await registered(409), isFalse);
+    expect(await registered(500), isFalse);
+  });
+
   // B80: a 404 is "someone deleted it first", which needs a reload, not the
   // "try again" a failure gets. Every answer is a result; none is thrown.
   group('what a delete answered', () {
@@ -704,13 +749,18 @@ void main() {
       // B84 step 84e: the same; "not a crash" moved to the password dialog
       // (profile_screen_test.dart).
       'changePassword': (api) => api.changePassword('old-secret', 'new-secret'),
+      // B84 steps 84f/84g: the same; "not a crash" moved to the profile's
+      // edit dialog and the register screen.
+      'updateUser': (api) => api.updateUser(7, 'Worker', 'worker@example.com', ''),
+      'registerUser': (api) => api.registerUser('New', 'new@example.com', '', 'secret'),
     };
-    // B80, B84: these answer a refusal with an enum result instead of
-    // throwing (see 'what a delete answered', 'assigning a shift reports why
-    // the server refused it', 'filing leave reports whether the server took
-    // it', 'answering leave reports whether the server took it' and 'a
-    // password change reports why the server refused it'); no network is
-    // still thrown.
+    // B80, B84: these answer a refusal with a value - an enum result, null
+    // or false - instead of throwing (see 'what a delete answered', 'assigning
+    // a shift reports why the server refused it', 'filing leave reports
+    // whether the server took it', 'answering leave reports whether the
+    // server took it', 'a password change reports why the server refused it',
+    // 'updateUser answers null when refused' and 'registerUser says whether
+    // the server took it'); no network is still thrown.
     const refusalIsAResult = {
       'deleteUser',
       'deleteNews',
@@ -719,6 +769,8 @@ void main() {
       'submitLeaveRequest',
       'updateLeaveStatus',
       'changePassword',
+      'updateUser',
+      'registerUser',
     };
 
     for (final MapEntry(key: name, value: call) in calls.entries) {

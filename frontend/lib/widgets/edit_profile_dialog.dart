@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
@@ -59,12 +61,23 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
   Future<void> _save() async {
     // Before the await: once it starts, a second tap is too late to stop.
     setState(() => _saving = true);
-    final saved = await widget.apiService.updateUser(
-      widget.user.id,
-      _nameController.text,
-      _emailController.text,
-      _phoneController.text,
-    );
+    // Not final: set in both try and catch (B84 step 84b).
+    User? saved;
+    try {
+      saved = await widget.apiService.updateUser(
+        widget.user.id,
+        _nameController.text,
+        _emailController.text,
+        _phoneController.text,
+      );
+    } catch (e, stackTrace) {
+      // No network, or a 200 the app cannot read: updateUser throws both so
+      // that they are logged here (B84). Then it is a failure like any other,
+      // so it takes the one path below - open dialog or closed (F25).
+      developer.log("Saving the profile failed",
+          name: "EditProfileDialog", error: e, stackTrace: stackTrace);
+      saved = null;
+    }
 
     // Both outcomes are reported before any mounted check: the screen needs
     // them even when this dialog is already gone.

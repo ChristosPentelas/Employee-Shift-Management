@@ -370,25 +370,26 @@ class ApiService {
   /// Saves your own profile and returns it as the server stored it, or null
   /// if that failed. It does not change the session: the caller decides what
   /// to do with the result, and the service stays free of app state (F24).
+  ///
+  /// No try: no network is thrown for the dialog to log, as assignShift does
+  /// (B84). So is a 200 whose body is not a user: the server stored the
+  /// profile and the app cannot read the answer, a mismatch a developer must
+  /// see. It used to be caught and returned as null, with no trace.
   Future<User?> updateUser(int userId,String name,String email,String phone) async {
-    try{
-      final response = await _client.put(
-        Uri.parse("$baseUrl/users/$userId"),
-        headers: {"Content-Type" : "application/json"},
-        body: jsonEncode({
-          "name" : name,
-          "email" : email,
-          "phoneNumber" : phone,
-        }),
-      );
+    final response = await _client.put(
+      Uri.parse("$baseUrl/users/$userId"),
+      headers: {"Content-Type" : "application/json"},
+      body: jsonEncode({
+        "name" : name,
+        "email" : email,
+        "phoneNumber" : phone,
+      }),
+    );
 
-      if (response.statusCode == 200) {
-        return User.fromJson(jsonDecode(response.body));
-      }
-      return null;
-    } catch (e) {
-      return null;
+    if (response.statusCode == 200) {
+      return User.fromJson(jsonDecode(response.body));
     }
+    return null;
   }
 
   // The server's `detail` for a wrong current password. A 400 carries no
@@ -558,22 +559,20 @@ class ApiService {
     throw Exception("Loading the conversations failed: ${response.statusCode}");
   }
 
+  // false for any refusal. No try: no network is thrown for the screen to
+  // log, as assignShift does (B84).
   Future<bool> registerUser(String name,String email,String phone,String password) async{
-    try {
-      final response = await _client.post(
-        Uri.parse("$baseUrl/users"),
-        headers: {"Content-Type" : "application/json"},
-        body: jsonEncode({
-          "name" : name,
-          "email" : email,
-          "phoneNumber" : phone,
-          "password" : password,
-        }),
-      );
+    final response = await _client.post(
+      Uri.parse("$baseUrl/users"),
+      headers: {"Content-Type" : "application/json"},
+      body: jsonEncode({
+        "name" : name,
+        "email" : email,
+        "phoneNumber" : phone,
+        "password" : password,
+      }),
+    );
 
-      return response.statusCode == 201 || response.statusCode == 200;
-    } catch (e) {
-      return false;
-    }
+    return response.statusCode == 201 || response.statusCode == 200;
   }
 }

@@ -251,6 +251,29 @@ void main() {
         held.last.complete(savedReply);
         await tester.pumpAndSettle();
       });
+
+      // B84 step 84f: updateUser now throws a lost network for the dialog to
+      // log. Passes on the old code too, which returned null; it guards the
+      // dialog's catch - without it the error is uncaught and Save spins for
+      // good.
+      testWidgets('a save that never reached the server says it failed and turns Save back on',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openHeld(tester, held);
+
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        await tester.pump();
+        held.single.completeError(http.ClientException('no network'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Σφάλμα κατά την ενημέρωση'), findsOneWidget);
+        expect(spinner, findsNothing);
+        expect(find.byType(AlertDialog), findsOneWidget); // still open
+        final save = tester.widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'Αποθήκευση'));
+        expect(save.onPressed, isNotNull, reason: 'it can be tried again');
+      });
     });
   });
 

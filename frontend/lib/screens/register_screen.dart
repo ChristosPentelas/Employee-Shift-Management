@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
@@ -46,12 +48,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _isLoading = true;
     });
 
-    bool success = await _apiService.registerUser(
-      _nameController.text,
-      _emailController.text,
-      _phoneController.text,
-      _passwordController.text,
-    );
+    // Not final: set in both try and catch (B84 step 84b).
+    bool success;
+    try {
+      success = await _apiService.registerUser(
+        _nameController.text,
+        _emailController.text,
+        _phoneController.text,
+        _passwordController.text,
+      );
+    } catch (e, stackTrace) {
+      // No network: registerUser throws it so that it is logged here (B84),
+      // before the mounted check - it failed either way. Only the error: the
+      // request carries the new password and is never logged (F26). Without
+      // this catch the error would escape this `void` method unseen, and
+      // the spinner would never stop (B89).
+      developer.log("Creating the account failed",
+          name: "RegisterScreen", error: e, stackTrace: stackTrace);
+      success = false;
+    }
 
     // The screen may have closed while waiting (e.g. the token was rejected
     // and the app went back to login). Its context is no longer usable (F25).
