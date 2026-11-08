@@ -506,16 +506,6 @@ void main() {
     expect(sent!.url.queryParameters, {'status': 'REJECTED'});
   });
 
-  test('answering leave without a network is a failure, not a crash', () async {
-    final api = ApiService(client: MockClient((_) async {
-      throw http.ClientException('no network');
-    }));
-
-    final answer = await api.updateLeaveStatus(5, 'APPROVED');
-
-    expect(answer, (result: UpdateLeaveStatusResult.failed, removedShifts: 0));
-  });
-
   // B31: approving removes the employee's shifts on the leave days, and the
   // 200 says how many.
   group('an answered leave request', () {
@@ -710,17 +700,22 @@ void main() {
       // B84 step 84c: the same, and its "not a crash" test moved to the
       // dialog too (leave_requests_screen_test.dart).
       'submitLeaveRequest': (api) => api.submitLeaveRequest(aLeave()),
+      // B84 step 84d: the same; "not a crash" moved to the leave requests
+      // screen (leave_requests_screen_test.dart).
+      'updateLeaveStatus': (api) => api.updateLeaveStatus(5, 'APPROVED'),
     };
     // B80, B84: these answer a refusal with an enum result instead of
     // throwing (see 'what a delete answered', 'assigning a shift reports why
-    // the server refused it' and 'filing leave reports whether the server
-    // took it'); no network is still thrown.
+    // the server refused it', 'filing leave reports whether the server took
+    // it' and 'answering leave reports whether the server took it'); no
+    // network is still thrown.
     const refusalIsAResult = {
       'deleteUser',
       'deleteNews',
       'deleteShift',
       'assignShift',
       'submitLeaveRequest',
+      'updateLeaveStatus',
     };
 
     for (final MapEntry(key: name, value: call) in calls.entries) {

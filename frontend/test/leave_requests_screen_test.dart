@@ -319,13 +319,17 @@ void main() {
         '"page":0,"size":50,"totalElements":1,"totalPages":1}';
 
     /// Opens the screen as [boss] against a fake server that answers the PUT
-    /// with [putStatus] and [putBody], and taps approve. Returns how many
-    /// times the list was loaded.
-    Future<List<String>> approveAnswered(WidgetTester tester, int putStatus,
+    /// with [putStatus] and [putBody] - or, if [putStatus] is null, never
+    /// gets it: no network. Taps approve. Returns how many times the list was
+    /// loaded.
+    Future<List<String>> approveAnswered(WidgetTester tester, int? putStatus,
         {String putBody = '{}'}) async {
       final listLoads = <String>[];
       final api = ApiService(client: MockClient((request) async {
-        if (request.method == 'PUT') return http.Response(putBody, putStatus);
+        if (request.method == 'PUT') {
+          if (putStatus == null) throw http.ClientException('no network');
+          return http.Response(putBody, putStatus);
+        }
         listLoads.add(request.url.path);
         return http.Response(pendingList, 200);
       }));
@@ -377,6 +381,19 @@ void main() {
         (WidgetTester tester) async {
       final listLoads = await approveAnswered(tester, 500);
 
+      expect(find.text('Η αλλαγή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(listLoads, hasLength(1)); // nothing changed, so no reload
+    });
+
+    // B84 step 84d: updateLeaveStatus now throws a lost network for the
+    // screen to log. Passes on the old code too, which returned `failed`; it
+    // guards the screen's catch - without it the error is uncaught and the
+    // supervisor is told nothing.
+    testWidgets('an answer that never reached the server says so and keeps the list',
+        (WidgetTester tester) async {
+      final listLoads = await approveAnswered(tester, null);
+
+      expect(tester.takeException(), isNull);
       expect(find.text('Η αλλαγή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
       expect(listLoads, hasLength(1)); // nothing changed, so no reload
     });

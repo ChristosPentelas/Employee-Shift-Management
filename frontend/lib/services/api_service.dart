@@ -42,7 +42,8 @@ enum UpdateLeaveStatusResult {
   alreadyAnswered,
   /// 404: it no longer exists, e.g. its employee was deleted.
   notFound,
-  /// Anything else, including no network.
+  /// Any other answer. No network is not an answer: it is thrown as it
+  /// happened, for the caller to log (B84).
   failed,
 }
 
@@ -322,27 +323,26 @@ class ApiService {
   /// Also how many of the employee's shifts an approval removed (B31), so the
   /// supervisor can be told; 0 for anything but a 200. A record, not a class:
   /// two values, compared field by field with == for free.
+  ///
+  /// No try: no network is thrown for the screen to log, as assignShift does
+  /// (B84). Nothing else here throws - _removedShifts catches its own.
   Future<({UpdateLeaveStatusResult result, int removedShifts})> updateLeaveStatus(
       int leaveId, String newStatus) async {
-    try {
-      final response = await _client.put(
-        Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
-      );
-      switch (response.statusCode) {
-        case 200:
-          return (
-            result: UpdateLeaveStatusResult.updated,
-            removedShifts: _removedShifts(response),
-          );
-        case 409:
-          return (result: UpdateLeaveStatusResult.alreadyAnswered, removedShifts: 0);
-        case 404:
-          return (result: UpdateLeaveStatusResult.notFound, removedShifts: 0);
-        default:
-          return (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
-      }
-    } catch (e) {
-      return (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
+    final response = await _client.put(
+      Uri.parse("$baseUrl/leaves/$leaveId/status?status=$newStatus"),
+    );
+    switch (response.statusCode) {
+      case 200:
+        return (
+          result: UpdateLeaveStatusResult.updated,
+          removedShifts: _removedShifts(response),
+        );
+      case 409:
+        return (result: UpdateLeaveStatusResult.alreadyAnswered, removedShifts: 0);
+      case 404:
+        return (result: UpdateLeaveStatusResult.notFound, removedShifts: 0);
+      default:
+        return (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
     }
   }
 

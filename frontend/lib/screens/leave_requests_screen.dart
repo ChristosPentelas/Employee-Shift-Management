@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_service.dart';
@@ -164,8 +166,20 @@ class _LeaveRequestsScreenState extends ConsumerState<LeaveRequestsScreen> {
   }
 
   Future<void> _updateStatus(int id,String status) async {
-    final (:result, :removedShifts) = await _apiService.updateLeaveStatus(id, status);
+    // Not final: set in both try and catch (B84 step 84b).
+    ({UpdateLeaveStatusResult result, int removedShifts}) answer;
+    try {
+      answer = await _apiService.updateLeaveStatus(id, status);
+    } catch (e, stackTrace) {
+      // No network: updateLeaveStatus throws it so that it is logged here
+      // (B84), before the mounted check - it failed either way. Then it is a
+      // failure like any other: "try again", and no reload.
+      developer.log("Answering the leave request failed",
+          name: "LeaveRequestsScreen", error: e, stackTrace: stackTrace);
+      answer = (result: UpdateLeaveStatusResult.failed, removedShifts: 0);
+    }
     if (!mounted) return;
+    final (:result, :removedShifts) = answer;
 
     final message = _updateErrorText(result) ?? _removedShiftsText(removedShifts);
     if (message != null) {

@@ -243,6 +243,21 @@ reached the server keeps the dialog open and says it failed" and "... after
 its dialog was closed still says so" (pass on the old code, fail with the
 new service and the old dialog: uncaught `ClientException`). Frontend suite:
 272 passing. `flutter analyze`: no issues.
+**84d done** (`fix(frontend): log a leave answer that never reached the server (B84)`):
+`updateLeaveStatus` has no `try` (`_removedShifts` catches its own
+`FormatException`). Its caller is the screen, `LeaveRequestsScreen._updateStatus`,
+and the answer is a record: the `catch` logs (before the `mounted` check) and
+sets `answer = (result: failed, removedShifts: 0)`, then `final (:result,
+:removedShifts) = answer;` and the code after it runs unchanged - `failed`
+already says "try again" and does not reload. No `finally`: the screen has no
+lock (B88). Not chosen: a `catch` with its own snackbar, a second copy of the
+"failed" text. Tests: "answering leave without a network is a failure, not a
+crash" replaced by `updateLeaveStatus` in 'a failure reaches the caller as it
+happened' (fails on the old service); `leave_requests_screen_test.dart` "an
+answer that never reached the server says so and keeps the list"
+(`approveAnswered` takes a null status for no network; passes on the old
+code, fails with the new service and the old screen: uncaught
+`ClientException`). Frontend suite: 273 passing. `flutter analyze`: no issues.
 
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);
@@ -288,6 +303,22 @@ changes them).
 Fix idea: for `failed`, have the dialog pass "Δοκιμάστε ξανά." alone, or
 pass the result to `onFailed` and let the screen word it. One dialog per
 change set.
+
+**B88 · LOW · Approving a leave request twice tells the supervisor someone else answered** — found 2026-11-08
+Where: `leave_requests_screen.dart`: the approve and reject `IconButton`s
+call `_updateStatus` and stay enabled while its PUT is on its way; the list
+changes only after the reply and its reload.
+Why it matters: a double tap sends two PUTs. The first approves; the server
+refuses the second with 409 (B63), and the screen says "Η αίτηση έχει ήδη
+απαντηθεί." - the supervisor reads it as another supervisor's answer, which
+it was not. Nothing is stored twice: the server's lock and status check hold.
+Checked 2026-11-08 with a throwaway widget test (held PUT, two taps): 2 PUTs
+sent, and the 409 text shown.
+Relates to: B43 (the same lock for deletes), B32 (for Save buttons), B63,
+B84 (found while fixing it).
+Fix idea: B43's `_deletingId` pattern - an `_answeringId` set before the
+await and cleared in a `finally`, every approve/reject button off while it
+is set, a spinner on the one in flight.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,
