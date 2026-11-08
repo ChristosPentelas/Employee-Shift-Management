@@ -361,15 +361,19 @@ void main() {
   // nothing, so the supervisor could not tell it apart from a slow one.
   group('deleting a shift', () {
     /// Opens the calendar as a supervisor against a fake server with one shift
-    /// on the 15th, which answers the delete with [deleteStatus]; selects the
-    /// 15th and confirms the delete. Returns how often the month was loaded.
+    /// on the 15th, which answers the delete with [deleteStatus] - or, if it
+    /// is null, never gets it: no network. Selects the 15th and confirms the
+    /// delete. Returns how often the month was loaded.
     Future<List<String>> deleteAnswered(
-        WidgetTester tester, int deleteStatus) async {
+        WidgetTester tester, int? deleteStatus) async {
       final now = DateTime.now();
       final month = now.month.toString().padLeft(2, '0');
       final monthLoads = <String>[];
       final api = ApiService(client: MockClient((request) async {
-        if (request.method == 'DELETE') return http.Response('', deleteStatus);
+        if (request.method == 'DELETE') {
+          if (deleteStatus == null) throw http.ClientException('no network');
+          return http.Response('', deleteStatus);
+        }
         monthLoads.add(request.url.path);
         return http.Response(
             '[{"id":3,"date":"${now.year}-$month-15","startTime":"08:00",'
@@ -415,6 +419,22 @@ void main() {
       expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
       expect(monthLoads, hasLength(1)); // nothing changed, so no reload
       expect(find.text('Cashier'), findsOneWidget); // still listed
+    });
+
+    // B84: deleteShift now throws a lost network for the screen to log. Passes
+    // on the old code too, which returned `failed`; it guards the screen's
+    // catch and finally - without them the error is uncaught and the delete
+    // button stays off.
+    testWidgets('a delete without a network says it failed and keeps the shift',
+        (WidgetTester tester) async {
+      final monthLoads = await deleteAnswered(tester, null);
+
+      expect(find.text('Η διαγραφή απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+      expect(monthLoads, hasLength(1)); // nothing changed, so no reload
+      expect(find.text('Cashier'), findsOneWidget); // still listed
+      final deleteButton = tester.widget<IconButton>(find.descendant(
+          of: find.byType(Card), matching: find.byType(IconButton)));
+      expect(deleteButton.onPressed, isNotNull, reason: 'it can be tried again');
     });
 
     // B43: the dialog closes before the DELETE is sent, and nothing stopped

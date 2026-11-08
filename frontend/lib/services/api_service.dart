@@ -51,8 +51,8 @@ enum DeleteResult {
   deleted,
   /// 404: it was already gone, e.g. deleted by another supervisor.
   notFound,
-  /// Any other answer. deleteShift returns it for no network too; deleteNews
-  /// and deleteUser let that error through for their callers to log (B80, B84).
+  /// Any other answer. No network is not an answer: every delete throws that
+  /// error as it happened, for its caller to log (B80, B84).
   failed,
 }
 
@@ -471,22 +471,12 @@ class ApiService {
   }
 
   // An enum, not a bool: "already gone" needs a reload, "failed" a retry, and
-  // a bool cannot tell them apart (B33).
+  // a bool cannot tell them apart (B33). As deleteNews: no network is thrown
+  // for the caller to log. It used to be caught here and returned as
+  // `failed`, and the error itself was lost (B84).
   Future<DeleteResult> deleteShift(int shiftId) async {
-    try {
-      final response = await _client.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
-      switch (response.statusCode) {
-        case 200:
-        case 204:
-          return DeleteResult.deleted;
-        case 404:
-          return DeleteResult.notFound;
-        default:
-          return DeleteResult.failed;
-      }
-    } catch (e) {
-      return DeleteResult.failed;
-    }
+    final response = await _client.delete(Uri.parse("$baseUrl/shifts/$shiftId"));
+    return _deleteResultOf(response.statusCode);
   }
 
   Future<List<Shift>> getFilteredShifts(int userId, DateTime start, DateTime end) async {

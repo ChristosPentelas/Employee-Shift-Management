@@ -178,6 +178,37 @@ Fix idea: the same as `deleteNews`: map the status with `_deleteResultOf`
 and let a thrown error through; the shifts screen catches it, logs it with
 `developer.log`, and says "failed" (it has no `try` since B33). Then look at
 the other enum-result methods.
+Checked 2026-11-08: seven methods catch no network and drop it -
+`deleteShift`, `assignShift`, `submitLeaveRequest`, `updateLeaveStatus`,
+`changePassword`, `updateUser` (returns null) and `registerUser` (returns
+false). Each has its own caller, so one per step: 84a `deleteShift`, then
+84b-84g the other six in that order.
+Watch in 84e: `changePassword`'s `catch` also takes the `FormatException` of a
+400 whose body is not JSON, so dropping it would throw that too - map it to
+`invalid` first. The request carries both passwords (F26): log the error
+only, as the screens do, never the request.
+**84a done** (`fix(frontend): log a shift delete that never reached the server (B84)`):
+`deleteShift` is `deleteNews`'s shape: `_deleteResultOf` for the status, no
+`try`, so no network is thrown as it happened. `_confirmDelete` in the shifts
+screen gains the news screen's `try`/`catch`/`finally`: the `catch` logs
+with `developer.log` (before the `mounted` check) and says "failed", and the
+`finally` turns the delete buttons back on (B43) - without it a thrown error
+would leave them off until the screen closed. `DeleteResult.failed`'s doc
+no longer names `deleteShift` as the exception.
+Not chosen: log inside the service and keep returning `failed`. One file
+instead of two, but B41 settled that the service lets errors through and the
+caller reports them; a service that logs some would bring the disagreement
+back.
+Tests: `api_service_test.dart` - `deleteShift` joins 'what a delete
+answered' (204/200/404/500/403), 'deleteShift deletes that shift', and 'a
+failure reaches the caller as it happened', whose "deleteShift without a
+network throws the network error itself" fails on the old service.
+`shifts_screen_test.dart` - "a delete without a network says it failed and
+keeps the shift" (snackbar, no reload, shift listed, button on again). It
+passes on the old code, which returned `failed`, and fails with the new
+service and the old screen: it guards the `catch`/`finally`. The log line is
+untested, as in B79. Frontend suite: 268 passing. `flutter analyze`: no
+issues.
 
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);
@@ -193,6 +224,21 @@ Relates to: B80, B54, B41.
 Fix idea: an enum result (`sent` / `recipientGone` / `failed`), as B80 did;
 on `recipientGone` say the colleague no longer exists and stop offering to
 send, or leave the chat.
+
+**B86 · LOW · A calendar month that fails to load looks like a month with no shifts** — found 2026-11-08
+Where: `shifts_screen.dart` `_loadShifts`: its `catch (e)` only sets
+`_isLoading = false`. `_showAssignShiftDialog`'s `catch` around
+`getAllEmployees` says so to the user (B34) but logs nothing either.
+Why it matters: B44's problem in the calendar. A supervisor sees nobody
+working that month, and an employee sees no shifts of their own - they may
+miss one. Nothing says it failed, nothing offers a retry, and the error is
+not logged (B79's problem). B41 gave the lists `LoadErrorView` and missed the
+calendar, which is not a list.
+Relates to: B44, B41, B79, B84 (found while fixing it).
+Fix idea: keep the error in state; while it is set, show `LoadErrorView`
+with `onRetry: _loadShifts` where the day's shifts go (the calendar itself
+can stay, so the month can still be changed), and `developer.log` it in the
+`catch`. Log in `_showAssignShiftDialog`'s `catch` too, or as its own step.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -252,21 +254,33 @@ class _ShiftsScreenState extends ConsumerState<ShiftsScreen> {
               // is off until the reply arrives (B43).
               setState(() => _deletingId = shiftId);
               Navigator.pop(dialogContext);
-              // No try/finally: deleteShift never throws, every outcome is a
-              // DeleteResult (B33).
-              final result = await _apiService.deleteShift(shiftId);
-              if (!mounted) return;
-              setState(() {
-                _deletingId = null;
+              try {
+                final result = await _apiService.deleteShift(shiftId);
+                if (!mounted) return;
                 // Reload unless nothing changed: after a 404 the calendar on
                 // screen is out of date, and the reload shows what is stored.
-                if (result != DeleteResult.failed) _selectedDay = null;
-              });
-              if (result != DeleteResult.failed) _loadShifts();
-              // Every outcome says something: a failure used to say nothing
-              // at all (B33).
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text(_deleteResultText(result))));
+                if (result != DeleteResult.failed) {
+                  setState(() => _selectedDay = null);
+                  _loadShifts();
+                }
+                // Every outcome says something: a failure used to say nothing
+                // at all (B33).
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(_deleteResultText(result))));
+              } catch (e, stackTrace) {
+                // No network: deleteShift throws it so that it is logged here
+                // (B84). Logged before the mounted check: it failed either way.
+                developer.log("Deleting the shift failed",
+                    name: "ShiftsScreen", error: e, stackTrace: stackTrace);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_deleteResultText(DeleteResult.failed))));
+              } finally {
+                // On success and failure alike, or the delete buttons stay
+                // off for good (B43); the guard is for a screen closed
+                // meanwhile, whose setState would throw.
+                if (mounted) setState(() => _deletingId = null);
+              }
             },
             child: Text("Διαγραφή", style: TextStyle(color: Colors.white)),
           ),
