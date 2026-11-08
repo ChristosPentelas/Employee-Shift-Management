@@ -221,6 +221,27 @@ void main() {
         await tester.pumpAndSettle();
       });
 
+      // B84 step 84c: submitLeaveRequest now throws a lost network for the
+      // dialog to log. This and the closed-dialog test below pass on the old
+      // code too, which returned `failed`; they guard the dialog's catch -
+      // without it the error is uncaught and Submit spins for good.
+      testWidgets('a request that never reached the server keeps the dialog open and says it failed',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        await openDialogWithDates(tester, 0, held: held);
+        await tester.enterText(find.byType(TextField), 'Surgery');
+        await tester.pump();
+
+        await tester.tap(submitButton());
+        await tester.pump();
+        held.single.completeError(http.ClientException('no network'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.'), findsOneWidget);
+        expect(spinner, findsNothing);
+        expect(submitEnabled(tester), isTrue, reason: 'it can be tried again');
+      });
+
       // B35: the dialog moved into its own State. A tap outside can close it
       // while the request is on its way; the two tests below pin what
       // happens to each answer then.
@@ -263,6 +284,23 @@ void main() {
         expect(
             find.text('Η αίτηση αδείας δεν υποβλήθηκε. '
                 'Ελέγξτε τις ημερομηνίες και τον λόγο.'),
+            findsOneWidget);
+        expect(listLoads, hasLength(1));
+      });
+
+      testWidgets('a request that never reached the server after its dialog was closed still says so',
+          (WidgetTester tester) async {
+        final held = <Completer<http.Response>>[];
+        final listLoads = await openDialogWithDates(tester, 0, held: held);
+        await submitAndCloseTheDialog(tester);
+
+        held.single.completeError(http.ClientException('no network'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(
+            find.text('Η αίτηση αδείας δεν υποβλήθηκε. '
+                'Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.'),
             findsOneWidget);
         expect(listLoads, hasLength(1));
       });

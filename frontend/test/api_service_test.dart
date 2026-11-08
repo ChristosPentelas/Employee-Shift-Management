@@ -476,16 +476,6 @@ void main() {
     expect(await submitAnswered(500), SubmitLeaveResult.failed);
   });
 
-  test('filing leave without a network is a failure, not a crash', () async {
-    final api = ApiService(client: MockClient((_) async {
-      throw http.ClientException('no network');
-    }));
-
-    final result = await api.submitLeaveRequest(aLeave());
-
-    expect(result, SubmitLeaveResult.failed);
-  });
-
   // B42: the reply used to be ignored, so a refused answer looked like it worked.
   test('answering leave reports whether the server took it', () async {
     Future<UpdateLeaveStatusResult> answerAnswered(int status) async {
@@ -717,11 +707,21 @@ void main() {
       // network; "not a crash" is now the dialog's job, and shifts_screen_test
       // checks it there ("a shift that never reached the server ...").
       'assignShift': (api) => api.assignShift(aShift(), 7),
+      // B84 step 84c: the same, and its "not a crash" test moved to the
+      // dialog too (leave_requests_screen_test.dart).
+      'submitLeaveRequest': (api) => api.submitLeaveRequest(aLeave()),
     };
     // B80, B84: these answer a refusal with an enum result instead of
-    // throwing (see 'what a delete answered' and 'assigning a shift reports
-    // why the server refused it'); no network is still thrown.
-    const refusalIsAResult = {'deleteUser', 'deleteNews', 'deleteShift', 'assignShift'};
+    // throwing (see 'what a delete answered', 'assigning a shift reports why
+    // the server refused it' and 'filing leave reports whether the server
+    // took it'); no network is still thrown.
+    const refusalIsAResult = {
+      'deleteUser',
+      'deleteNews',
+      'deleteShift',
+      'assignShift',
+      'submitLeaveRequest',
+    };
 
     for (final MapEntry(key: name, value: call) in calls.entries) {
       test('$name without a network throws the network error itself', () async {

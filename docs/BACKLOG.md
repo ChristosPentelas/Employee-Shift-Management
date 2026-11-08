@@ -231,6 +231,18 @@ service), and "not a crash" moved to the dialog, now its job:
 dialog open and says it failed" and "... after its dialog was closed still
 says so". Both pass on the old code and fail with the new service and the
 old dialog. Frontend suite: 270 passing. `flutter analyze`: no issues.
+**84c done** (`fix(frontend): log a leave request that never reached the server (B84)`):
+84b's shape for `submitLeaveRequest` and `AddLeaveDialog._submit`: no `try`
+in the service (nothing else in it throws - `jsonEncode` of strings,
+`_isoDate`), and the dialog's `catch` logs and sets `result = failed` for the
+existing three branches. Tests as in 84b: "filing leave without a network is
+a failure, not a crash" replaced by `submitLeaveRequest` in 'a failure
+reaches the caller as it happened' (fails on the old service: it returned
+`failed`), and `leave_requests_screen_test.dart` "a request that never
+reached the server keeps the dialog open and says it failed" and "... after
+its dialog was closed still says so" (pass on the old code, fail with the
+new service and the old dialog: uncaught `ClientException`). Frontend suite:
+272 passing. `flutter analyze`: no issues.
 
 **B85 · LOW · A message to a colleague deleted meanwhile says "try again" for ever** — found 2026-11-03
 Where: `ApiService.sendMessage` returns `bool` (`statusCode == 201`);
@@ -261,6 +273,21 @@ Fix idea: keep the error in state; while it is set, show `LoadErrorView`
 with `onRetry: _loadShifts` where the day's shifts go (the calendar itself
 can stay, so the month can still be changed), and `developer.log` it in the
 `catch`. Log in `_showAssignShiftDialog`'s `catch` too, or as its own step.
+
+**B87 · LOW · A failure after the dialog closed says "not saved" twice** — found 2026-11-08
+Where: `AssignShiftDialog` and `AddLeaveDialog` hand their in-dialog text to
+`onFailed`, and the screen puts its own sentence in front (B75): "Η βάρδια
+δεν αποθηκεύτηκε. Η αποθήκευση απέτυχε. Δοκιμάστε ξανά." and "Η αίτηση
+αδείας δεν υποβλήθηκε. Η αποθήκευση απέτυχε. Δοκιμάστε ξανά." Only for
+`failed`; a refusal reads well ("... δεν αποθηκεύτηκε. Ο υπάλληλος έχει
+ήδη βάρδια ...").
+Why it matters: wording only - the user is told the right thing, in a
+clumsy way.
+Relates to: B75, B84 (its 84b and 84c tests pin the doubled text, so a fix
+changes them).
+Fix idea: for `failed`, have the dialog pass "Δοκιμάστε ξανά." alone, or
+pass the result to `onFailed` and let the screen word it. One dialog per
+change set.
 
 **B45 · MEDIUM · Two edits of the same row overwrite each other without warning** — found 2026-10-01
 Where: `ShiftService.updateShift`, `NewsItemService.updateNewsItem`,

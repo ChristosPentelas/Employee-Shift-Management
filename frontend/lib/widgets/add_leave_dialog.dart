@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import '../models/leave_request_model.dart';
 import '../models/user_model.dart';
@@ -75,7 +77,19 @@ class _AddLeaveDialogState extends State<AddLeaveDialog> {
       reason: _reasonController.text,
     );
 
-    final result = await widget.apiService.submitLeaveRequest(newRequest);
+    // Not final: set in both try and catch, which Dart does not allow for a
+    // final (B84 step 84b).
+    SubmitLeaveResult result;
+    try {
+      result = await widget.apiService.submitLeaveRequest(newRequest);
+    } catch (e, stackTrace) {
+      // No network: submitLeaveRequest throws it so that it is logged here
+      // (B84). Then it is a failure like any other, so it takes the one path
+      // below - open dialog or closed (B75) - instead of a copy of it.
+      developer.log("Filing the leave request failed",
+          name: "AddLeaveDialog", error: e, stackTrace: stackTrace);
+      result = SubmitLeaveResult.failed;
+    }
 
     if (result == SubmitLeaveResult.created) {
       // Before the mounted check: the screen needs it even when this dialog

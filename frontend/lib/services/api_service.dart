@@ -29,7 +29,8 @@ enum SubmitLeaveResult {
   /// 400: the server refused a field, e.g. a blank or too long reason. The
   /// dialog checks those first, so this means the two rules drifted apart.
   invalid,
-  /// Anything else, including no network.
+  /// Any other answer. No network is not an answer: it is thrown as it
+  /// happened, for the caller to log (B84).
   failed,
 }
 
@@ -290,28 +291,27 @@ class ApiService {
 
   /// Files a leave request and says whether the server took it. It used to
   /// ignore the reply, so a refused request looked filed (B19).
+  ///
+  /// No try: no network is thrown for the dialog to log, as assignShift does
+  /// (B84).
   Future<SubmitLeaveResult> submitLeaveRequest(LeaveRequest leave) async {
-    try {
-      final response = await _client.post(
-        Uri.parse("$baseUrl/leaves"),
-        headers: {"Content-Type" : "application/json"},
-        body: jsonEncode({
-          // No userId: the server files it for whoever the token says we are.
-          "startDate": _isoDate(leave.startDate),
-          "endDate": _isoDate(leave.endDate),
-          "reason": leave.reason
-        }),
-      );
-      switch (response.statusCode) {
-        case 201:
-          return SubmitLeaveResult.created;
-        case 400:
-          return SubmitLeaveResult.invalid;
-        default:
-          return SubmitLeaveResult.failed;
-      }
-    } catch (e) {
-      return SubmitLeaveResult.failed;
+    final response = await _client.post(
+      Uri.parse("$baseUrl/leaves"),
+      headers: {"Content-Type" : "application/json"},
+      body: jsonEncode({
+        // No userId: the server files it for whoever the token says we are.
+        "startDate": _isoDate(leave.startDate),
+        "endDate": _isoDate(leave.endDate),
+        "reason": leave.reason
+      }),
+    );
+    switch (response.statusCode) {
+      case 201:
+        return SubmitLeaveResult.created;
+      case 400:
+        return SubmitLeaveResult.invalid;
+      default:
+        return SubmitLeaveResult.failed;
     }
   }
 
